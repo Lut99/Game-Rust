@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "game-cfg",
+    "game-ecs",
+
+    "game-bin",
+]
