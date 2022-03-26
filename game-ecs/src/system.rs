@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:26
  * Last edited:
- *   26 Mar 2022, 10:51:47
+ *   26 Mar 2022, 18:18:03
  * Auto updated?
  *   Yes
  *
@@ -41,6 +41,8 @@ impl Ecs {
     /// **Arguments**
     ///  * `initial_capacity`: The initial size of the internal vector (might be used to optimize)
     pub fn new(initial_capacity: usize) -> Self {
+        #[cfg(feature = "log")]
+        debug!("Initialized Entity Component System v{}", env!("CARGO_PKG_VERSION"));
         Ecs {
             next_id    : 0,
             entities   : HashSet::with_capacity(initial_capacity),

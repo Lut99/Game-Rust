@@ -7,6 +7,10 @@ authors = [ "Lut99" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-game-cfg = { path = "../game-cfg" }
 log = "0.4.14"
+semver = "1.0.6"
 simplelog = "0.11.2"
+
+game-cfg = { path = "../game-cfg" }
+game-ecs = { path = "../game-ecs", features = ["logging"] }
+game-gfx = { path = "../game-gfx", features = ["logging"] }

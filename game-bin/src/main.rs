@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   26 Mar 2022, 12:55:21
+ *   26 Mar 2022, 18:24:10
  * Auto updated?
  *   Yes
  *
@@ -16,10 +16,13 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 
 use log::{debug, error, info, LevelFilter};
+use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
 
 use game_cfg::{Action, Config};
 use game_cfg::file::Settings;
+use game_ecs::Ecs;
+use game_gfx::RenderSystem;
 
 
 /***** ENTRYPOINT *****/
@@ -106,6 +109,15 @@ fn main() {
         
         Action::Run{ gpu } => {
             debug!("Executing subcommand: run");
+
+            // Initialize the entity component system
+            let mut ecs = Ecs::default();
+
+            // Start the render system
+            let render_system = match RenderSystem::new(&mut ecs, "Game-Rust", "Game-Rust-Engine", Version::new(0, 1, 0)) {
+                Ok(system) => system,
+                Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
+            };
 
             error!("'run' is not yet implemented.");
             std::process::exit(1);

@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "game-cfg",
+    "game-vk",
     "game-ecs",
+    "game-gfx",
 
     "game-bin",
 ]
