@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   26 Mar 2022, 18:24:10
+ *   27 Mar 2022, 16:38:21
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::fs::{self, File};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use log::{debug, error, info, LevelFilter};
 use semver::Version;
@@ -37,7 +38,7 @@ fn main() {
     let install_log_path = PathBuf::from("./game-install.log");
     if let Err(err) = CombinedLogger::init(vec![
          TermLogger::new(config.log_level, Default::default(), TerminalMode::Mixed, ColorChoice::Auto),
-         WriteLogger::new(LevelFilter::Debug, Default::default(), File::create(if let Action::Install{ .. } = &config.action { &install_log_path } else { &config.session_log_path }).unwrap_or_else(|err| panic!("Could not open log file '{}': {}", config.log_path.display(), err))),
+         WriteLogger::new(LevelFilter::Debug, Default::default(), File::create(if let Action::Install{ .. } = &config.action { &install_log_path } else { &config.session_log_path }).unwrap_or_else(|err| panic!("Could not open log file '{}': {}", config.session_log_path.display(), err))),
     ]) {
         eprintln!("Could not load initialize loggers: {}", err);
         std::process::exit(1);
@@ -77,8 +78,12 @@ fn main() {
             println!("Generating settings...");
             println!(" > Selecting GPU...");
             debug!("Selecting GPU");
-            // Use 0 for now
-            let gpu: usize = 0;
+            let gpu: usize = match RenderSystem::auto_select(config.log_level >= LevelFilter::Debug) {
+                Ok(gpu)  => gpu,
+                Err(err) => { error!("{}", err); std::process::exit(1); }
+            };
+            println!("    > Selected GPU {}", gpu);
+            debug!("Selected GPU {}", gpu);
 
             // Create a Settings file
             println!(" > Generating defaults...");
@@ -103,10 +108,13 @@ fn main() {
         Action::List{} => {
             debug!("Executing subcommand: list");
 
-            error!("'list' is not yet implemented.");
-            std::process::exit(1);
+            // Simply pass to the RenderSystem's function
+            if let Err(err) = RenderSystem::list(config.log_level >= LevelFilter::Debug) {
+                error!("{}", err);
+                std::process::exit(1);
+            }
         },
-        
+
         Action::Run{ gpu } => {
             debug!("Executing subcommand: run");
 
@@ -114,7 +122,7 @@ fn main() {
             let mut ecs = Ecs::default();
 
             // Start the render system
-            let render_system = match RenderSystem::new(&mut ecs, "Game-Rust", "Game-Rust-Engine", Version::new(0, 1, 0)) {
+            let render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), gpu, config.log_level >= LevelFilter::Debug) {
                 Ok(system) => system,
                 Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
             };

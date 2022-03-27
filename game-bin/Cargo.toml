@@ -12,5 +12,5 @@ semver = "1.0.6"
 simplelog = "0.11.2"
 
 game-cfg = { path = "../game-cfg" }
-game-ecs = { path = "../game-ecs", features = ["logging"] }
-game-gfx = { path = "../game-gfx", features = ["logging"] }
+game-ecs = { path = "../game-ecs" }
+game-gfx = { path = "../game-gfx" }

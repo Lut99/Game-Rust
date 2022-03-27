@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   26 Mar 2022, 16:57:04
+ *   27 Mar 2022, 13:20:54
  * Auto updated?
  *   Yes
  *
@@ -18,5 +18,7 @@ pub mod spec;
 pub mod errors;
 /// The module for the instance
 pub mod instance;
+/// The module for the gpu
+pub mod gpu;
 
 // Bring some components into the general package namespace

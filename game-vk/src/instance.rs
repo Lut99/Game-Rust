@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   26 Mar 2022, 18:25:34
+ *   27 Mar 2022, 13:26:03
  * Auto updated?
  *   Yes
  *
@@ -12,9 +12,9 @@
  *   Contains the wrapper around the Vulkan instance.
 **/
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::ops::Deref;
 use std::ptr;
-use std::str::FromStr;
 
 use ash::vk;
 #[cfg(all(windows))]
@@ -23,7 +23,10 @@ use ash::extensions::khr::Win32Surface;
 use ash::extensions::khr::MacOSSurface;
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 use ash::extensions::khr::XlibSurface;
+use log::{debug, error, info, warn};
 use semver::Version;
+
+use game_utl::to_cstring;
 
 pub use crate::errors::InstanceError as Error;
 
@@ -35,9 +38,9 @@ pub use crate::errors::InstanceError as Error;
 /// **Returns**  
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(windows))]
-fn os_surface_extensions() -> Vec<*const i8> {
+fn os_surface_extensions() -> Vec<CString> {
     vec![
-        Win32Surface::name().as_ptr()
+        Win32Surface::name().to_owned()
     ]
 }
 
@@ -47,9 +50,9 @@ fn os_surface_extensions() -> Vec<*const i8> {
 /// **Returns**  
 /// The list of required extensions, as a list of CStrings.
 #[cfg(target_os = "macos")]
-fn os_surface_extensions() -> Vec<*const i8> {
+fn os_surface_extensions() -> Vec<CString> {
     vec![
-        MacOSSurface::name().as_ptr()
+        MacOSSurface::name().to_owned()
     ]
 }
 
@@ -59,10 +62,206 @@ fn os_surface_extensions() -> Vec<*const i8> {
 /// **Returns**  
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-fn os_surface_extensions() -> Vec<*const i8> {
+fn os_surface_extensions() -> Vec<CString> {
     vec![
-        XlibSurface::name().as_ptr()
+        XlibSurface::name().to_owned()
     ]
+}
+
+
+
+
+
+/***** POPULATE FUNCTIONS *****/
+/// Populates an ApplicationInfo struct.
+/// 
+/// This function requires that the given CStrings are alive as long as the ApplicationInfo is.
+/// 
+/// The application version (`version`) and engine version will be converted to a Vulkan version number automatically.
+fn populate_app_info<'a>(name: &'a CStr, version: Version, engine: &'a CStr, engine_version: Version) -> vk::ApplicationInfo {
+    // Convert the versions to Vulkan versions
+    let version        = vk::make_api_version(0, version.major as u32, version.minor as u32, version.patch as u32);
+    let engine_version = vk::make_api_version(0, engine_version.major as u32, engine_version.minor as u32, engine_version.patch as u32);
+
+    // Finally, construct the application info
+    vk::ApplicationInfo {
+        s_type              : vk::StructureType::APPLICATION_INFO,
+        p_next              : ptr::null(),
+        p_application_name  : name.as_ptr(),
+        application_version : version,
+        p_engine_name       : engine.as_ptr(),
+        engine_version      : engine_version,
+        api_version         : vk::API_VERSION_1_1,
+    }
+}
+
+/// Populates a DebugUtilsMessengerCreateInfoEXT struct.
+/// 
+/// This function sets 'vulkan_debug_callback' as the callback for the debug create info.
+#[inline]
+fn populate_debug_info() -> vk::DebugUtilsMessengerCreateInfoEXT {
+    vk::DebugUtilsMessengerCreateInfoEXT {
+        s_type : vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        p_next : ptr::null(),
+
+        flags             : vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+        message_severity  :
+            // vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE |
+            // vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
+            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
+            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+        message_type      :
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
+            vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE |
+            vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+        pfn_user_callback : Some(vulkan_debug_callback),
+        p_user_data       : ptr::null_mut(),
+    }
+}
+
+/// Populates an InstanceCreateInfo struct.
+/// 
+/// This function assumes that the given references will be valid at least through the call to create the Instance.
+/// 
+/// It will also validate if the given layers and extensions exist in the local Vulkan installation, for which it uses the given Entry.
+/// 
+/// # Errors
+/// 
+/// This function will return an Error if we could not query the entry for properties, or if either an extension or a layer does not exist in the local Vulkan installation.
+fn populate_instance_info(entry: &ash::Entry, app_info: &vk::ApplicationInfo, debug_info: &Option<vk::DebugUtilsMessengerCreateInfoEXT>, p_extensions: &[*const i8], p_layers: &[*const i8]) -> Result<vk::InstanceCreateInfo, Error> {
+    // Define the lists the verify who we already had
+    let mut verify_ext: Vec<bool> = p_extensions.iter().map(|_| false).collect();
+    let mut verify_lay: Vec<bool> = p_layers.iter().map(|_| false).collect();
+
+    // First check: global extensions
+    let global_extensions = match entry.enumerate_instance_extension_properties(None) {
+        Ok(layers) => layers,
+        Err(err)   => { return Err(Error::ExtensionEnumerateError{ layer: None, err }); }
+    };
+    for i in 0..p_extensions.len() {
+        // Get the required extension
+        let req_ext: &CStr = unsafe { &CStr::from_ptr(p_extensions[i]) };
+
+        // Loop through the available extensions to find it
+        for avail_ext in &global_extensions {
+            // Convert the raw extension name to a CString
+            let avail_ext: &CStr = unsafe { &CStr::from_ptr(avail_ext.extension_name.as_ptr()) };
+
+            // Compare them
+            if req_ext == avail_ext {
+                verify_ext[i] = true;
+                break;
+            }
+        }
+    }
+
+    // Second check: layers (and layer extensions)
+    let avail_layers = match entry.enumerate_instance_layer_properties() {
+        Ok(layers) => layers,
+        Err(err)   => { return Err(Error::LayerEnumerateError{ err }); }
+    };
+    for i in 0..p_layers.len() {
+        // Get the required layer
+        let req_layer: &CStr = unsafe { &CStr::from_ptr(p_layers[i]) };
+
+        // Loop through the available layers to find it
+        for avail_layer in &avail_layers {
+            // Convert the raw layer name to a CString
+            let avail_layer: &CStr = unsafe { &CStr::from_ptr(avail_layer.layer_name.as_ptr()) };
+
+            // Compare them
+            if req_layer == avail_layer {
+                verify_lay[i] = true;
+                break;
+            }
+        }
+
+        // Error if we still did not find it
+        if !verify_lay[i] { return Err(Error::UnknownLayer{ layer: req_layer.to_owned() }); }
+
+        // If we _did_ find it, also try to resolve extensions for this layer
+        let layer_extensions = match entry.enumerate_instance_extension_properties(Some(req_layer)) {
+            Ok(layers) => layers,
+            Err(err)   => { return Err(Error::ExtensionEnumerateError{ layer: Some(req_layer.to_owned()), err }); }
+        };
+        for i in 0..p_extensions.len() {
+            // Get the required extension
+            let req_ext: &CStr = unsafe { &CStr::from_ptr(p_extensions[i]) };
+
+            // Loop through the available extensions to find it
+            for avail_ext in &layer_extensions {
+                // Convert the raw extension name to a CString
+                let avail_ext: &CStr = unsafe { &CStr::from_ptr(avail_ext.extension_name.as_ptr()) };
+
+                // Compare them
+                if req_ext == avail_ext {
+                    verify_ext[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Final check: make sure all extensions are found
+    for i in 0..verify_ext.len() {
+        if !verify_ext[i] {
+            return Err(Error::UnknownExtension{ extension: unsafe { CStr::from_ptr(p_extensions[i]) }.to_owned() });
+        }
+    }
+
+    // With everything verified, we can finally put it in the struct and return it
+    Ok(vk::InstanceCreateInfo {
+        s_type                     : vk::StructureType::INSTANCE_CREATE_INFO,
+        p_next                     : if let Some(debug_info) = debug_info {
+            debug_info as *const vk::DebugUtilsMessengerCreateInfoEXT as *const std::os::raw::c_void
+        } else {
+            ptr::null()
+        },
+        flags                      : vk::InstanceCreateFlags::empty(),
+        p_application_info         : app_info as *const vk::ApplicationInfo,
+        pp_enabled_extension_names : p_extensions.as_ptr(),
+        enabled_extension_count    : p_extensions.len() as u32,
+        pp_enabled_layer_names     : p_layers.as_ptr(),
+        enabled_layer_count        : p_layers.len() as u32,
+    })
+}
+
+
+
+
+
+/***** CALLBACKS *****/
+/// Callback for the Vulkan debug messenger.
+/// 
+/// This function takes the message reported by Vulkan, and passes it to the appropriate macro from the log crate.
+/// 
+/// This function assumes that it goes right with the log crate and multithreading (if applicable).
+unsafe extern "system" fn vulkan_debug_callback(
+    message_severity : vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type     : vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data  : *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _p_user_data     : *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    // Match the message type
+    let kind = match message_type {
+        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL     => "[General]",
+        vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE => "[Performance]",
+        vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION  => "[Validation]",
+        _                                              => "[Unknown]",
+    };
+
+    // Send the message with the proper log macro
+    let message = CStr::from_ptr((*p_callback_data).p_message);
+    match message_severity {
+        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => debug!("[Vulkan] {} {:?}", kind, message),
+        vk::DebugUtilsMessageSeverityFlagsEXT::INFO    => info!("[Vulkan] {} {:?}", kind, message),
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => warn!("[Vulkan] {} {:?}", kind, message),
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR   => error!("[Vulkan] {} {:?}", kind, message),
+        _                                              => info!("[Unknown] [Vulkan] {} {:?}", kind, message),
+    }
+
+    // Done
+    vk::FALSE
 }
 
 
@@ -77,34 +276,44 @@ pub struct Instance {
 
     /// The instance object that this struct wraps.
     instance : ash::Instance,
+    /// The loader (0) and the messenger (1) for Vulkan's DebugUtils.
+    debug_utils : Option<(ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT)>,
 }
 
 impl Instance {
     /// Constructor for the Instance.
     /// 
-    /// **Generic types**
-    ///  * `S1`: The String-like type of the name.
-    ///  * `S2`: The String-like type of the engine name.
-    ///  * `I1`: The Iterator-type for the extension names.
-    ///  * `I2`: The Iterator-type for the layer names.
+    /// This functions will use the given name and engine metadata to initialize a Vulkan instance.
     /// 
-    /// **Arguments**
-    ///  * `name`: The name of the calling application.
-    ///  * `version`: The version of the calling application.
-    ///  * `engine`: The name of the engine of the calling application.
-    ///  * `engine_version`: The version of the engine of the calling application.
-    ///  * `extensions`: Extra extensions to enable on top of the required ones for the current platform.
-    ///  * `layers`: Vulkan validation layers to enable.
+    /// The given lists of additional extensions and layers will be preprended with ones that are necessary in every case, as well as platform-dependent Surface extensions.
     /// 
-    /// **Returns**  
-    /// The new Instance on success, or else an Error.
-    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>, I1: IntoIterator<Item=&'a str>, I2: IntoIterator<Item=&'b str>>(name: S1, engine: S2, engine_version: Version, extensions: I1, layers: I2) -> Result<Self, Error> {
-        // Convert the str-like into String
+    /// This function will also initialize a Vulkan debug messenger if the "VK_LAYER_KHRONOS_validation" layer is passed.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use semver::Version;
+    /// use game_vk::instance::Instance;
+    /// 
+    /// let instance = Instance::new(
+    ///     "Hello World App",
+    ///     Version::new(0, 1, 0),
+    ///     "Hello World Engine",
+    ///     Version::new(0, 1, 0),
+    ///     vec![],
+    ///     vec!["VK_LAYER_KHRONOS_validation"],
+    /// ).unwrap_or_else(|err| panic!("Could not create Instance: {}", err));
+    /// ```
+    /// 
+    /// # Errors
+    /// 
+    /// This function will return an error whenever the Vulkan API would return an error, plus in some extra cases that relate to automatic conversion to raw types.
+    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Self, Error> {
+        // Convert the str-like into &str
         let name: &str   = name.as_ref();
         let engine: &str = engine.as_ref();
-        // Convert the iterators into actual iterators
-        let extensions = extensions.into_iter();
-        let layers     = layers.into_iter();
+
+
 
         // Create the entry
         let entry = unsafe {
@@ -114,58 +323,90 @@ impl Instance {
             }
         };
 
-        // Get the version from cargo
-        let version: Version = Version::from_str(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO_PKG_VERSION as Version");
+
 
         // Get a CString from the String
-        let cname = CString::new(name.as_bytes()).expect("Given string contains a NULL-byte; this should never happen!");
-        let cengine = CString::new(engine.as_bytes()).expect("Given string contains a NULL-byte; this should never happen!");
+        let cname   = to_cstring!(name);
+        let cengine = to_cstring!(engine);
 
         // Construct the ApplicationInfo
-        let app_info = vk::ApplicationInfo {
-            s_type              : vk::StructureType::APPLICATION_INFO,
-            p_next              : ptr::null(),
-            p_application_name  : cname.as_ptr(),
-            application_version : vk::make_api_version(0, version.major as u32, version.minor as u32, version.patch as u32),
-            p_engine_name       : cengine.as_ptr(),
-            engine_version      : vk::make_api_version(0, engine_version.major as u32, engine_version.minor as u32, engine_version.patch as u32),
-            api_version         : vk::API_VERSION_1_1,
+        let app_info = populate_app_info(&cname, version, &cengine, engine_version);
+
+
+
+        // First, check if we should enable debug
+        let debug = additional_layers.contains(&"VK_LAYER_KHRONOS_validation");
+
+        // Convert both list of additional extensions/layers to CStrs
+        let mut additional_extensions: Vec<CString> = (0..additional_extensions.len()).map(|i| to_cstring!(additional_extensions[i])).collect();
+        let additional_layers: Vec<CString>     = (0..additional_layers.len()).map(|i| to_cstring!(additional_layers[i])).collect();
+
+        // Collect the required extensions
+        let mut extensions: Vec<CString> = vec![ ash::extensions::khr::Surface::name().to_owned() ];
+        if debug { extensions.push(ash::extensions::ext::DebugUtils::name().to_owned()); }
+        extensions.append(&mut os_surface_extensions());
+
+        // Merge the extensions and the layers
+        extensions.append(&mut additional_extensions);
+        let layers = additional_layers;
+
+
+
+        // If required, instantiate the DebugInfo
+        let debug_info: Option<vk::DebugUtilsMessengerCreateInfoEXT> = if debug {
+            Some(populate_debug_info())
+        } else {
+            None
         };
 
-        // Convert the extensions and layers into vectors of the appropriate type
-        let cextensions: Vec<CString> = extensions.map(|s| CString::new(s.as_bytes()).expect("Given string contains a NULL-byte; this should never happen!")).collect();
-        let clayers: Vec<CString>     = layers.map(|s| CString::new(s.as_bytes()).expect("Given string contains a NULL-byte; this should never happen!")).collect();
-        let mut p_extensions: Vec<*const i8> = cextensions.iter().map(|s| s.as_ptr()).collect();
-        let p_layers: Vec<*const i8>         = clayers.iter().map(|s| s.as_ptr()).collect();
 
-        // Possibly extend the extensions based on the OS
-        let mut required_extensions: Vec<*const i8> = os_surface_extensions();
-        p_extensions.append(&mut required_extensions);
 
-        // Prepare the create info for the Instance
-        let create_info = vk::InstanceCreateInfo {
-            s_type                     : vk::StructureType::INSTANCE_CREATE_INFO,
-            p_next                     : ptr::null(),
-            flags                      : vk::InstanceCreateFlags::empty(),
-            p_application_info         : &app_info,
-            pp_enabled_extension_names : p_extensions.as_ptr(),
-            enabled_extension_count    : p_extensions.len() as u32,
-            pp_enabled_layer_names     : p_layers.as_ptr(),
-            enabled_layer_count        : p_layers.len() as u32,
-        };
+        // Cast the extensions and layers to pointers
+        let p_extensions: Vec<*const i8> = (0..extensions.len()).map(|i| extensions[i].as_ptr()).collect();
+        let p_layers: Vec<*const i8>     = (0..layers.len()).map(|i| layers[i].as_ptr()).collect();
+
+        // Finally, create the InstanceInfo
+        let instance_info: vk::InstanceCreateInfo = populate_instance_info(&entry, &app_info, &debug_info, &p_extensions, &p_layers)?;
+
+
 
         // Use that to create the instance
         let instance: ash::Instance = unsafe {
-            match entry.create_instance(&create_info, None) {
+            debug!("Initializing instance...");
+            match entry.create_instance(&instance_info, None) {
                 Ok(instance) => instance,
                 Err(err)     => { return Err(Error::CreateError{ err }); }
             }
         };
 
+
+
+        // If debugging, then also build the debugger
+        let debug_utils = if let Some(debug_info) = debug_info {
+            debug!("Initializing debug messenger...");
+
+            // Create the new debug function loader
+            let debug_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+            
+            // Create the debug instance
+            unsafe {
+                match debug_loader.create_debug_utils_messenger(&debug_info, None) {
+                    Ok(debug_messenger) => Some((debug_loader, debug_messenger)),
+                    Err(err)            => { return Err(Error::DebugCreateError{ err }); }
+                }
+            }
+        } else {
+            None
+        };
+
+
+
         // Finally, create the struct!
         Ok(Self {
             _entry : entry,
+
             instance,
+            debug_utils,
         })
     }
 
@@ -182,8 +423,25 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        // If present, destroy the debugger
+        if let Some((debug_loader, debug_messenger)) = &self.debug_utils {
+            unsafe {
+                debug_loader.destroy_debug_utils_messenger(*debug_messenger, None);
+            }
+        }
+
+        // Destroy the instance
         unsafe {
             self.instance.destroy_instance(None);
         }
+    }
+}
+
+impl Deref for Instance {
+    type Target = ash::Instance;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.instance
     }
 }
