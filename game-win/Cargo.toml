@@ -2,7 +2,18 @@
 name = "game-win"
 version = "0.1.0"
 edition = "2021"
+authors = [ "Lut99" ]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[target.'cfg(all(windows))'.dependencies]
+winapi = { version = "0.3.5", features = ["windef", "libloaderapi"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.17.0"
+cocoa = "0.18.4"
+objc  = "0.2.5"
 
 [dependencies]
+ash = "0.37.0"
+winit = "0.26.1"
+
+game-vk = { path = "../game-vk" }
