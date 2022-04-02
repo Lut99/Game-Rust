@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   02 Apr 2022, 12:29:41
+ *   02 Apr 2022, 14:25:58
  * Auto updated?
  *   Yes
  *
@@ -272,7 +272,7 @@ unsafe extern "system" fn vulkan_debug_callback(
 /// Represents the Instance in the wrapper, which is the application-global instantiation of Vulkan and other libraries.
 pub struct Instance {
     /// The ash entry, that determines how we link to the underlying Vulkan library
-    _entry : ash::Entry,
+    entry : ash::Entry,
 
     /// The instance object that this struct wraps.
     instance : ash::Instance,
@@ -403,7 +403,7 @@ impl Instance {
 
         // Finally, create the struct!
         Ok(Self {
-            _entry : entry,
+            entry,
 
             instance,
             debug_utils,
@@ -411,6 +411,10 @@ impl Instance {
     }
 
 
+
+    /// Returns the internal ash Entry.
+    #[inline]
+    pub fn entry(&self) -> &ash::Entry { &self.entry }
 
     /// Returns (an immuteable reference to) the internal Vulkan instance.
     #[inline]

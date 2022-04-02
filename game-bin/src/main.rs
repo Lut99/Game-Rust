@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   02 Apr 2022, 13:28:42
+ *   02 Apr 2022, 14:43:51
  * Auto updated?
  *   Yes
  *
@@ -23,6 +23,7 @@ use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogg
 use game_cfg::{Action, Config};
 use game_cfg::file::Settings;
 use game_ecs::Ecs;
+use game_evt::EventLoop;
 use game_gfx::RenderSystem;
 
 
@@ -119,7 +120,7 @@ fn main() {
             debug!("Executing subcommand: run");
 
             // Initialize the event loop
-            
+            let event_loop = EventLoop::new();
 
             // Initialize the entity component system
             let mut ecs = Ecs::default();
@@ -131,13 +132,20 @@ fn main() {
             };
 
             // Register the simple triangle subsystem
-            if let Err(err) = render_system.register::<game_gfx::subsystems::triangle::System, game_gfx::subsystems::triangle::CreateInfo, game_gfx::subsystems::triangle::CreateError>(game_gfx::subsystems::triangle::CreateInfo {}, None) {
+            if let Err(err) = render_system.register::<
+                game_gfx_triangle::System,
+                game_gfx_triangle::CreateInfo,
+                game_gfx_triangle::CreateError
+            >(&event_loop, game_gfx_triangle::CreateInfo {}, None) {
                 error!("Could not initialize render subsystem: {}", err);
                 std::process::exit(1);
             }
 
-            error!("'run' is not yet implemented.");
-            std::process::exit(1);
+
+
+            // Enter the main loop
+            info!("Initialization complete; entering game loop...");
+            
         },
     }
 }

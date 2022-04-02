@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:00:33
  * Last edited:
- *   02 Apr 2022, 12:48:51
+ *   02 Apr 2022, 14:17:23
  * Auto updated?
  *   Yes
  *
@@ -20,11 +20,11 @@
 pub mod spec;
 /// The module for the the component lists.
 pub mod errors;
-/// The module that contains the subsystems.
-pub mod subsystems;
 /// The module that implements the main RenderSystem.
 pub mod system;
 
 // Bring some components into the general package namespace
+pub use spec::RenderSubsystem;
+pub use spec::RenderSubsystemBuilder;
 pub use system::Error;
 pub use system::RenderSystem;

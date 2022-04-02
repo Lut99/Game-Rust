@@ -13,4 +13,7 @@ simplelog = "0.11.2"
 
 game-cfg = { path = "../game-cfg" }
 game-ecs = { path = "../game-ecs" }
+game-evt = { path = "../game-evt" }
 game-gfx = { path = "../game-gfx" }
+
+game-gfx-triangle = { path = "../game-gfx-triangle" }

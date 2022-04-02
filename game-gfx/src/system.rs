@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   02 Apr 2022, 13:20:05
+ *   02 Apr 2022, 14:44:34
  * Auto updated?
  *   Yes
  *
@@ -20,11 +20,12 @@ use log::debug;
 use semver::Version;
 
 use game_ecs::Ecs;
+use game_evt::EventLoop;
 use game_vk::gpu::Gpu;
 use game_vk::instance::Instance;
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::subsystems::{RenderSubsystem, RenderSubsystemBuilder};
+use crate::spec::{RenderSubsystem, RenderSubsystemBuilder};
 
 
 /***** CONSTANTS *****/
@@ -158,7 +159,7 @@ impl RenderSystem {
     /// # Errors
     /// 
     /// This function errors if the nested subsystem could not be initialized properly.
-    pub fn register<R, C, E>(&mut self, create_info: C, extra_id: Option<usize>) -> Result<(), Error> 
+    pub fn register<R, C, E>(&mut self, event_loop: &EventLoop, create_info: C, extra_id: Option<usize>) -> Result<(), Error> 
     where
         R: RenderSubsystemBuilder<CreateInfo=C, CreateError=E>,
         C: Sized,
@@ -180,7 +181,7 @@ impl RenderSystem {
         }
 
         // Simply call the constructor
-        let subsystem = match R::new(create_info) {
+        let subsystem = match R::new(event_loop, &self.instance, create_info) {
             Ok(subsystem) => subsystem,
             Err(err)      => { return Err(Error::SubsystemCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };

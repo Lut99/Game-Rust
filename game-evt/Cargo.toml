@@ -1,0 +1,9 @@
+[package]
+name = "game-evt"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+log = "0.4.16"
+winit = "0.26.1"

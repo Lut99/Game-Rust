@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   02 Apr 2022, 12:42:30
+ *   02 Apr 2022, 14:55:35
  * Auto updated?
  *   Yes
  *
@@ -14,8 +14,11 @@
 **/
 
 use ash::{Entry, Instance};
+use log::debug;
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder};
+
+use game_evt::{EventType, EventHandler};
 
 pub use crate::errors::WindowError as Error;
 use crate::surface::Surface;
@@ -67,6 +70,7 @@ impl Window {
         };
 
         // Done! Return the window
+        debug!("Initialized new window '{}'", &title);
         Ok(Self {
             title,
 
@@ -108,4 +112,41 @@ impl Window {
     /// Returns the internal Vulkan surface object.
     #[inline]
     pub fn surface(&self) -> &Surface { &self.surface }
+}
+
+impl EventHandler for Window {
+    /// This is a callback for the EventLoop to call when and event is ready to be processed.
+    /// 
+    /// All types of events are passed. Any unneeded events can safely be ignored.
+    /// 
+    /// In case the program should stop gracefully, return 'true'. Return 'false' if the program should continue, or any error if it should stop ungracefully.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// // TODO
+    /// ```
+    /// 
+    /// # Errors
+    /// 
+    /// This function can error anytime it likes, as long as it returns a valid error type.
+    fn handle(&mut self, event: &EventType) -> Result<bool, Box<dyn std::error::Error>> {
+        // Switch on the event kind
+        match event {
+            | EventType::WindowCloseRequested => {
+                return Ok(true);
+            },
+
+            | EventType::WindowMainEventsCleared => {
+                // Request redraw of the internal window
+                self.window.request_redraw();
+            }
+
+            // Ignore the rest
+            _ => {}
+        };
+
+        // Done! Keep going
+        Ok(false)
+    }
 }

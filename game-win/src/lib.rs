@@ -4,7 +4,7 @@
  * Created:
  *   28 Mar 2022, 21:06:39
  * Last edited:
- *   01 Apr 2022, 17:31:40
+ *   02 Apr 2022, 14:27:33
  * Auto updated?
  *   Yes
  *
@@ -18,3 +18,7 @@ pub mod errors;
 pub mod surface;
 /// Implements the Window class used.
 pub mod window;
+
+
+// Bring some stuff in the lib namespace
+pub use window::{Error, Window};
