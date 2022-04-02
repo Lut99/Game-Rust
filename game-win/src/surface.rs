@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   01 Apr 2022, 17:57:17
+ *   02 Apr 2022, 12:38:37
  * Auto updated?
  *   Yes
  *
@@ -12,13 +12,13 @@
  *   Implements the Vulkan Surface wrapper.
 **/
 
-use std::mem;
-use std::os::raw::c_void;
+use std::ops::Deref;
 use std::ptr;
 
 use ash::{Entry, Instance};
-use ash::extensions::khr::Surface as SurfaceKHR;
+use ash::extensions::khr;
 use ash::vk;
+use ash::vk::SurfaceKHR;
 use winit::window::Window as WWindow;
 
 pub use crate::errors::SurfaceError as Error;
@@ -40,14 +40,15 @@ pub use crate::errors::SurfaceError as Error;
 /// This function errors whenever the underlying APIs error.
 #[cfg(all(windows))]
 unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
-    use ash::extensions::khr::Win32Surface;
+    use std::os::raw::c_void;
+
     use winapi::shared::windef::HWND;
     use winapi::um::libloaderapi::GetModuleHandleW;
     use winit::platform::windows::WindowExtWindows;
 
     
     // Get a Windows Window Handle
-    let hwnd = window.hwnd() as HWND;
+    let hwnd = wwindow.hwnd() as HWND;
     // Get the instance handle for this process, which is Window's container of this process' windows
     let hinstance = GetModuleHandleW(ptr::null()) as *const c_void;
 
@@ -64,7 +65,7 @@ unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) 
     };
 
     // Build the loader for the surface
-    let loader = Win32Surface::new(entry, instance);
+    let loader = khr::Win32Surface::new(entry, instance);
     // Create the new surface
     match loader.create_win32_surface(&surface_info, None) {
         Ok(surface) => Ok(surface),
@@ -87,13 +88,126 @@ unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) 
 /// This function errors whenever the underlying APIs error.
 #[cfg(target_os = "macos")]
 unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
+    use std::mem;
+    use std::os::raw::c_void;
+
     use ash::extensions::mvk::MacOSSurface;
     use cocoa::base::id as cocoa_id;
+    use metal::CoreAnimationlayer;
+    use objc::runtime::YES;
     use winit::platform::macos::WindowExtMacOS;
 
     
     // Get the ID of the window
-    let window: cocoa_id
+    let window: cocoa_id = mem::transmute(wwindow.ns_window());
+
+    // Create an as-blank-as-possible animation layer to redner to
+    let layer = CoreAnimationLayer::new();
+    layer.set_edge_antialiasing_mask(0);
+    layer.set_presents_with_transaction(false);
+    layer.remove_all_animations();
+
+    // Get the window's view, and put the animation layer there
+    let view = window.contentView();
+    layer.set_contents_scale(view.backingScaleFactor());
+    view.setLayer(mem::transmute(layer.as_ref()));
+    view.setWantsLayer(YES);
+
+    // Now use the view in the create info
+    let surface_info = vk::MacOSSurfaceCreateInfoMVK {
+        // Set the standard fields
+        s_type : vk::StructureType::MACOS_SURFACE_CREATE_INFO_M,
+        p_next : ptr::null(),
+        flags  : Default::default(),
+
+        // Pass the view to create the surface on
+        p_view : window.ns_view() as *const c_void,
+    };
+
+    // Create the surface!
+    let loader = MacOSSurface::new(entry, instance);
+    // Create the new surface
+    match loader.create_mac_os_surface(&surface_info, None) {
+        Ok(surface) => Ok(surface),
+        Err(err)    => { return Err(Error::MacOSSurfaceKHRCreateError{ err }); }
+    }
+}
+
+/// Returns a new surface from the given window.
+/// 
+/// There are three overloads for this function, each for the target platform. This overload is for linux (X11).
+/// 
+/// # Examples
+/// 
+/// ```
+/// // TBD
+/// ```
+/// 
+/// # Errors
+/// 
+/// This function errors whenever the underlying APIs error.
+#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
+unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
+    use winit::platform::unix::WindowExtUnix;
+
+
+    // First, determine which platform we're on
+    if wwindow.xlib_display().is_some() {
+        // We're on X11
+
+        // Get the winit window as X11 display & window
+        let x11_display = wwindow.xlib_display().expect("We are confirmed on X11, but could not get X11 display; this should never happen!");
+        let x11_window  = wwindow.xlib_window().expect("We are confirmed on X11, but could not get X11 window; this should never happen!");
+
+        // Use those to create the create info
+        let surface_info = vk::XlibSurfaceCreateInfoKHR {
+            // Set the standard fields
+            s_type : vk::StructureType::XLIB_SURFACE_CREATE_INFO_KHR,
+            p_next : ptr::null(),
+            flags  : Default::default(),
+
+            // Pass the window & display
+            window : x11_window as vk::Window,
+            dpy    : x11_display as *mut vk::Display,
+        };
+
+        // Create the Surface with that
+        let loader = khr::XlibSurface::new(entry, instance);
+        match loader.create_xlib_surface(&surface_info, None) {
+            Ok(surface) => Ok(surface),
+            Err(err)    => { return Err(Error::X11SurfaceKHRCreateError{ err }); }
+        }
+
+    } else if wwindow.wayland_display().is_some() {
+        // We're on Wayland
+
+        // Get the winit window as Wayland surface & display
+        let wayland_display = wwindow.wayland_display().expect("We are confirmed on Wayland, but could not get Wayland display; this should never happen!");
+        let wayland_surface = wwindow.wayland_surface().expect("We are confirmed on Wayland, but could not get Wayland surface; this should never happen!");
+
+        // Use that to create the create info
+        let surface_info = vk::WaylandSurfaceCreateInfoKHR {
+            // Set the standard fields
+            s_type : vk::StructureType::WAYLAND_SURFACE_CREATE_INFO_KHR,
+            p_next : ptr::null(),
+            flags  : Default::default(),
+
+            // Pass the surface & display
+            surface : wayland_surface,
+            display : wayland_display,
+        };
+
+        // Create the Surface with that
+        let loader = khr::WaylandSurface::new(entry, instance);
+        match loader.create_wayland_surface(&surface_info, None) {
+            Ok(surface) => Ok(surface),
+            Err(err)    => { return Err(Error::WaylandSurfaceCreateError{ err }); }
+        }
+
+    } else {
+        // Unsupported window system
+        Err(Error::UnsupportedWindowSystem)
+    }
 }
 
 
@@ -103,6 +217,8 @@ unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) 
 /***** LIBRARY *****/
 /// Implements a Surface, which can be build from a given Window object.
 pub struct Surface {
+    /// The load for the surface which we wrap.
+    loader  : khr::Surface,
     /// The SurfaceKHR which we wrap.
     surface : SurfaceKHR,
 }
@@ -122,6 +238,42 @@ impl Surface {
     /// 
     /// This function errors whenever the backend Vulkan errors.
     pub fn new(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<Self, Error> {
-        
+        // Create the surface KHR
+        let surface = unsafe { create_surface(entry, instance, wwindow) }?;
+
+        // Create the accopmanying loader
+        let loader = khr::Surface::new(entry, instance);
+
+        // Store them internally, done
+        Ok(Self {
+            loader,
+            surface,
+        })
+    }
+
+
+
+    /// Returns the internal Surface (loader) object.
+    #[inline]
+    pub fn loader(&self) -> &khr::Surface { &self.loader }
+
+    /// Returns the internal SurfaceKHR object.
+    #[inline]
+    pub fn surface(&self) -> &SurfaceKHR { &self.surface }
+}
+
+impl Drop for Surface {
+    fn drop(&mut self) {
+        // Destroy the surface using the loader
+        unsafe { self.loader.destroy_surface(self.surface, None); }
+    }
+}
+
+impl Deref for Surface {
+    type Target = SurfaceKHR;
+    
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.surface
     }
 }

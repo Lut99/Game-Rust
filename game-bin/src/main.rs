@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   27 Mar 2022, 16:38:21
+ *   02 Apr 2022, 13:28:42
  * Auto updated?
  *   Yes
  *
@@ -118,14 +118,23 @@ fn main() {
         Action::Run{ gpu } => {
             debug!("Executing subcommand: run");
 
+            // Initialize the event loop
+            
+
             // Initialize the entity component system
             let mut ecs = Ecs::default();
 
             // Start the render system
-            let render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), gpu, config.log_level >= LevelFilter::Debug) {
+            let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), gpu, config.log_level >= LevelFilter::Debug) {
                 Ok(system) => system,
                 Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
             };
+
+            // Register the simple triangle subsystem
+            if let Err(err) = render_system.register::<game_gfx::subsystems::triangle::System, game_gfx::subsystems::triangle::CreateInfo, game_gfx::subsystems::triangle::CreateError>(game_gfx::subsystems::triangle::CreateInfo {}, None) {
+                error!("Could not initialize render subsystem: {}", err);
+                std::process::exit(1);
+            }
 
             error!("'run' is not yet implemented.");
             std::process::exit(1);

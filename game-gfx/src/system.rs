@@ -4,13 +4,16 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   27 Mar 2022, 16:36:15
+ *   02 Apr 2022, 13:20:05
  * Auto updated?
  *   Yes
  *
  * Description:
  *   Implements the base RenderSystem.
 **/
+
+use std::any::TypeId;
+use std::collections::HashMap;
 
 use ash::vk;
 use log::debug;
@@ -21,6 +24,7 @@ use game_vk::gpu::Gpu;
 use game_vk::instance::Instance;
 
 pub use crate::errors::RenderSystemError as Error;
+use crate::subsystems::{RenderSubsystem, RenderSubsystemBuilder};
 
 
 /***** CONSTANTS *****/
@@ -53,6 +57,9 @@ pub struct RenderSystem {
     instance : Instance,
     /// The Gpu we'll use for rendering.
     gpu      : Gpu,
+
+    /// The map of subsystems that are part of this RenderSystem.
+    subsystems : HashMap<TypeId, HashMap<usize, Box<dyn RenderSubsystem>>>,
 }
 
 impl RenderSystem {
@@ -108,7 +115,91 @@ impl RenderSystem {
         Ok(Self {
             instance,
             gpu,
+
+            subsystems : HashMap::with_capacity(1),
         })
+    }
+
+
+
+    /// Registers a new render subsystem.
+    /// 
+    /// For portability with different types of pipelines, the RenderSystem is build modular. The base system handles the instance and GPU, whereas the submodules handle windows, surfaces, pipelines, etc.
+    /// 
+    /// The subsystems may be found in the subsystems submodule.
+    /// 
+    /// Note that multiple subsystems of the same type may be registered. If so, an additional extra_id parameter is necessary to distinguish between them.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use semver::Version;
+    /// 
+    /// use game_ecs::Ecs;
+    /// use game_gfx::RenderSystem;
+    /// use game_gfx::subsystems::TriangleSystem;
+    /// 
+    /// // Build the Entity Component System
+    /// let mut ecs = Ecs::default();
+    /// 
+    /// // Build the base RenderSystem
+    /// let mut render_system = RenderSystem::new(&mut ecs, "Hello World App", Version::new(0, 1, 0), "Hello World Engine", Version::new(0, 1, 0), true)
+    ///     .unwrap_or_else(|err| panic!("Could not build base RenderSystem: {}", err));
+    /// 
+    /// // Register the subsystem
+    /// let create_info = TriangleSystem::CreateInfo {};
+    /// render_system.register::<TriangleSytem>(create_info)
+    ///     .uwrap_or_else(|err| panic!("Could not build Triangle subsystem: {}". err));
+    /// 
+    /// // You can now render a simple triangle with the render system
+    /// // TBD
+    /// ```
+    /// 
+    /// # Errors
+    /// 
+    /// This function errors if the nested subsystem could not be initialized properly.
+    pub fn register<R, C, E>(&mut self, create_info: C, extra_id: Option<usize>) -> Result<(), Error> 
+    where
+        R: RenderSubsystemBuilder<CreateInfo=C, CreateError=E>,
+        C: Sized,
+        E: std::error::Error,
+    {
+        // Check if the extra_id field is valid
+        let extra_id = if let Some(extra_id) = extra_id {
+            if extra_id == usize::MAX { return Err(Error::InvalidExtraId{ value: extra_id }); }
+            extra_id
+        } else {
+            usize::MAX
+        };
+
+        // Check if it already exists
+        if let Some(subsystems) = self.subsystems.get(&TypeId::of::<R>()) {
+            if subsystems.contains_key(&extra_id) {
+                return Err(Error::DuplicateSubsystem{ type_name: std::any::type_name::<R>(), extra_id });
+            }
+        }
+
+        // Simply call the constructor
+        let subsystem = match R::new(create_info) {
+            Ok(subsystem) => subsystem,
+            Err(err)      => { return Err(Error::SubsystemCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+        };
+
+        // Add it to the internal list of subsystems
+        if let Some(subsystems) = self.subsystems.get_mut(&TypeId::of::<R>()) {
+            subsystems.insert(extra_id, Box::new(subsystem));
+        } else {
+            // Construct the new hashmap
+            let mut subsystems: HashMap<usize, Box<dyn RenderSubsystem>> = HashMap::with_capacity(1);
+            subsystems.insert(extra_id, Box::new(subsystem));
+
+            // Insert it
+            self.subsystems.insert(TypeId::of::<R>(), subsystems);
+        }
+
+        // Done!
+        debug!("Registered subsystem of type {}{}", std::any::type_name::<R>(), if extra_id < usize::MAX { format!(" and extra_id {}", extra_id) } else { String::new() });
+        Ok(())
     }
 
 

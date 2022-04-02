@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   01 Apr 2022, 17:38:50
+ *   02 Apr 2022, 12:42:30
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
  *   a Window instance.
 **/
 
+use ash::{Entry, Instance};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder};
 
@@ -46,7 +47,7 @@ impl Window {
     /// # Errors
     /// 
     /// This function errors whenever the winit OR Vulkan backend does.
-    pub fn new<S: Into<String>>(event_loop: &EventLoop<()>, title: S) -> Result<Self, Error> {
+    pub fn new<S: Into<String>>(event_loop: &EventLoop<()>, entry: &Entry, instance: &Instance, title: S) -> Result<Self, Error> {
         // Convert the string-like into a string
         let title = title.into();
 
@@ -60,7 +61,7 @@ impl Window {
         };
 
         // Build the surface around the window
-        let surface = match Surface::new(&wwindow) {
+        let surface = match Surface::new(entry, instance, &wwindow) {
             Ok(surface) => surface,
             Err(err)    => { return Err(Error::SurfaceBuildError{ err }); }
         };
@@ -73,4 +74,38 @@ impl Window {
             surface,
         })
     }
+
+
+
+    /// Updates the title in the internal window.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// 
+    /// ```
+    pub fn set_title<S: Into<String>>(&mut self, new_title: S) {
+        // Convert the String-like into a String
+        let new_title: String = new_title.into();
+
+        // Set the title
+        self.window.set_title(&new_title);
+
+        // Update the title internally too
+        self.title = new_title;
+    }
+
+    
+
+    /// Returns the title of the window.
+    #[inline]
+    pub fn title(&self) -> &str { &self.title }
+
+    /// Returns the internal window object.
+    #[inline]
+    pub fn window(&self) -> &WWindow { &self.window }
+
+    /// Returns the internal Vulkan surface object.
+    #[inline]
+    pub fn surface(&self) -> &Surface { &self.surface }
 }
