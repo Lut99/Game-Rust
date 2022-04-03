@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   02 Apr 2022, 14:25:58
+ *   03 Apr 2022, 15:27:22
  * Auto updated?
  *   Yes
  *
@@ -429,15 +429,15 @@ impl Drop for Instance {
     fn drop(&mut self) {
         // If present, destroy the debugger
         if let Some((debug_loader, debug_messenger)) = &self.debug_utils {
+            debug!("Destroying Debugger...");
             unsafe {
                 debug_loader.destroy_debug_utils_messenger(*debug_messenger, None);
             }
         }
 
         // Destroy the instance
-        unsafe {
-            self.instance.destroy_instance(None);
-        }
+        debug!("Destroying Instance...");
+        unsafe { self.instance.destroy_instance(None); }
     }
 }
 

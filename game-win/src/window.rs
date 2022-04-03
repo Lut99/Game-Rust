@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   02 Apr 2022, 14:55:35
+ *   03 Apr 2022, 12:02:09
  * Auto updated?
  *   Yes
  *
@@ -13,15 +13,14 @@
  *   a Window instance.
 **/
 
-use ash::{Entry, Instance};
 use log::debug;
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder};
 
-use game_evt::{EventType, EventHandler};
+use game_vk::instance::Instance;
+use game_vk::surface::Surface;
 
 pub use crate::errors::WindowError as Error;
-use crate::surface::Surface;
 
 
 /***** WINDOW *****/
@@ -50,7 +49,7 @@ impl Window {
     /// # Errors
     /// 
     /// This function errors whenever the winit OR Vulkan backend does.
-    pub fn new<S: Into<String>>(event_loop: &EventLoop<()>, entry: &Entry, instance: &Instance, title: S) -> Result<Self, Error> {
+    pub fn new<S: Into<String>>(event_loop: &EventLoop<()>, instance: &Instance, title: S) -> Result<Self, Error> {
         // Convert the string-like into a string
         let title = title.into();
 
@@ -64,7 +63,7 @@ impl Window {
         };
 
         // Build the surface around the window
-        let surface = match Surface::new(entry, instance, &wwindow) {
+        let surface = match Surface::new(instance.entry(), instance.instance(), &wwindow) {
             Ok(surface) => surface,
             Err(err)    => { return Err(Error::SurfaceBuildError{ err }); }
         };
@@ -112,41 +111,4 @@ impl Window {
     /// Returns the internal Vulkan surface object.
     #[inline]
     pub fn surface(&self) -> &Surface { &self.surface }
-}
-
-impl EventHandler for Window {
-    /// This is a callback for the EventLoop to call when and event is ready to be processed.
-    /// 
-    /// All types of events are passed. Any unneeded events can safely be ignored.
-    /// 
-    /// In case the program should stop gracefully, return 'true'. Return 'false' if the program should continue, or any error if it should stop ungracefully.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// // TODO
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// This function can error anytime it likes, as long as it returns a valid error type.
-    fn handle(&mut self, event: &EventType) -> Result<bool, Box<dyn std::error::Error>> {
-        // Switch on the event kind
-        match event {
-            | EventType::WindowCloseRequested => {
-                return Ok(true);
-            },
-
-            | EventType::WindowMainEventsCleared => {
-                // Request redraw of the internal window
-                self.window.request_redraw();
-            }
-
-            // Ignore the rest
-            _ => {}
-        };
-
-        // Done! Keep going
-        Ok(false)
-    }
 }

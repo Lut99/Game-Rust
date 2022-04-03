@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 11:44:36
  * Last edited:
- *   27 Mar 2022, 12:19:08
+ *   03 Apr 2022, 15:13:32
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,8 @@
 
 // /// Module that contains the errors for this crate
 // pub mod errors;
+/// Module that contains the common traits.
+pub mod traits;
 // /// Module that contains the common functions.
 // pub mod utils;
 

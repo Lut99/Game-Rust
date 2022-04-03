@@ -2,13 +2,12 @@
 members = [
     "game-utl",
     "game-cfg",
-    "game-evt",
     "game-vk",
     "game-win",
     "game-ecs",
     "game-gfx",
 
-    "game-gfx-triangle",
+    "game-sub/triangle",
 
     "game-bin",
 ]

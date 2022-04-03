@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:30:45
  * Last edited:
- *   02 Apr 2022, 12:28:33
+ *   03 Apr 2022, 12:47:14
  * Auto updated?
  *   Yes
  *
@@ -54,7 +54,7 @@ pub enum WindowError {
     /// Could not build a winit window.
     WinitBuildError{ err: winit::error::OsError },
     /// Could not build a surface around the new winit window.
-    SurfaceBuildError{ err: SurfaceError },
+    SurfaceBuildError{ err: game_vk::surface::Error },
 }
 
 impl Display for WindowError {

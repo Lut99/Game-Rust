@@ -9,7 +9,8 @@ ash = "0.37.0"
 lazy_static = "1.4.0"
 log = "0.4.16"
 semver = "1.0.6"
+winit = "0.26.1"
 
 game-ecs = { path = "../game-ecs" }
-game-evt = { path = "../game-evt" }
+game-utl = { path = "../game-utl" }
 game-vk = { path = "../game-vk" }

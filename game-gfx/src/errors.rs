@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   02 Apr 2022, 13:14:57
+ *   03 Apr 2022, 14:10:41
  * Auto updated?
  *   Yes
  *
@@ -25,17 +25,18 @@ pub enum RenderSystemError {
     /// Could not instantiate the Gpu
     GpuCreateError{ err: game_vk::errors::GpuError },
 
-    /// The given extra ID is invalid
-    InvalidExtraId{ value: usize },
-    /// The given subsystem already exists
-    DuplicateSubsystem{ type_name: &'static str, extra_id: usize },
+    /// The given target already exists
+    DuplicateTarget{ type_name: &'static str, id: usize },
     /// Could not initialize a new render system.
-    SubsystemCreateError{ type_name: &'static str, err: String },
+    RenderTargetCreateError{ type_name: &'static str, err: String },
     
     /// Could not auto-select a GPU
     GpuAutoSelectError{ err: game_vk::errors::GpuError },
     /// Could not list the GPUs
     GpuListError{ err: game_vk::errors::GpuError },
+
+    /// Could not render to one of the RenderTargets
+    RenderError{ err: Box<dyn Error> },
 }
 
 impl Display for RenderSystemError {
@@ -44,24 +45,41 @@ impl Display for RenderSystemError {
             RenderSystemError::InstanceCreateError{ err } => write!(f, "Could not initialize graphics Instance: {}", err),
             RenderSystemError::GpuCreateError{ err }      => write!(f, "Could not initialize GPU: {}", err),
 
-            RenderSystemError::InvalidExtraId{ value }                   => write!(f, "Given extra_id value {} (usize::MAX) is reserved; choose another", value),
-            RenderSystemError::DuplicateSubsystem{ type_name, extra_id } => {
-                // Write that which is common always
-                write!(f, "Already registered a subsystem of type '{}'", type_name)?;
-
-                // Switch on the extra_id value
-                if *extra_id < usize::MAX {
-                    write!(f, " and extra_id {}", extra_id)
-                } else {
-                    write!(f, " (use the extra_id field to distinguish between subsystems of the same type)")
-                }
-            },
-            RenderSystemError::SubsystemCreateError{ type_name, err }    => write!(f, "Could not create subsystem of type '{}': {}", type_name, err),
+            RenderSystemError::DuplicateTarget{ type_name, id }          => write!(f, "Could not register a RenderTarget of type '{}': a target with id {} already exists", type_name, id),
+            RenderSystemError::RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
 
             RenderSystemError::GpuAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
             RenderSystemError::GpuListError{ err }       => write!(f, "Could not list GPUs: {}", err),
+
+            RenderSystemError::RenderError{ err } => write!(f, "Could not render to RenderTarget: {}", err),
         }
     }
 }
 
 impl Error for RenderSystemError {}
+
+
+
+/// Defines errors that occur when setting up a Window.
+#[derive(Debug)]
+pub enum WindowError {
+    /// Could not build a winit window.
+    WinitCreateError{ err: winit::error::OsError },
+    /// Could not build a surface around the new winit window.
+    SurfaceCreateError{ err: game_vk::surface::Error },
+    /// Could not build the child pipeline
+    PipelineCreateError{ type_name: &'static str, err: Box<dyn Error> },
+}
+
+impl Display for WindowError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use WindowError::*;
+        match self {
+            WinitCreateError{ err }               => write!(f, "Could not build a new winit window: {}", err),
+            SurfaceCreateError{ err }             => write!(f, "Could not build Surface: {}", err),
+            PipelineCreateError{ type_name, err } => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
+        }
+    }
+}
+
+impl Error for WindowError {}

@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   02 Apr 2022, 12:38:37
+ *   03 Apr 2022, 15:26:39
  * Auto updated?
  *   Yes
  *
@@ -19,6 +19,7 @@ use ash::{Entry, Instance};
 use ash::extensions::khr;
 use ash::vk;
 use ash::vk::SurfaceKHR;
+use log::debug;
 use winit::window::Window as WWindow;
 
 pub use crate::errors::SurfaceError as Error;
@@ -265,6 +266,7 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // Destroy the surface using the loader
+        debug!("Destroying Surface...");
         unsafe { self.loader.destroy_surface(self.surface, None); }
     }
 }

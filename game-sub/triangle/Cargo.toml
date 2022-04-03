@@ -1,5 +1,5 @@
 [package]
-name = "game-evt"
+name = "triangle"
 version = "0.1.0"
 edition = "2021"
 authors = [ "Lut99" ]
@@ -7,3 +7,6 @@ authors = [ "Lut99" ]
 [dependencies]
 log = "0.4.16"
 winit = "0.26.1"
+
+game-gfx = { path = "../../game-gfx" }
+game-vk = { path = "../../game-vk" }

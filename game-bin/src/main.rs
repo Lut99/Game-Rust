@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   02 Apr 2022, 14:43:51
+ *   03 Apr 2022, 15:07:07
  * Auto updated?
  *   Yes
  *
@@ -19,12 +19,13 @@ use std::str::FromStr;
 use log::{debug, error, info, LevelFilter};
 use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::{Action, Config};
 use game_cfg::file::Settings;
 use game_ecs::Ecs;
-use game_evt::EventLoop;
 use game_gfx::RenderSystem;
+use game_gfx::spec::RenderTargetStage;
 
 
 /***** ENTRYPOINT *****/
@@ -125,18 +126,27 @@ fn main() {
             // Initialize the entity component system
             let mut ecs = Ecs::default();
 
-            // Start the render system
+            // Initialize the render system
             let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), gpu, config.log_level >= LevelFilter::Debug) {
                 Ok(system) => system,
                 Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
             };
 
-            // Register the simple triangle subsystem
+            // Initialize a new Window RenderTarget with the Triangle pipeline
+            let window_info = game_gfx::window::CreateInfo {
+                title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
+
+                pipeline_info : triangle::CreateInfo::default(),
+            };
             if let Err(err) = render_system.register::<
-                game_gfx_triangle::System,
-                game_gfx_triangle::CreateInfo,
-                game_gfx_triangle::CreateError
-            >(&event_loop, game_gfx_triangle::CreateInfo {}, None) {
+                game_gfx::window::Window<triangle::Pipeline>,
+                game_gfx::window::CreateInfo<triangle::CreateInfo>,
+            >(
+                &event_loop,
+                0,
+                RenderTargetStage::MainLoop,
+                window_info,
+            ) {
                 error!("Could not initialize render subsystem: {}", err);
                 std::process::exit(1);
             }
@@ -145,7 +155,15 @@ fn main() {
 
             // Enter the main loop
             info!("Initialization complete; entering game loop...");
-            
+            event_loop.run(move |event, _, control_flow| {
+                *control_flow = match render_system.handle_events(&event, control_flow) {
+                    Ok(flow) => flow,
+                    Err(err) => {
+                        error!("{}", err);
+                        ControlFlow::Exit
+                    }
+                };
+            });
         },
     }
 }

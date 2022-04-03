@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   27 Mar 2022, 16:36:45
+ *   03 Apr 2022, 15:26:58
  * Auto updated?
  *   Yes
  *
@@ -660,6 +660,7 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         // Destroy the internal device
+        debug!("Destroying Gpu...");
         unsafe { self.device.destroy_device(None); };
     }
 }

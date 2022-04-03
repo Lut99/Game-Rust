@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   27 Mar 2022, 16:14:46
+ *   03 Apr 2022, 12:46:04
  * Auto updated?
  *   Yes
  *
@@ -109,3 +109,34 @@ impl Display for GpuError {
 }
 
 impl Error for GpuError {}
+
+
+
+/// Defines errors that occur when setting up a Surface.
+#[derive(Debug)]
+pub enum SurfaceError {
+    /// Could not create a new Windows surface
+    WindowsSurfaceKHRCreateError{ err: ash::vk::Result },
+    /// Could not create a new macOS surface
+    MacOSSurfaceKHRCreateError{ err: ash::vk::Result },
+    /// This linux installation does not use X11 or Wayland
+    UnsupportedWindowSystem,
+    /// Could not create a new X11 surface
+    X11SurfaceKHRCreateError{ err: ash::vk::Result },
+    /// Could not create a new Wayland surface
+    WaylandSurfaceCreateError{ err: ash::vk::Result },
+}
+
+impl Display for SurfaceError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        match self {
+            SurfaceError::WindowsSurfaceKHRCreateError{ err } => write!(f, "Could not create new Windows SurfaceKHR: {}", err),
+            SurfaceError::MacOSSurfaceKHRCreateError{ err }   => write!(f, "Could not create new macOS SurfaceKHR: {}", err),
+            SurfaceError::UnsupportedWindowSystem             => write!(f, "Target window is not an X11 or Wayland window; other window systems are not supported"),
+            SurfaceError::X11SurfaceKHRCreateError{ err }     => write!(f, "Could not create new X11 SurfaceKHR: {}", err),
+            SurfaceError::WaylandSurfaceCreateError{ err }    => write!(f, "Could not create new Wayland SurfaceKHR: {}", err),
+        }
+    }
+}
+
+impl Error for SurfaceError {}
