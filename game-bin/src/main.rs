@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   03 Apr 2022, 16:47:39
+ *   03 Apr 2022, 16:50:32
  * Auto updated?
  *   Yes
  *
@@ -137,7 +137,7 @@ fn main() {
                 title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
 
                 width  : 800,
-                height : 300,
+                height : 600,
 
                 image_count : 3,
 
