@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   03 Apr 2022, 15:25:31
+ *   03 Apr 2022, 16:47:11
  * Auto updated?
  *   Yes
  *
@@ -31,16 +31,16 @@ use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind, RenderTar
 
 /***** CONSTANTS *****/
 /// The list of instance extensions we want to enable (besides the required surface ones).
-const INSTANCE_EXTENSIONS: Vec<&str> = vec![];
+const INSTANCE_EXTENSIONS: &[&str] = &[];
 
 /// The list of instance layers we want to enable (besides the debug one).
-const INSTANCE_LAYERS: Vec<&str> = vec![];
+const INSTANCE_LAYERS: &[&str] = &[];
 
 /// The list of device extensions we want to enable.
-const DEVICE_EXTENSIONS: Vec<&str> = vec![];
+const DEVICE_EXTENSIONS: &[&str] = &[ "VK_KHR_swapchain" ];
 
 /// The list of device layers we want to enable.
-const DEVICE_LAYERS: Vec<&str> = vec![];
+const DEVICE_LAYERS: &[&str] = &[];
 
 // Constants that are lazily loaded
 lazy_static!{
@@ -103,19 +103,19 @@ impl RenderSystem {
 
         // Create the instance
         let layers = if debug {
-            let mut layers = INSTANCE_LAYERS.clone();
+            let mut layers = Vec::from(INSTANCE_LAYERS);
             layers.append(&mut vec!["VK_LAYER_KHRONOS_validation"]);
             layers
         } else {
-            INSTANCE_LAYERS
+            Vec::from(INSTANCE_LAYERS)
         };
-        let instance = match Instance::new(name, version, engine, engine_version, &INSTANCE_EXTENSIONS, &layers) {
+        let instance = match Instance::new(name, version, engine, engine_version, INSTANCE_EXTENSIONS, &layers) {
             Ok(instance) => instance,
             Err(err)     => { return Err(Error::InstanceCreateError{ err }); }  
         };
 
         // Get the GPU
-        let gpu = match Gpu::new(&instance, gpu, &DEVICE_EXTENSIONS, &DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        let gpu = match Gpu::new(&instance, gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(gpu)  => gpu,
             Err(err) => { return Err(Error::GpuCreateError{ err }); }  
         };
@@ -167,7 +167,7 @@ impl RenderSystem {
         }
 
         // Simply call the constructor
-        let target = match R::new(event_loop, &self.instance, create_info) {
+        let target = match R::new(event_loop, &self.instance, &self.gpu, create_info) {
             Ok(target) => target,
             Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };
@@ -224,11 +224,11 @@ impl RenderSystem {
     pub fn auto_select(debug: bool) -> Result<usize, Error> {
         // Create the instance
         let layers = if debug {
-            let mut layers = INSTANCE_LAYERS.clone();
+            let mut layers = Vec::from(INSTANCE_LAYERS);
             layers.append(&mut vec!["VK_LAYER_KHRONOS_validation"]);
             layers
         } else {
-            INSTANCE_LAYERS
+            Vec::from(INSTANCE_LAYERS)
         };
         let instance = match Instance::new("Dummy Application", Version::new(0, 1, 0), "Dummy Engine", Version::new(0, 1, 0), &INSTANCE_EXTENSIONS, &layers) {
             Ok(instance) => instance,
@@ -236,7 +236,7 @@ impl RenderSystem {
         };
 
         // Call the list on the GPU class
-        match Gpu::auto_select(&instance, &DEVICE_EXTENSIONS, &DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        match Gpu::auto_select(&instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(index) => Ok(index),
             Err(err)  => Err(Error::GpuAutoSelectError{ err }),
         }
@@ -257,11 +257,11 @@ impl RenderSystem {
     pub fn list(debug: bool) -> Result<(), Error> {
         // Create the instance
         let layers = if debug {
-            let mut layers = INSTANCE_LAYERS.clone();
+            let mut layers = Vec::from(INSTANCE_LAYERS);
             layers.append(&mut vec!["VK_LAYER_KHRONOS_validation"]);
             layers
         } else {
-            INSTANCE_LAYERS
+            Vec::from(INSTANCE_LAYERS)
         };
         let instance = match Instance::new("Dummy Application", Version::new(0, 1, 0), "Dummy Engine", Version::new(0, 1, 0), &INSTANCE_EXTENSIONS, &layers) {
             Ok(instance) => instance,
@@ -269,7 +269,7 @@ impl RenderSystem {
         };
 
         // Call the list on the GPU class
-        match Gpu::list(&instance, &DEVICE_EXTENSIONS, &DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        match Gpu::list(&instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(())   => Ok(()),
             Err(err) => Err(Error::GpuListError{ err }),
         }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   03 Apr 2022, 12:46:04
+ *   03 Apr 2022, 16:32:10
  * Auto updated?
  *   Yes
  *
@@ -40,15 +40,16 @@ pub enum InstanceError {
 
 impl Display for InstanceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use InstanceError::*;
         match self {
-            InstanceError::LoadError{ err }                      => write!(f, "Could not load the Vulkan library: {}", err),
-            InstanceError::ExtensionEnumerateError{ layer, err } => write!(f, "Could not enumerate extensions properties{}: {}", if let Some(layer) = layer { format!(" for layer '{:?}'", layer) } else { String::new() }, err),
-            InstanceError::LayerEnumerateError{ err }            => write!(f, "Could not enumerate layer properties: {}", err),
-            InstanceError::UnknownExtension{ extension }         => write!(f, "Extension '{:?}' is not found in local Vulkan installation", extension),
-            InstanceError::UnknownLayer{ layer }                 => write!(f, "Layer '{:?}' is not found in local Vulkan installation", layer),
+            LoadError{ err }                      => write!(f, "Could not load the Vulkan library: {}", err),
+            ExtensionEnumerateError{ layer, err } => write!(f, "Could not enumerate extensions properties{}: {}", if let Some(layer) = layer { format!(" for layer '{:?}'", layer) } else { String::new() }, err),
+            LayerEnumerateError{ err }            => write!(f, "Could not enumerate layer properties: {}", err),
+            UnknownExtension{ extension }         => write!(f, "Extension '{:?}' is not found in local Vulkan installation", extension),
+            UnknownLayer{ layer }                 => write!(f, "Layer '{:?}' is not found in local Vulkan installation", layer),
 
-            InstanceError::CreateError{ err }      => write!(f, "Could not create Vulkan instance: {}", err),
-            InstanceError::DebugCreateError{ err } => write!(f, "Could not create Vulkan debug messenger: {}", err),
+            CreateError{ err }      => write!(f, "Could not create Vulkan instance: {}", err),
+            DebugCreateError{ err } => write!(f, "Could not create Vulkan debug messenger: {}", err),
         }
     }
 }
@@ -85,25 +86,43 @@ pub enum GpuError {
 
     /// None of the found devices support this application
     NoSupportedPhysicalDevices,
+
+    /// Could not get whether or not the given surface is supported
+    SurfaceSupportError{ err: ash::vk::Result },
+    /// Could not get the capabilities of the given surface
+    SurfaceCapabilitiesError{ err: ash::vk::Result },
+    /// Could not get the formats of the given surface
+    SurfaceFormatsError{ err: ash::vk::Result },
+    /// Could not get the present modes of the given surface
+    SurfacePresentModesError{ err: ash::vk::Result },
+    /// The given surface is not supported at all
+    UnsupportedSurface,
 }
 
 impl Display for GpuError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use GpuError::*;
         match self {
-            GpuError::DeviceExtensionEnumerateError{ err }                 => write!(f, "Could not enumerate device extension properties: {}", err),
-            GpuError::UnsupportedDeviceExtension{ index, name, extension } => write!(f, "Physical device {} ({}) does not support extension '{:?}'; choose another device", index, name, extension),
-            GpuError::DeviceLayerEnumerateError{ err }                     => write!(f, "Could not enumerate device layer properties: {}", err),
-            GpuError::UnsupportedDeviceLayer{ index, name, layer }         => write!(f, "Physical device {} ({}) does not support layer '{:?}'; choose another device", index, name, layer),
-            GpuError::UnsupportedFeature{ index, name, feature }           => write!(f, "Physical device {} ({}) does not support feature '{}'; choose another device", index, name, feature),
+            DeviceExtensionEnumerateError{ err }                 => write!(f, "Could not enumerate device extension properties: {}", err),
+            UnsupportedDeviceExtension{ index, name, extension } => write!(f, "Physical device {} ({}) does not support extension '{:?}'; choose another device", index, name, extension),
+            DeviceLayerEnumerateError{ err }                     => write!(f, "Could not enumerate device layer properties: {}", err),
+            UnsupportedDeviceLayer{ index, name, layer }         => write!(f, "Physical device {} ({}) does not support layer '{:?}'; choose another device", index, name, layer),
+            UnsupportedFeature{ index, name, feature }           => write!(f, "Physical device {} ({}) does not support feature '{}'; choose another device", index, name, feature),
 
-            GpuError::OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
+            OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
 
-            GpuError::PhysicalDeviceEnumerateError{ err }   => write!(f, "Could not enumerate physical devices: {}", err),
-            GpuError::PhysicalDeviceNotFound{ index }       => write!(f, "Could not find physical device '{}'; see the list of available devices by running 'list'", index),
-            GpuError::PhysicalDeviceNameError{ index, err } => write!(f, "Could not parse name of device {} as UTF-8: {}", index, err),
-            GpuError::DeviceCreateError{ err }              => write!(f, "Could not create logical device: {}", err),
+            PhysicalDeviceEnumerateError{ err }   => write!(f, "Could not enumerate physical devices: {}", err),
+            PhysicalDeviceNotFound{ index }       => write!(f, "Could not find physical device '{}'; see the list of available devices by running 'list'", index),
+            PhysicalDeviceNameError{ index, err } => write!(f, "Could not parse name of device {} as UTF-8: {}", index, err),
+            DeviceCreateError{ err }              => write!(f, "Could not create logical device: {}", err),
 
-            GpuError::NoSupportedPhysicalDevices => write!(f, "No GPU found that supports this application"),
+            NoSupportedPhysicalDevices => write!(f, "No GPU found that supports this application"),
+
+            SurfaceSupportError{ err }      => write!(f, "Could not query swapchain support for surface: {}", err),
+            SurfaceCapabilitiesError{ err } => write!(f, "Could not query supported swapchain capabilities for surface: {}", err),
+            SurfaceFormatsError{ err }      => write!(f, "Could not query supported swapchain formats for surface: {}", err),
+            SurfacePresentModesError{ err } => write!(f, "Could not query supported swapchain present modes for surface: {}", err),
+            UnsupportedSurface              => write!(f, "The given surface is not supported by the chosen GPU"),
         }
     }
 }
@@ -129,14 +148,44 @@ pub enum SurfaceError {
 
 impl Display for SurfaceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use SurfaceError::*;
         match self {
-            SurfaceError::WindowsSurfaceKHRCreateError{ err } => write!(f, "Could not create new Windows SurfaceKHR: {}", err),
-            SurfaceError::MacOSSurfaceKHRCreateError{ err }   => write!(f, "Could not create new macOS SurfaceKHR: {}", err),
-            SurfaceError::UnsupportedWindowSystem             => write!(f, "Target window is not an X11 or Wayland window; other window systems are not supported"),
-            SurfaceError::X11SurfaceKHRCreateError{ err }     => write!(f, "Could not create new X11 SurfaceKHR: {}", err),
-            SurfaceError::WaylandSurfaceCreateError{ err }    => write!(f, "Could not create new Wayland SurfaceKHR: {}", err),
+            WindowsSurfaceKHRCreateError{ err } => write!(f, "Could not create new Windows SurfaceKHR: {}", err),
+            MacOSSurfaceKHRCreateError{ err }   => write!(f, "Could not create new macOS SurfaceKHR: {}", err),
+            UnsupportedWindowSystem             => write!(f, "Target window is not an X11 or Wayland window; other window systems are not supported"),
+            X11SurfaceKHRCreateError{ err }     => write!(f, "Could not create new X11 SurfaceKHR: {}", err),
+            WaylandSurfaceCreateError{ err }    => write!(f, "Could not create new Wayland SurfaceKHR: {}", err),
         }
     }
 }
 
 impl Error for SurfaceError {}
+
+
+
+/// Defines errors that occur when setting up a Surface.
+#[derive(Debug)]
+pub enum SwapchainError {
+    /// The given surface was not supported at all by the given GPU.
+    GpuSurfaceSupportError{ index: usize, name: String, err: GpuError },
+    /// Could not find an appropriate format for this GPU / surface combo.
+    NoFormatFound,
+    /// Could not create a new swapchain
+    SwapchainCreateError{ err: ash::vk::Result },
+    /// Could not get the images from the swapchain
+    SwapchainImagesError{ err: ash::vk::Result },
+}
+
+impl Display for SwapchainError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use SwapchainError::*;
+        match self {
+            GpuSurfaceSupportError{ index, name, err } => write!(f, "Gpu {} ('{}') does not support given Surface: {}", index, name, err),
+            NoFormatFound                              => write!(f, "No suitable formats found for swapchain; try choosing another device."),
+            SwapchainCreateError{ err }                => write!(f, "Could not create Swapchain: {}", err),
+            SwapchainImagesError{ err }                => write!(f, "Could not get Swapchain images: {}", err),
+        }
+    }
+}
+
+impl Error for SwapchainError {}

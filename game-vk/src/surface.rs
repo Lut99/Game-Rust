@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   03 Apr 2022, 15:26:39
+ *   03 Apr 2022, 16:36:49
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,7 @@
 use std::ops::Deref;
 use std::ptr;
 
-use ash::{Entry, Instance};
+use ash::{Entry as VkEntry, Instance as VkInstance};
 use ash::extensions::khr;
 use ash::vk;
 use ash::vk::SurfaceKHR;
@@ -23,6 +23,7 @@ use log::debug;
 use winit::window::Window as WWindow;
 
 pub use crate::errors::SurfaceError as Error;
+use crate::instance::Instance;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -40,7 +41,7 @@ pub use crate::errors::SurfaceError as Error;
 /// 
 /// This function errors whenever the underlying APIs error.
 #[cfg(all(windows))]
-unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
+unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
     use std::os::raw::c_void;
 
     use winapi::shared::windef::HWND;
@@ -88,7 +89,7 @@ unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) 
 /// 
 /// This function errors whenever the underlying APIs error.
 #[cfg(target_os = "macos")]
-unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
+unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
     use std::mem;
     use std::os::raw::c_void;
 
@@ -148,7 +149,7 @@ unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) 
 /// 
 /// This function errors whenever the underlying APIs error.
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-unsafe fn create_surface(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
+unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWindow) -> Result<SurfaceKHR, Error> {
     use winit::platform::unix::WindowExtUnix;
 
 
@@ -238,12 +239,13 @@ impl Surface {
     /// # Errors
     /// 
     /// This function errors whenever the backend Vulkan errors.
-    pub fn new(entry: &Entry, instance: &Instance, wwindow: &WWindow) -> Result<Self, Error> {
+    pub fn new(instance: &Instance, wwindow: &WWindow) -> Result<Self, Error> {
         // Create the surface KHR
-        let surface = unsafe { create_surface(entry, instance, wwindow) }?;
+        debug!("Initializing surface...");
+        let surface = unsafe { create_surface(instance.entry(), instance.instance(), wwindow) }?;
 
         // Create the accopmanying loader
-        let loader = khr::Surface::new(entry, instance);
+        let loader = khr::Surface::new(instance.entry(), instance.instance());
 
         // Store them internally, done
         Ok(Self {
@@ -260,7 +262,7 @@ impl Surface {
 
     /// Returns the internal SurfaceKHR object.
     #[inline]
-    pub fn surface(&self) -> &SurfaceKHR { &self.surface }
+    pub fn surface(&self) -> SurfaceKHR { self.surface }
 }
 
 impl Drop for Surface {
@@ -272,10 +274,10 @@ impl Drop for Surface {
 }
 
 impl Deref for Surface {
-    type Target = SurfaceKHR;
+    type Target = khr::Surface;
     
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.surface
+        &self.loader
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   03 Apr 2022, 12:46:43
+ *   03 Apr 2022, 15:33:13
  * Auto updated?
  *   Yes
  *
@@ -22,5 +22,7 @@ pub mod instance;
 pub mod gpu;
 /// The module for the surface
 pub mod surface;
+/// The module for the swapchain
+pub mod swapchain;
 
 // Bring some components into the general package namespace

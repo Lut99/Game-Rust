@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   03 Apr 2022, 15:26:58
+ *   03 Apr 2022, 16:18:05
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use game_utl::to_cstring;
 
 pub use crate::errors::GpuError as Error;
 use crate::instance::Instance;
+use crate::surface::Surface;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -361,6 +362,18 @@ impl Queues {
 
 
 
+/// Collects information about the SwapchainSupport for this device.
+pub struct SwapchainSupport {
+    /// Lists the capabilities of the chosen device/surface combo.
+    pub capabilities  : vk::SurfaceCapabilitiesKHR,
+    /// Lists the formats supported by the chosen device/surface combo.
+    pub formats       : Vec<vk::SurfaceFormatKHR>,
+    /// Lists the present modes supported by the chosen device/surface combo.
+    pub present_modes : Vec<vk::PresentModeKHR>,
+}
+
+
+
 
 
 /***** LIBRARY *****/
@@ -373,6 +386,8 @@ pub struct Gpu {
     /// The queues for the internal device.
     queues          : Queues,
     
+    /// The index of the device
+    index          : usize,
     /// The name of the device
     name           : String,
     /// The type of the device (as a String as well)
@@ -493,6 +508,7 @@ impl Gpu {
             device,
             queues,
 
+            index          : physical_device_index,
             name           : device_name,
             kind           : device_type,
             queue_families : family_info,
@@ -631,6 +647,71 @@ impl Gpu {
     }
 
 
+
+    /// Returns the list of supported features for the given Surface.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// // TODO
+    /// ```
+    /// 
+    /// # Errors
+    /// 
+    /// This function errors if the given Surface is not supported at all, or if we could not query the properties for some reason.
+    pub fn get_swapchain_support(&self, surface: &Surface) -> Result<SwapchainSupport, Error> {
+        // Check if the chosen graphics queue can present to the given chain
+        if !match unsafe {
+            surface.get_physical_device_surface_support(self.physical_device, self.queue_families.graphics, surface.surface())
+        } {
+            Ok(supports) => supports,
+            Err(err)     => { return Err(Error::SurfaceSupportError{ err }); }
+        } {
+            return Err(Error::UnsupportedSurface);
+        }
+
+        // Get the surface capabilities
+        let capabilities = match unsafe {
+            surface.get_physical_device_surface_capabilities(self.physical_device, surface.surface())
+        } {
+            Ok(capabilities) => capabilities,
+            Err(err)         => { return Err(Error::SurfaceCapabilitiesError{ err }); }
+        };
+
+        // Get the surface formats
+        let formats = match unsafe {
+            surface.get_physical_device_surface_formats(self.physical_device, surface.surface())
+        } {
+            Ok(formats) => formats,
+            Err(err)    => { return Err(Error::SurfaceFormatsError{ err }); }
+        };
+
+        // Get the surface capabilities
+        let present_modes = match unsafe {
+            surface.get_physical_device_surface_present_modes(self.physical_device, surface.surface())
+        } {
+            Ok(present_modes) => present_modes,
+            Err(err)          => { return Err(Error::SurfacePresentModesError{ err }); }
+        };
+
+        
+
+        // If no formats and present modes are found, we call it not supported at all
+        if formats.is_empty() && present_modes.is_empty() { return Err(Error::UnsupportedSurface); }
+
+        // Otherwise, return the new swapchain support!
+        Ok(SwapchainSupport {
+            capabilities,
+            formats,
+            present_modes,
+        })
+    }
+
+
+
+    /// Returns the index of this device.
+    #[inline]
+    pub fn index(&self) -> usize { self.index }
 
     /// Returns the name of this device.
     #[inline]

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   03 Apr 2022, 14:10:41
+ *   03 Apr 2022, 15:34:36
  * Auto updated?
  *   Yes
  *
@@ -67,6 +67,8 @@ pub enum WindowError {
     WinitCreateError{ err: winit::error::OsError },
     /// Could not build a surface around the new winit window.
     SurfaceCreateError{ err: game_vk::surface::Error },
+    /// Could not build a swapchain around the new surface
+    SwapchainCreateError{ err: game_vk::swapchain::Error },
     /// Could not build the child pipeline
     PipelineCreateError{ type_name: &'static str, err: Box<dyn Error> },
 }
@@ -77,6 +79,7 @@ impl Display for WindowError {
         match self {
             WinitCreateError{ err }               => write!(f, "Could not build a new winit window: {}", err),
             SurfaceCreateError{ err }             => write!(f, "Could not build Surface: {}", err),
+            SwapchainCreateError{ err }           => write!(f, "Could not build Swapchain: {}", err),
             PipelineCreateError{ type_name, err } => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
         }
     }

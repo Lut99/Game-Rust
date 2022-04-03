@@ -3,7 +3,6 @@ members = [
     "game-utl",
     "game-cfg",
     "game-vk",
-    "game-win",
     "game-ecs",
     "game-gfx",
 

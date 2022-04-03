@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   03 Apr 2022, 15:28:17
+ *   03 Apr 2022, 16:44:13
  * Auto updated?
  *   Yes
  *
@@ -15,13 +15,15 @@
 
 use std::fmt::Debug;
 
-use log::{debug, warn};
+use log::debug;
+use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
-use game_utl::traits::AsAny;
 use game_vk::instance::Instance;
+use game_vk::gpu::Gpu;
 use game_vk::surface::Surface;
+use game_vk::swapchain::Swapchain;
 
 pub use crate::errors::WindowError as Error;
 use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderTarget, RenderTargetBuilder, RenderTargetKind};
@@ -33,6 +35,14 @@ use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderTarget, RenderTar
 pub struct CreateInfo<T: Debug + Default + Clone> {
     /// The title of the new window.
     pub title : String,
+
+    /// The desired width of the window.
+    pub width  : u32,
+    /// The desired height of the window.
+    pub height : u32,
+
+    /// The number of images we would like as minimum for the swapchain.
+    pub image_count : u32,
 
     /// The CreateInfo of the RenderPipeline.
     pub pipeline_info : T,
@@ -51,15 +61,18 @@ where
 
     /// The title of this Window.
     title : String,
+    /// The size of the window (as width, height)
+    size  : (u32, u32),
 
     /// The backend, as a RenderPipeline.
     pipeline : P,
 
-    // /// The Vulkan swapchain that we create from this Window.
+    /// The Vulkan swapchain that we create from this Window.
+    swapchain : Swapchain,
     /// The Vulkan Surface that we create from this Window.
-    surface : Surface,
+    surface   : Surface,
     /// The WinitWindow that we wrap.
-    window  : WWindow,
+    window    : WWindow,
 }
 
 impl<P> Window<P>
@@ -116,10 +129,11 @@ where
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(event_loop: &EventLoop<()>, instance: &Instance, gpu: &Gpu, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
         // Build the new Winit window
         let wwindow = match WindowBuilder::new()
             .with_title(&create_info.title)
+            .with_inner_size(Size::Physical(PhysicalSize{ width: create_info.width, height: create_info.height }))
             .build(event_loop)
         {
             Ok(wwindow) => wwindow,
@@ -127,9 +141,15 @@ where
         };
 
         // Build the surface around the window
-        let surface = match Surface::new(instance.entry(), instance.instance(), &wwindow) {
+        let surface = match Surface::new(instance, &wwindow) {
             Ok(surface) => surface,
             Err(err)    => { return Err(Box::new(Error::SurfaceCreateError{ err })); }
+        };
+
+        // Build the swapchain around the GPU and surface
+        let swapchain = match Swapchain::new(instance, gpu, &surface, create_info.width, create_info.height, create_info.image_count) {
+            Ok(swapchain) => swapchain,
+            Err(err)      => { return Err(Box::new(Error::SwapchainCreateError{ err })); }
         };
 
 
@@ -146,9 +166,11 @@ where
         debug!("Initialized new window '{}'", &create_info.title);
         Ok(Self {
             title : create_info.title,
+            size  : (create_info.width, create_info.height),
 
             window : wwindow,
             surface,
+            swapchain,
 
             pipeline,
         })
