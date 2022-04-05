@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   03 Apr 2022, 16:32:10
+ *   05 Apr 2022, 17:47:00
  * Auto updated?
  *   Yes
  *
@@ -189,3 +189,23 @@ impl Display for SwapchainError {
 }
 
 impl Error for SwapchainError {}
+
+
+
+/// Defines errors that relate to an ImageView.
+#[derive(Debug)]
+pub enum ImageViewError {
+    /// The constructor that builds on an Image is not yet implemented.
+    NotImplemented,
+}
+
+impl Display for ImageViewError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use ImageViewError::*;
+        match self {
+            NotImplemented => write!(f, "View::new() is not yet implemented"),
+        }
+    }
+}
+
+impl Error for ImageViewError {}

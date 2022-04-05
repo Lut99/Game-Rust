@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   03 Apr 2022, 15:33:13
+ *   05 Apr 2022, 17:51:50
  * Auto updated?
  *   Yes
  *
@@ -24,5 +24,7 @@ pub mod gpu;
 pub mod surface;
 /// The module for the swapchain
 pub mod swapchain;
+/// The module for the images & image views
+pub mod image;
 
 // Bring some components into the general package namespace
