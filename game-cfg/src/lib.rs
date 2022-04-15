@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:53:41
  * Last edited:
- *   26 Mar 2022, 12:30:40
+ *   15 Apr 2022, 12:44:31
  * Auto updated?
  *   Yes
  *
@@ -13,8 +13,6 @@
  *   configuration from both disk and CLI.
 **/
 
-// Use macros from some crates
-#[macro_use] extern crate lazy_static;
 
 /// The module that contains this crate's errors.
 pub mod errors;
@@ -28,4 +26,4 @@ pub mod config;
 
 // Bring some stuff into the global scope
 pub use errors::ConfigError as Error;
-pub use config::{Action, Config};
+pub use config::Config;

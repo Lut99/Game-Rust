@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 11:12:24
  * Last edited:
- *   26 Mar 2022, 12:32:51
+ *   15 Apr 2022, 12:43:05
  * Auto updated?
  *   Yes
  *
@@ -34,12 +34,13 @@ pub enum SettingsError {
 
 impl Display for SettingsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use SettingsError::*;
         match self {
-            SettingsError::OpenError{ path, err }  => write!(f, "Could not open settings file '{}': {}", path.display(), err),
-            SettingsError::ParseError{ path, err } => write!(f, "Could not parse settings file '{}': {}", path.display(), err),
+            OpenError{ path, err }  => write!(f, "Could not open settings file '{}': {}", path.display(), err),
+            ParseError{ path, err } => write!(f, "Could not parse settings file '{}': {}", path.display(), err),
 
-            SettingsError::CreateError{ path, err } => write!(f, "Could not create new settings file '{}': {}", path.display(), err),
-            SettingsError::WriteError{ path, err }  => write!(f, "Could not write settings file to '{}': {}", path.display(), err),
+            CreateError{ path, err } => write!(f, "Could not create new settings file '{}': {}", path.display(), err),
+            WriteError{ path, err }  => write!(f, "Could not write settings file to '{}': {}", path.display(), err),
         }
     }
 }
@@ -60,24 +61,20 @@ pub enum ConfigError {
     /// The given relative path tried to escape the parent path
     RelativeEscape{ base: PathBuf, path: PathBuf },
 
-    /// Could not get the current, local time
-    LocalTimeError{ err: time::error::IndeterminateOffset },
-
     /// Could not load the settings file.
     SettingsLoadError{ err: SettingsError },
 }
 
 impl Display for ConfigError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use ConfigError::*;
         match self {
-            ConfigError::ExecutablePathError{ err }   => write!(f, "Could not get path of executable: {}", err),
-            ConfigError::PathParentError{ path }      => write!(f, "Could not get parent folder of '{}'", path.display()),
-            ConfigError::PathToStringError{ path }    => write!(f, "Could not convert '{}' to a string", path.display()),
-            ConfigError::RelativeEscape{ base, path } => write!(f, "Given path '{}' tries to escape base path '{}': use absolute paths instead", path.display(), base.display()),
+            ExecutablePathError{ err }   => write!(f, "Could not get path of executable: {}", err),
+            PathParentError{ path }      => write!(f, "Could not get parent folder of '{}'", path.display()),
+            PathToStringError{ path }    => write!(f, "Could not convert '{}' to a string", path.display()),
+            RelativeEscape{ base, path } => write!(f, "Given path '{}' tries to escape base path '{}': use absolute paths instead", path.display(), base.display()),
 
-            ConfigError::LocalTimeError{ err }  => write!(f, "Could not get local time: {}", err),
-
-            ConfigError::SettingsLoadError{ err } => write!(f, "Could not load the settings file: {}", err),
+            SettingsLoadError{ err } => write!(f, "Could not load the settings file: {}", err),
         }
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   03 Apr 2022, 16:50:32
+ *   15 Apr 2022, 12:46:55
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,7 @@ use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use game_cfg::{Action, Config};
+use game_cfg::Config;
 use game_cfg::file::Settings;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
@@ -37,138 +37,65 @@ fn main() {
     };
 
     // Initialize the logger
-    let install_log_path = PathBuf::from("./game-install.log");
     if let Err(err) = CombinedLogger::init(vec![
-         TermLogger::new(config.log_level, Default::default(), TerminalMode::Mixed, ColorChoice::Auto),
-         WriteLogger::new(LevelFilter::Debug, Default::default(), File::create(if let Action::Install{ .. } = &config.action { &install_log_path } else { &config.session_log_path }).unwrap_or_else(|err| panic!("Could not open log file '{}': {}", config.session_log_path.display(), err))),
+         TermLogger::new(config.verbosity, Default::default(), TerminalMode::Mixed, ColorChoice::Auto),
+         WriteLogger::new(LevelFilter::Debug, Default::default(), File::create(&config.files.log).unwrap_or_else(|err| panic!("Could not open log file '{}': {}", config.files.log.display(), err))),
     ]) {
         eprintln!("Could not load initialize loggers: {}", err);
         std::process::exit(1);
     }
+
+
+
     info!("Initializing Game-Rust {}", env!("CARGO_PKG_VERSION"));
 
+    // Initialize the event loop
+    let event_loop = EventLoop::new();
 
+    // Initialize the entity component system
+    let mut ecs = Ecs::default();
 
-    // Switch on the action!
-    match config.action {
-        Action::Install{ config_dir, log_dir } => {
-            debug!("Executing subcommand: install");
+    // Initialize the render system
+    let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), config.gpu, config.verbosity >= LevelFilter::Debug) {
+        Ok(system) => system,
+        Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
+    };
 
-            println!("Creating directories...");
-            // Create the configuration directory if it does not yet exist
-            if !config_dir.exists() {
-                println!(" > Creating config directory '{}'...", config_dir.display());
-                debug!("Creating config directory '{}'", config_dir.display());
-                if let Err(err) = fs::create_dir_all(&config_dir) {
-                    eprintln!("ERROR: Failed to create configuration directory: {}", err);
-                    error!("Failed to create configuration directory: {}", err);
-                    std::process::exit(1);
-                }
-            }
-            // Create the log directory if it does not yet exist
-            if !log_dir.exists() {
-                println!(" > Creating log directory '{}'...", log_dir.display());
-                debug!("Creating log directory '{}'", log_dir.display());
-                if let Err(err) = fs::create_dir_all(&log_dir) {
-                    eprintln!("ERROR: Failed to create log directory: {}", err);
-                    error!("Failed to create log directory: {}", err);
-                    std::process::exit(1);
-                }
-            }
-            println!();
+    // Initialize a new Window RenderTarget with the Triangle pipeline
+    let window_info = game_gfx::window::CreateInfo {
+        title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
 
-            println!("Generating settings...");
-            println!(" > Selecting GPU...");
-            debug!("Selecting GPU");
-            let gpu: usize = match RenderSystem::auto_select(config.log_level >= LevelFilter::Debug) {
-                Ok(gpu)  => gpu,
-                Err(err) => { error!("{}", err); std::process::exit(1); }
-            };
-            println!("    > Selected GPU {}", gpu);
-            debug!("Selected GPU {}", gpu);
+        width  : 800,
+        height : 600,
 
-            // Create a Settings file
-            println!(" > Generating defaults...");
-            let settings = Settings::default(config.log_path, gpu);
+        image_count : 3,
 
-            // Write it to the location
-            let settings_path = config_dir.join("settings.json");
-            println!(" > Writing settings file '{}'...", settings_path.display());
-            debug!("Exporting settings file to '{}'", settings_path.display());
-            if let Err(err) = settings.write(settings_path) {
-                eprintln!("ERROR: Could not write new settings file: {}", err);
-                error!("Could not write new settings file: {}", err);
-                std::process::exit(1);
-            }
-            println!();
-
-            // Done!
-            println!("Installation complete.");
-            println!();
-        },
-        
-        Action::List{} => {
-            debug!("Executing subcommand: list");
-
-            // Simply pass to the RenderSystem's function
-            if let Err(err) = RenderSystem::list(config.log_level >= LevelFilter::Debug) {
-                error!("{}", err);
-                std::process::exit(1);
-            }
-        },
-
-        Action::Run{ gpu } => {
-            debug!("Executing subcommand: run");
-
-            // Initialize the event loop
-            let event_loop = EventLoop::new();
-
-            // Initialize the entity component system
-            let mut ecs = Ecs::default();
-
-            // Initialize the render system
-            let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), gpu, config.log_level >= LevelFilter::Debug) {
-                Ok(system) => system,
-                Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
-            };
-
-            // Initialize a new Window RenderTarget with the Triangle pipeline
-            let window_info = game_gfx::window::CreateInfo {
-                title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
-
-                width  : 800,
-                height : 600,
-
-                image_count : 3,
-
-                pipeline_info : triangle::CreateInfo::default(),
-            };
-            if let Err(err) = render_system.register::<
-                game_gfx::window::Window<triangle::Pipeline>,
-                game_gfx::window::CreateInfo<triangle::CreateInfo>,
-            >(
-                &event_loop,
-                0,
-                RenderTargetStage::MainLoop,
-                window_info,
-            ) {
-                error!("Could not initialize render subsystem: {}", err);
-                std::process::exit(1);
-            }
-
-
-
-            // Enter the main loop
-            info!("Initialization complete; entering game loop...");
-            event_loop.run(move |event, _, control_flow| {
-                *control_flow = match render_system.handle_events(&event, control_flow) {
-                    Ok(flow) => flow,
-                    Err(err) => {
-                        error!("{}", err);
-                        ControlFlow::Exit
-                    }
-                };
-            });
-        },
+        pipeline_info : triangle::CreateInfo::default(),
+    };
+    if let Err(err) = render_system.register::<
+        game_gfx::window::Window<triangle::Pipeline>,
+        game_gfx::window::CreateInfo<triangle::CreateInfo>,
+    >(
+        &event_loop,
+        0,
+        RenderTargetStage::MainLoop,
+        window_info,
+    ) {
+        error!("Could not initialize render subsystem: {}", err);
+        std::process::exit(1);
     }
+
+
+
+    // Enter the main loop
+    info!("Initialization complete; entering game loop...");
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = match render_system.handle_events(&event, control_flow) {
+            Ok(flow) => flow,
+            Err(err) => {
+                error!("{}", err);
+                ControlFlow::Exit
+            }
+        };
+    });
 }
