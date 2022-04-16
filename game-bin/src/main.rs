@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   15 Apr 2022, 12:46:55
+ *   16 Apr 2022, 12:29:37
  * Auto updated?
  *   Yes
  *
@@ -12,17 +12,15 @@
  *   Entrypoint to the game executable.
 **/
 
-use std::fs::{self, File};
-use std::path::PathBuf;
+use std::fs::File;
 use std::str::FromStr;
 
-use log::{debug, error, info, LevelFilter};
+use log::{error, info, LevelFilter};
 use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::Config;
-use game_cfg::file::Settings;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
 use game_gfx::spec::RenderTargetStage;

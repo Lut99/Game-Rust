@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   03 Apr 2022, 16:18:05
+ *   16 Apr 2022, 13:11:32
  * Auto updated?
  *   Yes
  *
@@ -639,7 +639,6 @@ impl Gpu {
         } else {
             println!("  <no devices>");
         }
-        println!();
         println!();
 
         // Done!

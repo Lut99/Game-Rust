@@ -8,5 +8,6 @@ members = [
 
     "game-sub/triangle",
 
+    "game-lst",
     "game-bin",
 ]
