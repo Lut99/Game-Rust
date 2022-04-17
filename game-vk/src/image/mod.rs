@@ -4,7 +4,7 @@
  * Created:
  *   05 Apr 2022, 17:50:51
  * Last edited:
- *   05 Apr 2022, 18:12:16
+ *   17 Apr 2022, 17:59:52
  * Auto updated?
  *   Yes
  *
@@ -18,4 +18,4 @@
 pub mod view;
 
 // Bring some stuff into the submodule namespace
-// pub use view::{Error as ViewError, View};
+pub use view::{ComponentSwizzle, CreateInfo as ViewInfo, Error as ViewError, View};

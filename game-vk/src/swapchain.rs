@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   05 Apr 2022, 18:07:42
+ *   17 Apr 2022, 18:04:08
  * Auto updated?
  *   Yes
  *
@@ -103,6 +103,9 @@ fn choose_sharing_mode(_gpu: &Gpu) -> Result<(vk::SharingMode, u32, Vec<u32>), E
 /***** LIBRARY *****/
 /// The Swapchain struct is used to render to and provide the RenderTarget's images.
 pub struct Swapchain {
+    /// The chosen format of the swapchain
+    format : vk::Format,
+
     /// The loader for the swapchain
     loader    : khr::Swapchain,
     /// The Swapchain itself
@@ -201,6 +204,8 @@ impl Swapchain {
 
         // Store everything in a new Swapchain instance and return
         Ok(Self {
+            format,
+
             loader,
             swapchain,
             images,
@@ -208,6 +213,10 @@ impl Swapchain {
     }
 
 
+
+    /// Returns the chosen format for this Swapchain.
+    #[inline]
+    pub fn format(&self) -> &vk::Format { &self.format }
 
     /// Returns the loader for the swapchain.
     #[inline]

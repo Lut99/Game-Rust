@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   05 Apr 2022, 17:47:00
+ *   17 Apr 2022, 17:53:41
  * Auto updated?
  *   Yes
  *
@@ -197,6 +197,9 @@ impl Error for SwapchainError {}
 pub enum ImageViewError {
     /// The constructor that builds on an Image is not yet implemented.
     NotImplemented,
+
+    /// Could not construct the image view
+    ViewCreateError{ err: ash::vk::Result },
 }
 
 impl Display for ImageViewError {
@@ -204,6 +207,8 @@ impl Display for ImageViewError {
         use ImageViewError::*;
         match self {
             NotImplemented => write!(f, "View::new() is not yet implemented"),
+
+            ViewCreateError{ err } => write!(f, "Could not create ImageView: {}", err),
         }
     }
 }

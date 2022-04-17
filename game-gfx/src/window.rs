@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   03 Apr 2022, 16:44:13
+ *   17 Apr 2022, 18:09:32
  * Auto updated?
  *   Yes
  *
@@ -15,11 +15,13 @@
 
 use std::fmt::Debug;
 
+use ash::vk;
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
+use game_vk::image;
 use game_vk::instance::Instance;
 use game_vk::gpu::Gpu;
 use game_vk::surface::Surface;
@@ -57,16 +59,17 @@ pub struct Window<P>
 where
     P: RenderPipeline,
 {
-    // NOTE: The order of the next three matters, due to Rust's in-order drop policy.
-
     /// The title of this Window.
     title : String,
     /// The size of the window (as width, height)
     size  : (u32, u32),
 
+    // NOTE: The order of the next fields matters, due to Rust's in-order drop policy.
     /// The backend, as a RenderPipeline.
     pipeline : P,
 
+    /// The list of Vulkan swapchain images that we create from this Window.
+    images    : Vec<image::View>,
     /// The Vulkan swapchain that we create from this Window.
     swapchain : Swapchain,
     /// The Vulkan Surface that we create from this Window.
@@ -152,6 +155,27 @@ where
             Err(err)      => { return Err(Box::new(Error::SwapchainCreateError{ err })); }
         };
 
+        // Build the image views around the swapchain images
+        let mut images: Vec<image::View> = Vec::with_capacity(swapchain.images().len());
+        for swapchain_image in swapchain.images() {
+            // Create the view around it
+            let view = match image::View::from_vk(gpu, *swapchain_image, image::ViewInfo {
+                kind    : vk::ImageViewType::TYPE_2D,
+                format  : *swapchain.format(),
+                swizzle : Default::default(),
+
+                aspect     : vk::ImageAspectFlags::COLOR,
+                base_level : 0,
+                mip_levels : 1,
+            }) {
+                Ok(view) => view,
+                Err(err) => { return Err(Box::new(Error::ImagesCreateError{ err })); }
+            };
+
+            // Store it in the list
+            images.push(view);
+        }
+
 
 
         // Build the render pipeline
@@ -171,6 +195,7 @@ where
             window : wwindow,
             surface,
             swapchain,
+            images,
 
             pipeline,
         })
