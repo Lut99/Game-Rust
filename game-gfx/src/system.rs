@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   18 Apr 2022, 12:22:42
+ *   18 Apr 2022, 15:42:24
  * Auto updated?
  *   Yes
  *
@@ -23,8 +23,9 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_ecs::Ecs;
-use game_vk::gpu::Gpu;
+use game_vk::auxillary::DeviceKind;
 use game_vk::instance::Instance;
+use game_vk::device::Device;
 
 pub use crate::errors::RenderSystemError as Error;
 use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind, RenderTargetStage};
@@ -56,21 +57,19 @@ lazy_static!{
 /***** LIBRARY *****/
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
-    // NOTE: The order of the fields defined in the RenderSystem matters, as they are dropped in-order (and there is an interlinked dependency between them)
+    /// The Instance on which this RenderSystem is based.
+    instance : Arc<Instance>,
+    /// The Device we'll use for rendering.
+    device   : Arc<Device>,
+    // /// The MemoryPool we use to allocate CPU-accessible buffers.
+    // /// The MemoryPool we use to allocate GPU-local buffers.
+    // /// The DescriptorPool from which we allocate descriptors.
+    // /// The CommandPool from which we allocate commands.
 
     /// The map of render targets to which we render.
     /// 
     /// It is a map of each target stage to each target, defined by a unique identifier.
     targets : HashMap<RenderTargetStage, HashMap<RenderTargetKind, HashMap<usize, Box<dyn RenderTarget>>>>,
-
-    // /// The CommandPool from which we allocate commands.
-    // /// The DescriptorPool from which we allocate descriptors.
-    // /// The MemoryPool we use to allocate GPU-local buffers.
-    // /// The MemoryPool we use to allocate CPU-accessible buffers.
-    /// The Gpu we'll use for rendering.
-    gpu      : Arc<Gpu>,
-    /// The Instance on which this RenderSystem is based.
-    instance : Arc<Instance>,
 }
 
 impl RenderSystem {
@@ -80,24 +79,24 @@ impl RenderSystem {
     /// 
     /// This is only part of initializing the full RenderSystem; also initialize the relevant subsystems (see register()).
     /// 
-    /// # Examples
+    /// # Generic arguments
+    /// - `S1`: The &str-like type of the application's name.
+    /// - `S2`: The &str-like type of the application's engine's name.
     /// 
-    /// ```
-    /// use semver::Version;
-    /// use game_ecs::Ecs;
-    /// use game_gfx::RenderSystem;
+    /// # Arguments
+    /// - `ecs`: The ECS to register new components with.
+    /// - `name`: The name of the application to register in the Vulkan driver.
+    /// - `version`: The version of the application to register in the Vulkan driver.
+    /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
+    /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
+    /// - `gpu`: The index of the GPU to use for rendering.
+    /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
-    /// // Initialize the entity component system first
-    /// let mut ecs = Ecs::default();
-    /// 
-    /// // Initialize the RenderSystem
-    /// let render_system = RenderSystem::new(&mut ecs, "Hello World App", "Hello World Engine", Version::new(0, 1, 0), true)
-    ///     .unwrap_or_else(|err| panic!("Failed to initialize base RenderSystem: {}", err));
-    /// ```
+    /// # Returns
+    /// A new instance of the RenderSystem on success.
     /// 
     /// # Errors
-    /// 
-    /// This function throws errors whenever the Vulkan backend does.
+    /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, gpu: usize, debug: bool) -> Result<Self, Error> {
         // Register components
         /* TBD */
@@ -111,21 +110,21 @@ impl RenderSystem {
             Vec::from(INSTANCE_LAYERS)
         };
         let instance = match Instance::new(name, version, engine, engine_version, INSTANCE_EXTENSIONS, &layers) {
-            Ok(instance) => Arc::new(instance),
+            Ok(instance) => instance,
             Err(err)     => { return Err(Error::InstanceCreateError{ err }); }  
         };
 
         // Get the GPU
-        let gpu = match Gpu::new(instance.clone(), gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
-            Ok(gpu)  => gpu,
-            Err(err) => { return Err(Error::GpuCreateError{ err }); }  
+        let device = match Device::new(instance.clone(), gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
+            Ok(device) => device,
+            Err(err)   => { return Err(Error::DeviceCreateError{ err }); }  
         };
 
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
             instance : instance,
-            gpu      : Arc::new(gpu),
+            device   : device,
 
             targets : HashMap::with_capacity(1),
         })
@@ -139,16 +138,16 @@ impl RenderSystem {
     /// 
     /// The Render Target may be called at different stages, which are defined in the RenderTargetStage enum.
     /// 
-    /// Note that the most common-used target, the Window, is modular in itself in that is supports multiple RenderPipelines as backend that define the actual rendering done.
+    /// # Arguments
+    /// - `event_loop`: The EventLoop to bind eventual Windows to.
+    /// - `id`: A simple, numerical ID to differentiate targets of the same type later.
+    /// - `stage`: The RenderTargetStage when this target should be renderered.
+    /// - `create_info`: The RenderTarget-specific CreateInfo to pass arguments to its constructor.
     /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// Nothing if the registration was successfull, but does add the component internally.
     /// 
     /// # Errors
-    /// 
     /// This function errors if the given target could not be initialized properly.
     pub fn register<R, C>(&mut self, event_loop: &EventLoop<()>, id: usize, stage: RenderTargetStage, create_info: C) -> Result<(), Error> 
     where
@@ -168,7 +167,7 @@ impl RenderSystem {
         }
 
         // Simply call the constructor
-        let target = match R::new(event_loop, &self.instance, &self.gpu, create_info) {
+        let target = match R::new(event_loop, self.device.clone(), create_info) {
             Ok(target) => target,
             Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };
@@ -213,15 +212,14 @@ impl RenderSystem {
     /// 
     /// Creates a new instance with the proper layers and extensions, and then tries to find the GPU with the best "CPU disconnectedness".
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `debug`: If set to true, will take into account whether GPUs should support certain debug validation layers.
     /// 
-    /// ```
-    /// 
-    /// ```
+    /// # Returns
+    /// The index of the chosen GPU.
     /// 
     /// # Errors
-    /// 
-    /// This function errors if we could not connect to Vulkan, create the Instance, enumerate the physical devices or found no supported devices.
+    /// This function fails if the Instance failed to be created, if we could not query it for the available devices or if no device was found.
     pub fn auto_select(debug: bool) -> Result<usize, Error> {
         // Create the instance
         let layers = if debug {
@@ -237,25 +235,25 @@ impl RenderSystem {
         };
 
         // Call the list on the GPU class
-        match Gpu::auto_select(&instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        match Device::auto_select(instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(index) => Ok(index),
-            Err(err)  => Err(Error::GpuAutoSelectError{ err }),
+            Err(err)  => Err(Error::DeviceAutoSelectError{ err }),
         }
     }
 
-    /// Lists all GPUs it can find to stdout.
+    /// Lists all GPUs it can find.
     /// 
     /// Creates a new instance with the proper layers and extensions, and then sorts the GPUs into supported and non-supported.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `debug`: If set to true, will take into account whether GPUs should support certain debug validation layers to be considered supported.
     /// 
-    /// ```
-    /// 
-    /// ```
+    /// # Returns
+    /// A tuple of a supported (0) and unsupported (1) lists of GPUs. Each entry is a tuple itself of (index, name, kind).
     /// 
     /// # Errors
-    /// This function errors if we could not connect to Vulkan, create the Instance or enumerate the physical devices.
-    pub fn list(debug: bool) -> Result<(), Error> {
+    /// This function fails if the Instance failed to be created or if we could not query it for the available devices.
+    pub fn list(debug: bool) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
         // Create the instance
         let layers = if debug {
             let mut layers = Vec::from(INSTANCE_LAYERS);
@@ -270,9 +268,9 @@ impl RenderSystem {
         };
 
         // Call the list on the GPU class
-        match Gpu::list(&instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
-            Ok(())   => Ok(()),
-            Err(err) => Err(Error::GpuListError{ err }),
+        match Device::list(instance, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
+            Ok(result) => Ok(result),
+            Err(err)   => Err(Error::DeviceListError{ err }),
         }
     }
 
@@ -282,17 +280,15 @@ impl RenderSystem {
     /// 
     /// This function will ignore any events that are non-relevant for the RenderSystem.
     /// 
-    /// Note that this function returns the next control flow, as the user may want to quit the system if they close the game.
+    /// # Arguments
+    /// - `event`: The Event that was just fired.
+    /// - `control_flow`: The previous ControlFlow. Might be overridden if the user chose to close the Window(s) we render to.
     /// 
-    /// # Example
-    /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// The next ControlFlow. Will likely be the one passed, unless overriden somehow.
     /// 
     /// # Errors
-    /// 
-    /// This function may error due to many different reasons, as this is also where the render pipelines are run.
+    /// Because this function also performs render calls, it may error due to many different reasons.
     pub fn handle_events(&mut self, event: &Event<()>, control_flow: &ControlFlow) -> Result<ControlFlow, Error> {
         // Switch on the event type
         match event {
@@ -363,9 +359,10 @@ impl RenderSystem {
 
 
 
-    /// Returns the render target with the given ID as the given type.
+    /// Returns the render target (immutably) with the given ID as the given type.
     /// 
-    /// Will panic if the given ID does not exist or if the given type is not the one for this target.
+    /// # Arguments
+    /// - `id`: The extra identifier for the RenderTarget of this type.
     pub fn get_target<T: RenderTarget>(&self, id: usize) -> &T {
         // Get the target
         for targets in self.targets.values() {
@@ -384,9 +381,10 @@ impl RenderSystem {
         panic!("RenderTarget with ID {} not found", id);
     }
 
-    /// Returns the render target with the given ID as the given type.
+    /// Returns the render target (muteably) with the given ID as the given type.
     /// 
-    /// Will panic if the given ID does not exist or if the given type is not the one for this target.
+    /// # Arguments
+    /// - `id`: The extra identifier for the RenderTarget of this type.
     pub fn get_target_mut<T: RenderTarget>(&mut self, id: usize) -> &mut T {
         // Get the target
         for targets in self.targets.values_mut() {

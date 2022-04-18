@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   18 Apr 2022, 12:07:35
+ *   18 Apr 2022, 15:48:18
  * Auto updated?
  *   Yes
  *
@@ -16,26 +16,25 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use ash::vk;
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
-use game_vk::image;
-use game_vk::instance::Instance;
-use game_vk::gpu::Gpu;
+use game_vk::auxillary::{ImageAspect, ImageViewKind};
+use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
+use game_vk::image;
 
 pub use crate::errors::WindowError as Error;
-use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderTarget, RenderTargetBuilder, RenderTargetKind};
+use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind};
 
 
 /***** WINDOW *****/
 /// The CreateInfo for this Window.
 #[derive(Debug, Default, Clone)]
-pub struct CreateInfo<T: Debug + Default + Clone> {
+pub struct CreateInfo {
     /// The title of the new window.
     pub title : String,
 
@@ -46,9 +45,6 @@ pub struct CreateInfo<T: Debug + Default + Clone> {
 
     /// The number of images we would like as minimum for the swapchain.
     pub image_count : u32,
-
-    /// The CreateInfo of the RenderPipeline.
-    pub pipeline_info : T,
 }
 
 
@@ -56,45 +52,31 @@ pub struct CreateInfo<T: Debug + Default + Clone> {
 /// Manages a single Window and associated resources.
 /// 
 /// Note that this Window is modular, as in, the pipeline backend may be defined customly.
-pub struct Window<P>
-where
-    P: RenderPipeline,
-{
+pub struct Window {
+    /// The device that we used to build this Window in.
+    device : Arc<Device>,
+
+    /// The WinitWindow that we wrap.
+    window    : WWindow,
+    /// The Vulkan Surface that we create from this Window.
+    surface   : Arc<Surface>,
+    /// The Vulkan swapchain that we create from this Window.
+    swapchain : Arc<Swapchain>,
+    /// The list of Vulkan swapchain images that we create from this Window.
+    views     : Vec<Arc<image::View>>,
+    
     /// The title of this Window.
     title : String,
     /// The size of the window (as width, height)
     size  : (u32, u32),
-
-    // NOTE: The order of the next fields matters, due to Rust's in-order drop policy.
-    /// The backend, as a RenderPipeline.
-    pipeline : P,
-
-    /// The list of Vulkan swapchain images that we create from this Window.
-    images    : Vec<image::View>,
-    /// The Vulkan swapchain that we create from this Window.
-    swapchain : Swapchain,
-    /// The Vulkan Surface that we create from this Window.
-    surface   : Surface,
-    /// The WinitWindow that we wrap.
-    window    : WWindow,
 }
 
-impl<P> Window<P>
-where
-    P: 'static + RenderPipeline,
-{
-    /// Returns the title of the window.
-    #[inline]
-    fn title(&self) -> &str { &self.title }
-
+impl Window {
     /// Updates the title in the internal window.
     /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// 
-    /// ```
-    fn set_title(&mut self, new_title: &str) {
+    /// # Arguments
+    /// - `new_title`: The new title of the Window.
+    pub fn set_title(&mut self, new_title: &str) {
         // Set the title
         self.window.set_title(new_title);
 
@@ -104,25 +86,47 @@ where
 
 
 
+    // /// Returns the Device where the resources of this Window are bound to.
+    // #[inline]
+    // pub fn device(&self) -> &Arc<Device> { &self.device }
+
+
+
     // /// Returns the internal window object.
     // #[inline]
-    // pub fn window(&self) -> &WWindow { &self.window }
+    // pub fn winit(&self) -> &WWindow { &self.window }
 
-    // /// Returns the internal Vulkan surface object.
+    // /// Returns the internal Vulkan Surface object.
     // #[inline]
-    // pub fn surface(&self) -> &Surface { &self.surface }
+    // pub fn surface(&self) -> &Arc<Surface> { &self.surface }
+
+    // /// Returns the internal Vulkan Swapchain object.
+    // #[inline]
+    // pub fn swapchain(&self) -> &Arc<Swapchain> { &self.swapchain }
+
+    // /// Returns the image views to the internal swapchain images.
+    // #[inline]
+    // pub fn views(&self) -> &Vec<Arc<image::View>> { &self.views }
+
+
+
+    /// Returns the title of the window.
+    #[inline]
+    pub fn title(&self) -> &str { &self.title }
+
+    // Returns the size of the window, as (width, height).
+    #[inline]
+    pub fn size(&self) -> &(u32, u32) { &self.size }
+
 }
 
-impl<P> RenderTargetBuilder for Window<P>
-where
-    P: 'static + RenderPipelineBuilder,
-{
-    type CreateInfo = CreateInfo<P::CreateInfo>;
+impl RenderTargetBuilder for Window {
+    type CreateInfo = CreateInfo;
 
 
-    /// Constructor for the RenderTarget.
+    /// Constructor for the Window.
     /// 
-    /// This initializes a new RenderTarget. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
+    /// This initializes a new Window and the 
     /// 
     /// # Examples
     /// 
@@ -133,7 +137,7 @@ where
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, gpu: Arc<Gpu>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(event_loop: &EventLoop<()>, device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
         // Build the new Winit window
         let wwindow = match WindowBuilder::new()
             .with_title(&create_info.title)
@@ -145,27 +149,27 @@ where
         };
 
         // Build the surface around the window
-        let surface = match Surface::new(instance, &wwindow) {
+        let surface = match Surface::new(device.instance().clone(), &wwindow) {
             Ok(surface) => surface,
             Err(err)    => { return Err(Box::new(Error::SurfaceCreateError{ err })); }
         };
 
         // Build the swapchain around the GPU and surface
-        let swapchain = match Swapchain::new(instance, gpu, &surface, create_info.width, create_info.height, create_info.image_count) {
+        let swapchain = match Swapchain::new(device.clone(), surface.clone(), create_info.width, create_info.height, create_info.image_count) {
             Ok(swapchain) => swapchain,
             Err(err)      => { return Err(Box::new(Error::SwapchainCreateError{ err })); }
         };
 
         // Build the image views around the swapchain images
-        let mut images: Vec<image::View> = Vec::with_capacity(swapchain.images().len());
+        let mut views: Vec<Arc<image::View>> = Vec::with_capacity(swapchain.images().len());
         for swapchain_image in swapchain.images() {
             // Create the view around it
-            let view = match image::View::from_vk(gpu, *swapchain_image, image::ViewInfo {
-                kind    : vk::ImageViewType::TYPE_2D,
-                format  : *swapchain.format(),
+            let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
+                kind    : ImageViewKind::TwoD,
+                format  : swapchain.format().into(),
                 swizzle : Default::default(),
 
-                aspect     : vk::ImageAspectFlags::COLOR,
+                aspect     : ImageAspect::Colour,
                 base_level : 0,
                 mip_levels : 1,
             }) {
@@ -174,39 +178,28 @@ where
             };
 
             // Store it in the list
-            images.push(view);
+            views.push(view);
         }
-
-
-
-        // Build the render pipeline
-        let pipeline = match P::new(event_loop, instance, create_info.pipeline_info) {
-            Ok(pipeline) => pipeline,
-            Err(err)     => { return Err(Box::new(Error::PipelineCreateError{ type_name: std::any::type_name::<P>(), err })); }
-        };
 
 
 
         // Done! Return the window
         debug!("Initialized new window '{}'", &create_info.title);
         Ok(Self {
-            title : create_info.title,
-            size  : (create_info.width, create_info.height),
+            device : device,
 
             window : wwindow,
             surface,
             swapchain,
-            images,
+            views,
 
-            pipeline,
+            title : create_info.title,
+            size  : (create_info.width, create_info.height),
         })
     }
 }
 
-impl<P> RenderTarget for Window<P>
-where
-    P: 'static + RenderPipeline,
-{
+impl RenderTarget for Window {
     /// Returns the type of this target.
     #[inline]
     fn kind(&self) -> RenderTargetKind { RenderTargetKind::Window }

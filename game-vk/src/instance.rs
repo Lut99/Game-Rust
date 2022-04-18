@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   18 Apr 2022, 12:35:37
+ *   18 Apr 2022, 15:39:44
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::ptr;
+use std::sync::Arc;
 
 use ash::vk;
 #[cfg(all(windows))]
@@ -299,7 +300,7 @@ impl Instance {
     /// 
     /// # Returns
     /// The new Instance instance on success, or else an Error describing why we failed to create it.
-    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Self, Error> {
+    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Arc<Self>, Error> {
         // Convert the str-like into &str
         let name: &str   = name.as_ref();
         let engine: &str = engine.as_ref();
@@ -393,23 +394,23 @@ impl Instance {
 
 
         // Finally, create the struct!
-        Ok(Self {
+        Ok(Arc::new(Self {
             entry,
 
             instance,
             debug_utils,
-        })
+        }))
     }
 
 
 
     /// Returns the internal ash Entry.
     #[inline]
-    pub fn entry(&self) -> &ash::Entry { &self.entry }
+    pub fn ash(&self) -> &ash::Entry { &self.entry }
 
     /// Returns (an immuteable reference to) the internal Vulkan instance.
     #[inline]
-    pub fn instance(&self) -> &ash::Instance { &self.instance }
+    pub fn vk(&self) -> &ash::Instance { &self.instance }
 }
 
 impl Drop for Instance {

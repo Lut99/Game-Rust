@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   18 Apr 2022, 12:06:30
+ *   18 Apr 2022, 15:43:23
  * Auto updated?
  *   Yes
  *
@@ -21,9 +21,10 @@ use ash::extensions::khr;
 use log::{debug, warn};
 
 pub use crate::errors::SwapchainError as Error;
-use crate::instance::Instance;
-use crate::gpu::{Gpu, SwapchainSupport};
+use crate::auxillary::SwapchainSupport;
+use crate::device::Device;
 use crate::surface::Surface;
+use crate::image::Image;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -92,7 +93,7 @@ fn choose_image_count(swapchain_support: &SwapchainSupport, image_count: u32) ->
 }
 
 /// Chooses an appropriate sharing mode for the swapchain.
-fn choose_sharing_mode(_gpu: &Arc<Gpu>) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
+fn choose_sharing_mode(_device: &Arc<Device>) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
     // Because we present with the same queue as we render, we only need exclusive
     Ok((vk::SharingMode::EXCLUSIVE, 0, vec![]))
 }
@@ -104,15 +105,20 @@ fn choose_sharing_mode(_gpu: &Arc<Gpu>) -> Result<(vk::SharingMode, u32, Vec<u32
 /***** LIBRARY *****/
 /// The Swapchain struct is used to render to and provide the RenderTarget's images.
 pub struct Swapchain {
-    /// The chosen format of the swapchain
-    format : vk::Format,
+    /// The device where the Swapchain lives.
+    device  : Arc<Device>,
+    /// The surface around which the Swapchain wraps.
+    surface : Arc<Surface>,
 
     /// The loader for the swapchain
     loader    : khr::Swapchain,
     /// The Swapchain itself
     swapchain : vk::SwapchainKHR,
     /// The images of the swapchain
-    images    : Vec<vk::Image>,
+    images    : Vec<Arc<Image>>,
+    
+    /// The chosen format of the swapchain
+    format : vk::Format,
 }
 
 impl Swapchain {
@@ -120,20 +126,20 @@ impl Swapchain {
     /// 
     /// Wraps a SwapchainKHR around the given GPU (Device) and surface (SurfaceKHR).
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `device`: The Device to create the swapchain on.
+    /// - `surface`: The Surface to create the swapchain around.
+    /// - `width`: The initial width of the swapchain surface. Might be bounded to min/max width supported by this device/surface.
+    /// - `height`: The initial height of the swapchain surface. Might be bounded to min/max height supported by this device/surface.
+    /// - `image_count`: The number of images to put in the swapchain. Might be bounded by the min/max amount supported by this device/surface.
     /// 
-    /// ```
-    /// // TBD
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// This function errors if the Vulkan API backend does.
-    pub fn new(instance: &Instance, gpu: Arc<Gpu>, surface: &Surface, width: u32, height: u32, image_count: u32) -> Result<Self, Error> {
+    /// # Returns
+    /// A new Swapchain instance on success, or else an Error explaining what went wrong.
+    pub fn new(device: Arc<Device>, surface: Arc<Surface>, width: u32, height: u32, image_count: u32) -> Result<Arc<Self>, Error> {
         // First, query the Gpu's support for this surface
-        let swapchain_support = match gpu.get_swapchain_support(surface) {
+        let swapchain_support = match device.get_swapchain_support(&surface) {
             Ok(support) => support,
-            Err(err)    => { return Err(Error::GpuSurfaceSupportError{ index: gpu.index(), name: gpu.name().to_string(), err }); }
+            Err(err)    => { return Err(Error::DeviceSurfaceSupportError{ index: device.index(), name: device.name().to_string(), err }); }
         };
 
         // Next, choose an appropriate swapchain format
@@ -145,7 +151,7 @@ impl Swapchain {
         // Then, choose the image count
         let image_count = choose_image_count(&swapchain_support, image_count)?;
         // Finally, choose the charing mode
-        let (sharing_mode, n_queue_families, queue_families) = choose_sharing_mode(&gpu)?;
+        let (sharing_mode, n_queue_families, queue_families) = choose_sharing_mode(&device)?;
 
         // Use the collect info for the CreateInfo
         let swapchain_info = vk::SwapchainCreateInfoKHR {
@@ -155,7 +161,7 @@ impl Swapchain {
             flags  : vk::SwapchainCreateFlagsKHR::empty(),
 
             // Define the surface to use
-            surface : surface.surface(),
+            surface : surface.vk(),
 
             // Define the found properties
             image_format      : format,
@@ -187,7 +193,7 @@ impl Swapchain {
 
         // Create the swapchain with it
         debug!("Initializing swapchain...");
-        let loader = khr::Swapchain::new(instance.instance(), gpu.device());
+        let loader = khr::Swapchain::new(device.instance().vk(), device.ash());
         let swapchain = unsafe {
             match loader.create_swapchain(&swapchain_info, None) {
                 Ok(swapchain) => swapchain,
@@ -196,40 +202,68 @@ impl Swapchain {
         };
 
         // Get the images of the chain
-        let images = unsafe {
+        let vk_images: Vec<vk::Image> = unsafe {
             match loader.get_swapchain_images(swapchain) {
                 Ok(images) => images,
                 Err(err)   => { return Err(Error::SwapchainImagesError{ err }); }
             }
         };
 
+        // Wrap them in our own struct
+        let mut images: Vec<Arc<Image>> = Vec::with_capacity(vk_images.len());
+        for image in vk_images {
+            // Wrap the image
+            let image = match Image::from_vk(image) {
+                Ok(image) => image,
+                Err(err)  => { return Err(Error::ImageError{ err }); }
+            };
+
+            // Add it to the list
+            images.push(image);
+        }
+
         // Store everything in a new Swapchain instance and return
-        Ok(Self {
-            format,
+        Ok(Arc::new(Self {
+            device,
+            surface,
 
             loader,
             swapchain,
             images,
-        })
+            
+            format,
+        }))
     }
 
 
 
-    /// Returns the chosen format for this Swapchain.
+    /// Returns the device on which this swapchain is built.
     #[inline]
-    pub fn format(&self) -> &vk::Format { &self.format }
+    pub fn device(&self) -> &Arc<Device> { &self.device }
+
+    /// Returns the surface around which this swapchain is built.
+    #[inline]
+    pub fn surface(&self) -> &Arc<Surface> { &self.surface }
+
+
 
     /// Returns the loader for the swapchain.
     #[inline]
-    pub fn loader(&self) -> &khr::Swapchain { &self.loader }
+    pub fn ash(&self) -> &khr::Swapchain { &self.loader }
 
     /// Returns the Vulkan swapchain.
     #[inline]
-    pub fn swapchain(&self) -> vk::SwapchainKHR { self.swapchain }
+    pub fn vk(&self) -> vk::SwapchainKHR { self.swapchain }
 
     /// Returns the images for the swapchain.
     #[inline]
-    pub fn images(&self) -> &Vec<vk::Image> { &self.images }
+    pub fn images(&self) -> &Vec<Arc<Image>> { &self.images }
+    
+
+
+    /// Returns the chosen format for this Swapchain.
+    #[inline]
+    pub fn format(&self) -> vk::Format { self.format }
 }
 
 impl Drop for Swapchain {

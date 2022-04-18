@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   18 Apr 2022, 12:43:21
+ *   18 Apr 2022, 15:24:51
  * Auto updated?
  *   Yes
  *
@@ -192,6 +192,8 @@ pub enum SwapchainError {
     SwapchainCreateError{ err: ash::vk::Result },
     /// Could not get the images from the swapchain
     SwapchainImagesError{ err: ash::vk::Result },
+    /// Could not create an Image around one of the swapchain's images.
+    ImageError{ err: ImageError },
 }
 
 impl Display for SwapchainError {
@@ -202,6 +204,7 @@ impl Display for SwapchainError {
             NoFormatFound                                 => write!(f, "No suitable formats found for swapchain; try choosing another device."),
             SwapchainCreateError{ err }                   => write!(f, "Could not create Swapchain: {}", err),
             SwapchainImagesError{ err }                   => write!(f, "Could not get Swapchain images: {}", err),
+            ImageError{ err }                             => write!(f, "Could not create Image from swapchain image: {}", err),
         }
     }
 }
@@ -210,12 +213,29 @@ impl Error for SwapchainError {}
 
 
 
+/// Defines errors that relate to an Image.
+#[derive(Debug)]
+pub enum ImageError {
+    /// Temporary placeholder error
+    Temp,
+}
+
+impl Display for ImageError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use ImageError::*;
+        match self {
+            Temp => write!(f, "<TEMP>"),
+        }
+    }
+}
+
+impl Error for ImageError {}
+
+
+
 /// Defines errors that relate to an ImageView.
 #[derive(Debug)]
 pub enum ImageViewError {
-    /// The constructor that builds on an Image is not yet implemented.
-    NotImplemented,
-
     /// Could not construct the image view
     ViewCreateError{ err: ash::vk::Result },
 }
@@ -224,8 +244,6 @@ impl Display for ImageViewError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use ImageViewError::*;
         match self {
-            NotImplemented => write!(f, "View::new() is not yet implemented"),
-
             ViewCreateError{ err } => write!(f, "Could not create ImageView: {}", err),
         }
     }

@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   18 Apr 2022, 13:01:59
+ *   18 Apr 2022, 15:42:52
  * Auto updated?
  *   Yes
  *
@@ -208,7 +208,7 @@ impl Device {
     /// 
     /// # Returns
     /// Returns a new Device instance on success, or else an Error describing what went wrong if the Device creation failed.
-    pub fn new(instance: Arc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Self, Error> {
+    pub fn new(instance: Arc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Arc<Self>, Error> {
         // We enumerate through all the physical devices to find the appropriate one
         let physical_devices = match unsafe { instance.enumerate_physical_devices() } {
             Ok(devices) => devices,
@@ -296,7 +296,7 @@ impl Device {
 
 
         // Done! Return the new GPU
-        Ok(Self {
+        Ok(Arc::new(Self {
             instance,
             physical_device,
             device,
@@ -306,7 +306,7 @@ impl Device {
             name     : device_name,
             kind     : device_type,
             families : family_info,
-        })
+        }))
     }
 
 
@@ -414,19 +414,18 @@ impl Device {
 
     /// Returns the list of supported features for the given Surface.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `surface`: The Surface to check this device's support of.
     /// 
-    /// ```
-    /// // TODO
-    /// ```
+    /// # Returns
+    /// A SwapchainSupport struct detailing the supported capabilities, formats and present modes. If an error occurred, returns an Error instead.
     /// 
     /// # Errors
-    /// 
-    /// This function errors if the given Surface is not supported at all, or if we could not query the properties for some reason.
-    pub fn get_swapchain_support(&self, surface: &Surface) -> Result<SwapchainSupport, Error> {
+    /// This function may error when the device could not be queried for its support or the surface is not supported at all.
+    pub fn get_swapchain_support(&self, surface: &Arc<Surface>) -> Result<SwapchainSupport, Error> {
         // Check if the chosen graphics queue can present to the given chain
         if !match unsafe {
-            surface.get_physical_device_surface_support(self.physical_device, self.families.graphics, surface.surface())
+            surface.get_physical_device_surface_support(self.physical_device, self.families.graphics, surface.vk())
         } {
             Ok(supports) => supports,
             Err(err)     => { return Err(Error::SurfaceSupportError{ err }); }
@@ -436,7 +435,7 @@ impl Device {
 
         // Get the surface capabilities
         let capabilities = match unsafe {
-            surface.get_physical_device_surface_capabilities(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_capabilities(self.physical_device, surface.vk())
         } {
             Ok(capabilities) => capabilities,
             Err(err)         => { return Err(Error::SurfaceCapabilitiesError{ err }); }
@@ -444,7 +443,7 @@ impl Device {
 
         // Get the surface formats
         let formats = match unsafe {
-            surface.get_physical_device_surface_formats(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_formats(self.physical_device, surface.vk())
         } {
             Ok(formats) => formats,
             Err(err)    => { return Err(Error::SurfaceFormatsError{ err }); }
@@ -452,7 +451,7 @@ impl Device {
 
         // Get the surface capabilities
         let present_modes = match unsafe {
-            surface.get_physical_device_surface_present_modes(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_present_modes(self.physical_device, surface.vk())
         } {
             Ok(present_modes) => present_modes,
             Err(err)          => { return Err(Error::SurfacePresentModesError{ err }); }
@@ -475,15 +474,15 @@ impl Device {
 
     /// Returns the instance around which this Device is wrapped
     #[inline]
-    pub fn instance(&self) -> &Instance { &self.instance }    
+    pub fn instance(&self) -> &Arc<Instance> { &self.instance }    
 
     /// Returns the internal device.
     #[inline]
-    pub fn device(&self) -> &ash::Device { &self.device }
+    pub fn ash(&self) -> &ash::Device { &self.device }
 
     /// Returns the internal physical device.
     #[inline]
-    pub fn physical_device(&self) -> &vk::PhysicalDevice { &self.physical_device }
+    pub fn physical_device(&self) -> vk::PhysicalDevice { self.physical_device }
 
     /// Returns the internal Queues struct, which contains the queues used on this device.
     #[inline]

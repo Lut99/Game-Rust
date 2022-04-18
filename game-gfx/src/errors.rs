@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   17 Apr 2022, 18:01:23
+ *   18 Apr 2022, 15:25:12
  * Auto updated?
  *   Yes
  *
@@ -23,7 +23,7 @@ pub enum RenderSystemError {
     /// Could not instantiate the Vulkan instance
     InstanceCreateError{ err: game_vk::errors::InstanceError },
     /// Could not instantiate the Gpu
-    GpuCreateError{ err: game_vk::errors::GpuError },
+    DeviceCreateError{ err: game_vk::errors::DeviceError },
 
     /// The given target already exists
     DuplicateTarget{ type_name: &'static str, id: usize },
@@ -31,9 +31,9 @@ pub enum RenderSystemError {
     RenderTargetCreateError{ type_name: &'static str, err: String },
     
     /// Could not auto-select a GPU
-    GpuAutoSelectError{ err: game_vk::errors::GpuError },
+    DeviceAutoSelectError{ err: game_vk::errors::DeviceError },
     /// Could not list the GPUs
-    GpuListError{ err: game_vk::errors::GpuError },
+    DeviceListError{ err: game_vk::errors::DeviceError },
 
     /// Could not render to one of the RenderTargets
     RenderError{ err: Box<dyn Error> },
@@ -41,17 +41,18 @@ pub enum RenderSystemError {
 
 impl Display for RenderSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use RenderSystemError::*;
         match self {
-            RenderSystemError::InstanceCreateError{ err } => write!(f, "Could not initialize graphics Instance: {}", err),
-            RenderSystemError::GpuCreateError{ err }      => write!(f, "Could not initialize GPU: {}", err),
+            InstanceCreateError{ err } => write!(f, "Could not initialize graphics Instance: {}", err),
+            DeviceCreateError{ err }   => write!(f, "Could not initialize Device: {}", err),
 
-            RenderSystemError::DuplicateTarget{ type_name, id }          => write!(f, "Could not register a RenderTarget of type '{}': a target with id {} already exists", type_name, id),
-            RenderSystemError::RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
+            DuplicateTarget{ type_name, id }          => write!(f, "Could not register a RenderTarget of type '{}': a target with id {} already exists", type_name, id),
+            RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
 
-            RenderSystemError::GpuAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
-            RenderSystemError::GpuListError{ err }       => write!(f, "Could not list GPUs: {}", err),
+            DeviceAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
+            DeviceListError{ err }       => write!(f, "Could not list GPUs: {}", err),
 
-            RenderSystemError::RenderError{ err } => write!(f, "Could not render to RenderTarget: {}", err),
+            RenderError{ err } => write!(f, "Could not render to RenderTarget: {}", err),
         }
     }
 }

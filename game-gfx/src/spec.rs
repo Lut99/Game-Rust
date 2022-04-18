@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   18 Apr 2022, 12:08:13
+ *   18 Apr 2022, 15:42:15
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,7 @@ use winit::window::WindowId;
 
 use game_utl::traits::AsAny;
 use game_vk::instance::Instance;
-use game_vk::gpu::Gpu;
+use game_vk::device::Device;
 
 
 /***** RENDER TARGET STAGE *****/
@@ -114,7 +114,7 @@ pub trait RenderTargetBuilder: RenderTarget {
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: Arc<Instance>, gpu: Arc<Gpu>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(event_loop: &EventLoop<()>, gpu: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }
 
@@ -156,6 +156,6 @@ pub trait RenderPipelineBuilder: RenderPipeline {
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(event_loop: &EventLoop<()>, instance: Arc<Instance>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }

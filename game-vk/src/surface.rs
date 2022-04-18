@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   03 Apr 2022, 16:36:49
+ *   18 Apr 2022, 15:43:10
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::ops::Deref;
 use std::ptr;
+use std::sync::Arc;
 
 use ash::{Entry as VkEntry, Instance as VkInstance};
 use ash::extensions::khr;
@@ -219,6 +220,9 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
 /***** LIBRARY *****/
 /// Implements a Surface, which can be build from a given Window object.
 pub struct Surface {
+    /// The Instance that this Surface is build on.
+    instance : Arc<Instance>,
+
     /// The load for the surface which we wrap.
     loader  : khr::Surface,
     /// The SurfaceKHR which we wrap.
@@ -239,30 +243,36 @@ impl Surface {
     /// # Errors
     /// 
     /// This function errors whenever the backend Vulkan errors.
-    pub fn new(instance: &Instance, wwindow: &WWindow) -> Result<Self, Error> {
+    pub fn new(instance: Arc<Instance>, wwindow: &WWindow) -> Result<Arc<Self>, Error> {
         // Create the surface KHR
         debug!("Initializing surface...");
-        let surface = unsafe { create_surface(instance.entry(), instance.instance(), wwindow) }?;
+        let surface = unsafe { create_surface(instance.ash(), instance.vk(), wwindow) }?;
 
         // Create the accopmanying loader
-        let loader = khr::Surface::new(instance.entry(), instance.instance());
+        let loader = khr::Surface::new(instance.ash(), instance.vk());
 
         // Store them internally, done
-        Ok(Self {
+        Ok(Arc::new(Self {
+            instance,
+
             loader,
             surface,
-        })
+        }))
     }
 
 
 
+    /// Returns the instance of the Surface.
+    #[inline]
+    pub fn instance(&self) -> &Arc<Instance> { &self.instance }
+
     /// Returns the internal Surface (loader) object.
     #[inline]
-    pub fn loader(&self) -> &khr::Surface { &self.loader }
+    pub fn ash(&self) -> &khr::Surface { &self.loader }
 
     /// Returns the internal SurfaceKHR object.
     #[inline]
-    pub fn surface(&self) -> SurfaceKHR { self.surface }
+    pub fn vk(&self) -> SurfaceKHR { self.surface }
 }
 
 impl Drop for Surface {

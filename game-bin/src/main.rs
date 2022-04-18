@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   16 Apr 2022, 12:29:37
+ *   18 Apr 2022, 15:47:43
  * Auto updated?
  *   Yes
  *
@@ -61,18 +61,16 @@ fn main() {
 
     // Initialize a new Window RenderTarget with the Triangle pipeline
     let window_info = game_gfx::window::CreateInfo {
-        title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
+        title : format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")),
 
         width  : 800,
         height : 600,
 
         image_count : 3,
-
-        pipeline_info : triangle::CreateInfo::default(),
     };
     if let Err(err) = render_system.register::<
-        game_gfx::window::Window<triangle::Pipeline>,
-        game_gfx::window::CreateInfo<triangle::CreateInfo>,
+        game_gfx::window::Window,
+        game_gfx::window::CreateInfo,
     >(
         &event_loop,
         0,
