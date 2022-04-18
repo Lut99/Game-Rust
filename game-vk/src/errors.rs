@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   17 Apr 2022, 17:53:41
+ *   18 Apr 2022, 12:43:21
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,26 @@ use std::fmt::{Display, Formatter, Result as FResult};
 
 
 /***** ERRORS *****/
+/// Defines errors relating to Queue properties and management.
+#[derive(Debug)]
+pub enum QueueError {
+    /// One of the operations we want for the queue families is unsupported
+    OperationUnsupported{ index: usize, name: String, operation: ash::vk::QueueFlags },
+}
+
+impl Display for QueueError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use QueueError::*;
+        match self {
+            OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
+        }
+    }
+}
+
+impl Error for QueueError {}
+
+
+
 /// Defines errors that occur when setting up an Instance.
 #[derive(Debug)]
 pub enum InstanceError {
@@ -60,7 +80,7 @@ impl Error for InstanceError {}
 
 /// Defines errors that occur when setting up an Instance.
 #[derive(Debug)]
-pub enum GpuError {
+pub enum DeviceError {
     /// Could not enumerate over the available device extensions
     DeviceExtensionEnumerateError{ err: ash::vk::Result },
     /// The given device extension was not supported by the given device
@@ -72,15 +92,14 @@ pub enum GpuError {
     /// The given device feature was not supported by the given device
     UnsupportedFeature{ index: usize, name: String, feature: &'static str },
 
-    /// One of the operations we want for the queue families is unsupported
-    OperationUnsupported{ index: usize, name: String, operation: ash::vk::QueueFlags },
-
     /// Could not get the iterator over the physical devices
     PhysicalDeviceEnumerateError{ err: ash::vk::Result },
     /// Did not find the given physical device
     PhysicalDeviceNotFound{ index: usize },
     /// Could not convert the raw name of the device to a String
     PhysicalDeviceNameError{ index: usize, err: std::str::Utf8Error },
+    /// Could not get the family info of the device.
+    QueueFamilyError{ index: usize, err: QueueError },
     /// Could not create the new logical device
     DeviceCreateError{ err: ash::vk::Result },
 
@@ -99,9 +118,9 @@ pub enum GpuError {
     UnsupportedSurface,
 }
 
-impl Display for GpuError {
+impl Display for DeviceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use GpuError::*;
+        use DeviceError::*;
         match self {
             DeviceExtensionEnumerateError{ err }                 => write!(f, "Could not enumerate device extension properties: {}", err),
             UnsupportedDeviceExtension{ index, name, extension } => write!(f, "Physical device {} ({}) does not support extension '{:?}'; choose another device", index, name, extension),
@@ -109,25 +128,24 @@ impl Display for GpuError {
             UnsupportedDeviceLayer{ index, name, layer }         => write!(f, "Physical device {} ({}) does not support layer '{:?}'; choose another device", index, name, layer),
             UnsupportedFeature{ index, name, feature }           => write!(f, "Physical device {} ({}) does not support feature '{}'; choose another device", index, name, feature),
 
-            OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
-
             PhysicalDeviceEnumerateError{ err }   => write!(f, "Could not enumerate physical devices: {}", err),
             PhysicalDeviceNotFound{ index }       => write!(f, "Could not find physical device '{}'; see the list of available devices by running 'list'", index),
             PhysicalDeviceNameError{ index, err } => write!(f, "Could not parse name of device {} as UTF-8: {}", index, err),
+            QueueFamilyError{ index, err }        => write!(f, "Could not get the queue family info of device {}: {}", index, err),
             DeviceCreateError{ err }              => write!(f, "Could not create logical device: {}", err),
 
-            NoSupportedPhysicalDevices => write!(f, "No GPU found that supports this application"),
+            NoSupportedPhysicalDevices => write!(f, "No device found that supports this application"),
 
             SurfaceSupportError{ err }      => write!(f, "Could not query swapchain support for surface: {}", err),
             SurfaceCapabilitiesError{ err } => write!(f, "Could not query supported swapchain capabilities for surface: {}", err),
             SurfaceFormatsError{ err }      => write!(f, "Could not query supported swapchain formats for surface: {}", err),
             SurfacePresentModesError{ err } => write!(f, "Could not query supported swapchain present modes for surface: {}", err),
-            UnsupportedSurface              => write!(f, "The given surface is not supported by the chosen GPU"),
+            UnsupportedSurface              => write!(f, "The given surface is not supported by the chosen device"),
         }
     }
 }
 
-impl Error for GpuError {}
+impl Error for DeviceError {}
 
 
 
@@ -167,7 +185,7 @@ impl Error for SurfaceError {}
 #[derive(Debug)]
 pub enum SwapchainError {
     /// The given surface was not supported at all by the given GPU.
-    GpuSurfaceSupportError{ index: usize, name: String, err: GpuError },
+    DeviceSurfaceSupportError{ index: usize, name: String, err: DeviceError },
     /// Could not find an appropriate format for this GPU / surface combo.
     NoFormatFound,
     /// Could not create a new swapchain
@@ -180,10 +198,10 @@ impl Display for SwapchainError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use SwapchainError::*;
         match self {
-            GpuSurfaceSupportError{ index, name, err } => write!(f, "Gpu {} ('{}') does not support given Surface: {}", index, name, err),
-            NoFormatFound                              => write!(f, "No suitable formats found for swapchain; try choosing another device."),
-            SwapchainCreateError{ err }                => write!(f, "Could not create Swapchain: {}", err),
-            SwapchainImagesError{ err }                => write!(f, "Could not get Swapchain images: {}", err),
+            DeviceSurfaceSupportError{ index, name, err } => write!(f, "Device {} ('{}') does not support given Surface: {}", index, name, err),
+            NoFormatFound                                 => write!(f, "No suitable formats found for swapchain; try choosing another device."),
+            SwapchainCreateError{ err }                   => write!(f, "Could not create Swapchain: {}", err),
+            SwapchainImagesError{ err }                   => write!(f, "Could not get Swapchain images: {}", err),
         }
     }
 }

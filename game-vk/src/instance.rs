@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   03 Apr 2022, 15:27:22
+ *   18 Apr 2022, 12:35:37
  * Auto updated?
  *   Yes
  *
@@ -283,31 +283,22 @@ pub struct Instance {
 impl Instance {
     /// Constructor for the Instance.
     /// 
-    /// This functions will use the given name and engine metadata to initialize a Vulkan instance.
+    /// Every Vulkan app needs its own Instance of the driver, which is what this class represents. There should thus be only one of these.
     /// 
-    /// The given lists of additional extensions and layers will be preprended with ones that are necessary in every case, as well as platform-dependent Surface extensions.
+    /// # Generic arguments
+    /// - `S1`: The &str-like type of the application's name.
+    /// - `S2`: The &str-like type of the application's engine's name.
     /// 
-    /// This function will also initialize a Vulkan debug messenger if the "VK_LAYER_KHRONOS_validation" layer is passed.
+    /// # Arguments
+    /// - `name`: The name of the application to register in the Vulkan driver.
+    /// - `version`: The version of the application to register in the Vulkan driver.
+    /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
+    /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
+    /// - `additional_extensions`: A slice of additional extensions to enable in the application-global instance.
+    /// - `additional_layers`: A slice of additional validation layers to enable in the application-global instance.
     /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use semver::Version;
-    /// use game_vk::instance::Instance;
-    /// 
-    /// let instance = Instance::new(
-    ///     "Hello World App",
-    ///     Version::new(0, 1, 0),
-    ///     "Hello World Engine",
-    ///     Version::new(0, 1, 0),
-    ///     vec![],
-    ///     vec!["VK_LAYER_KHRONOS_validation"],
-    /// ).unwrap_or_else(|err| panic!("Could not create Instance: {}", err));
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// This function will return an error whenever the Vulkan API would return an error, plus in some extra cases that relate to automatic conversion to raw types.
+    /// # Returns
+    /// The new Instance instance on success, or else an Error describing why we failed to create it.
     pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Self, Error> {
         // Convert the str-like into &str
         let name: &str   = name.as_ref();
@@ -419,10 +410,6 @@ impl Instance {
     /// Returns (an immuteable reference to) the internal Vulkan instance.
     #[inline]
     pub fn instance(&self) -> &ash::Instance { &self.instance }
-    
-    // /// Returns (a muteable reference to) the internal Vulkan instance.
-    // #[inline]
-    // pub fn instance_mut(&mut self) -> &mut ash::Instance { &mut self.instance }
 }
 
 impl Drop for Instance {
@@ -445,7 +432,5 @@ impl Deref for Instance {
     type Target = ash::Instance;
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.instance
-    }
+    fn deref(&self) -> &Self::Target { &self.instance }
 }

@@ -15,5 +15,3 @@ winit = "0.26.1"
 game-cfg = { path = "../game-cfg" }
 game-ecs = { path = "../game-ecs" }
 game-gfx = { path = "../game-gfx" }
-
-triangle = { path = "../game-sub/triangle" }

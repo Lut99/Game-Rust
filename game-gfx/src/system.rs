@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   18 Apr 2022, 12:09:06
+ *   18 Apr 2022, 12:22:42
  * Auto updated?
  *   Yes
  *
@@ -111,7 +111,7 @@ impl RenderSystem {
             Vec::from(INSTANCE_LAYERS)
         };
         let instance = match Instance::new(name, version, engine, engine_version, INSTANCE_EXTENSIONS, &layers) {
-            Ok(instance) => instance,
+            Ok(instance) => Arc::new(instance),
             Err(err)     => { return Err(Error::InstanceCreateError{ err }); }  
         };
 
@@ -124,7 +124,7 @@ impl RenderSystem {
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            instance : Arc::new(instance),
+            instance : instance,
             gpu      : Arc::new(gpu),
 
             targets : HashMap::with_capacity(1),
