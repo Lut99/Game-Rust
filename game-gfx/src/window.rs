@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   18 Apr 2022, 15:48:18
+ *   18 Apr 2022, 15:54:01
  * Auto updated?
  *   Yes
  *
@@ -161,6 +161,7 @@ impl RenderTargetBuilder for Window {
         };
 
         // Build the image views around the swapchain images
+        debug!("Initializing image views...");
         let mut views: Vec<Arc<image::View>> = Vec::with_capacity(swapchain.images().len());
         for swapchain_image in swapchain.images() {
             // Create the view around it
