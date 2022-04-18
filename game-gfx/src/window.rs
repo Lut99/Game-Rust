@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   17 Apr 2022, 18:09:32
+ *   18 Apr 2022, 12:07:35
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 **/
 
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use ash::vk;
 use log::debug;
@@ -132,7 +133,7 @@ where
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, gpu: &Gpu, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(event_loop: &EventLoop<()>, instance: &Instance, gpu: Arc<Gpu>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
         // Build the new Winit window
         let wwindow = match WindowBuilder::new()
             .with_title(&create_info.title)

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   03 Apr 2022, 16:47:11
+ *   18 Apr 2022, 12:09:06
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::any::type_name;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ash::vk;
 use log::debug;
@@ -67,9 +68,9 @@ pub struct RenderSystem {
     // /// The MemoryPool we use to allocate GPU-local buffers.
     // /// The MemoryPool we use to allocate CPU-accessible buffers.
     /// The Gpu we'll use for rendering.
-    gpu      : Gpu,
+    gpu      : Arc<Gpu>,
     /// The Instance on which this RenderSystem is based.
-    instance : Instance,
+    instance : Arc<Instance>,
 }
 
 impl RenderSystem {
@@ -115,7 +116,7 @@ impl RenderSystem {
         };
 
         // Get the GPU
-        let gpu = match Gpu::new(&instance, gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        let gpu = match Gpu::new(instance.clone(), gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(gpu)  => gpu,
             Err(err) => { return Err(Error::GpuCreateError{ err }); }  
         };
@@ -123,8 +124,8 @@ impl RenderSystem {
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            instance,
-            gpu,
+            instance : Arc::new(instance),
+            gpu      : Arc::new(gpu),
 
             targets : HashMap::with_capacity(1),
         })

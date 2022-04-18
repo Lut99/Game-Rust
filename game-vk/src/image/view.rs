@@ -4,7 +4,7 @@
  * Created:
  *   05 Apr 2022, 17:41:18
  * Last edited:
- *   17 Apr 2022, 18:09:02
+ *   18 Apr 2022, 12:07:20
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
 **/
 
 use std::ptr;
+use std::sync::Arc;
 
 use ash::vk;
 
@@ -144,16 +145,16 @@ pub struct CreateInfo {
 
 /***** LIBRARY *****/
 /// The ImageView class, which wraps around an Image or a VkImage to define how it should be accessed.
-pub struct View<'a> {
+pub struct View {
     /// The parent device for the parent image, who's lifetime we are tied  to
-    gpu   : &'a Gpu,
+    gpu   : Arc<Gpu>,
     /// The parent image for this view
     image : vk::Image,
     /// The image view object itself.
     view  : vk::ImageView,
 }
 
-impl<'a> View<'a> {
+impl View {
     /// Constructor for the View.
     /// 
     /// Creates a new ImageView with the given properties from the given Image.
@@ -180,7 +181,7 @@ impl<'a> View<'a> {
     /// 
     /// # Returns
     /// The new View instance on success, or else an Error.
-    pub fn from_vk(gpu: &'a Gpu, image: vk::Image, create_info: CreateInfo) -> Result<Self, Error> {
+    pub fn from_vk(gpu: Arc<Gpu>, image: vk::Image, create_info: CreateInfo) -> Result<Self, Error> {
         // Define the create info
         let image_info = vk::ImageViewCreateInfo {
             // Do the default stuff
@@ -228,7 +229,7 @@ impl<'a> View<'a> {
 
     /// Returns a reference to the parent GPU
     #[inline]
-    pub fn gpu(&self) -> &'a Gpu { self.gpu }
+    pub fn gpu(&self) -> Arc<Gpu> { self.gpu.clone() }
 
     /// Returns a reference to the parent image
     #[inline]
@@ -239,7 +240,7 @@ impl<'a> View<'a> {
     pub fn view(&self) -> &vk::ImageView { &self.view }
 }
 
-impl<'a> Drop for View<'a> {
+impl Drop for View {
     fn drop(&mut self) {
         unsafe { self.gpu.destroy_image_view(self.view, None); };
     }

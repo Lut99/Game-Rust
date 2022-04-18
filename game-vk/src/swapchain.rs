@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   17 Apr 2022, 18:04:08
+ *   18 Apr 2022, 12:06:30
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::ops::Deref;
 use std::ptr;
+use std::sync::Arc;
 
 use ash::vk;
 use ash::extensions::khr;
@@ -91,7 +92,7 @@ fn choose_image_count(swapchain_support: &SwapchainSupport, image_count: u32) ->
 }
 
 /// Chooses an appropriate sharing mode for the swapchain.
-fn choose_sharing_mode(_gpu: &Gpu) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
+fn choose_sharing_mode(_gpu: &Arc<Gpu>) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
     // Because we present with the same queue as we render, we only need exclusive
     Ok((vk::SharingMode::EXCLUSIVE, 0, vec![]))
 }
@@ -128,7 +129,7 @@ impl Swapchain {
     /// # Errors
     /// 
     /// This function errors if the Vulkan API backend does.
-    pub fn new(instance: &Instance, gpu: &Gpu, surface: &Surface, width: u32, height: u32, image_count: u32) -> Result<Self, Error> {
+    pub fn new(instance: &Instance, gpu: Arc<Gpu>, surface: &Surface, width: u32, height: u32, image_count: u32) -> Result<Self, Error> {
         // First, query the Gpu's support for this surface
         let swapchain_support = match gpu.get_swapchain_support(surface) {
             Ok(support) => support,
@@ -144,7 +145,7 @@ impl Swapchain {
         // Then, choose the image count
         let image_count = choose_image_count(&swapchain_support, image_count)?;
         // Finally, choose the charing mode
-        let (sharing_mode, n_queue_families, queue_families) = choose_sharing_mode(gpu)?;
+        let (sharing_mode, n_queue_families, queue_families) = choose_sharing_mode(&gpu)?;
 
         // Use the collect info for the CreateInfo
         let swapchain_info = vk::SwapchainCreateInfoKHR {

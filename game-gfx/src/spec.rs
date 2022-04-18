@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   03 Apr 2022, 15:30:01
+ *   18 Apr 2022, 12:08:13
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
+use std::sync::Arc;
 
 use winit::event_loop::EventLoop;
 use winit::window::WindowId;
@@ -113,7 +114,7 @@ pub trait RenderTargetBuilder: RenderTarget {
     /// # Errors
     /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, gpu: &Gpu, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(event_loop: &EventLoop<()>, instance: Arc<Instance>, gpu: Arc<Gpu>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }
 
