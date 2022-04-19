@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   18 Apr 2022, 15:24:51
+ *   19 Apr 2022, 21:42:03
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 use std::error::Error;
 use std::ffi::CString;
 use std::fmt::{Display, Formatter, Result as FResult};
+use std::path::PathBuf;
 
 
 /***** ERRORS *****/
@@ -210,6 +211,34 @@ impl Display for SwapchainError {
 }
 
 impl Error for SwapchainError {}
+
+
+
+/// Defines errors that relate to the Shader loading/compiling.
+#[derive(Debug)]
+pub enum ShaderError {
+    /// Could not create a new module
+    ShaderCreateError{ err: ash::vk::Result },
+
+    /// Could not open the given shader file
+    FileOpenError{ path: PathBuf, err: std::io::Error },
+    /// Could not read from the given shader file
+    FileReadError{ path: PathBuf, err: std::io::Error },
+}
+
+impl Display for ShaderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use ShaderError::*;
+        match self {
+            ShaderCreateError{ err } => write!(f, "Could not create the ShaderModule: {}", err),
+
+            FileOpenError{ path, err } => write!(f, "Could not open given SPIR-V shader file '{}': {}", path.display(), err),
+            FileReadError{ path, err } => write!(f, "Could not read given SPIR-V shader file '{}': {}", path.display(), err),
+        }
+    }
+}
+
+impl Error for ShaderError {}
 
 
 
