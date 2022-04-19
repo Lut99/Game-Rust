@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   18 Apr 2022, 15:42:52
+ *   19 Apr 2022, 18:20:08
  * Auto updated?
  *   Yes
  *
@@ -189,7 +189,7 @@ pub struct Device {
     /// The name of the device
     name     : String,
     /// The type of the device (as a String as well)
-    kind     : String,
+    kind     : DeviceKind,
     /// The QueueFamilyInfo that describes the queue families for this device.
     families : QueueFamilyInfo,
 }
@@ -237,13 +237,7 @@ impl Device {
             Ok(name) => name.to_string(),
             Err(err) => { return Err(Error::PhysicalDeviceNameError{ index: physical_device_index, err }); }
         };
-        let device_type: String = match device_properties.device_type {
-            vk::PhysicalDeviceType::CPU            => "CPU",
-            vk::PhysicalDeviceType::VIRTUAL_GPU    => "Virtual GPU",
-            vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
-            vk::PhysicalDeviceType::DISCRETE_GPU   => "Discrete GPU",
-            _                                      => "Unknown type",
-        }.to_string();
+        let device_type: DeviceKind = device_properties.device_type.into();
 
 
 
@@ -498,9 +492,9 @@ impl Device {
     #[inline]
     pub fn name(&self) -> &str { &self.name }
     
-    /// Returns the type of this device (as a String).
+    /// Returns the type of this device.
     #[inline]
-    pub fn kind(&self) -> &str { &self.kind }
+    pub fn kind(&self) -> &DeviceKind { &self.kind }
     
     /// Returns information about the QueueFamilies for this device.
     #[inline]

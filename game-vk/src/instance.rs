@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   18 Apr 2022, 15:39:44
+ *   19 Apr 2022, 18:27:54
  * Auto updated?
  *   Yes
  *
@@ -18,12 +18,6 @@ use std::ptr;
 use std::sync::Arc;
 
 use ash::vk;
-#[cfg(all(windows))]
-use ash::extensions::khr::Win32Surface;
-#[cfg(target_is = "macos")]
-use ash::extensions::khr::MacOSSurface;
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-use ash::extensions::khr::XlibSurface;
 use log::{debug, error, info, warn};
 use semver::Version;
 
@@ -40,6 +34,10 @@ pub use crate::errors::InstanceError as Error;
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(windows))]
 fn os_surface_extensions() -> Vec<CString> {
+    // Import the extension into the namespace
+    use ash::extensions::khr::Win32Surface;
+
+    // Return the name of the Windows surface extension
     vec![
         Win32Surface::name().to_owned()
     ]
@@ -52,6 +50,10 @@ fn os_surface_extensions() -> Vec<CString> {
 /// The list of required extensions, as a list of CStrings.
 #[cfg(target_os = "macos")]
 fn os_surface_extensions() -> Vec<CString> {
+    // Import the extension into the namespace
+    use ash::extensions::khr::MacOSSurface;
+
+    // Return the name of the macOS surface extension
     vec![
         MacOSSurface::name().to_owned()
     ]
@@ -64,8 +66,14 @@ fn os_surface_extensions() -> Vec<CString> {
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 fn os_surface_extensions() -> Vec<CString> {
+    // Bring the extensions into the namespace
+    use ash::extensions::khr::XlibSurface;
+    use ash::extensions::khr::WaylandSurface;
+
+    // Enable both the X11 and the Wayland extension, as, at compile time, we have no idea which should be the one
     vec![
-        XlibSurface::name().to_owned()
+        XlibSurface::name().to_owned(),
+        WaylandSurface::name().to_owned(),
     ]
 }
 

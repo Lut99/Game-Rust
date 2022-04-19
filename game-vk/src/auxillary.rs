@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   18 Apr 2022, 15:21:28
+ *   19 Apr 2022, 18:19:42
  * Auto updated?
  *   Yes
  *
@@ -79,10 +79,10 @@ impl Display for DeviceKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use DeviceKind::*;
         match self {
-            Discrete   => write!(f, "Discrete"),
-            Integrated => write!(f, "Integrated"),
-            Virtual    => write!(f, "Virtual"),
-            Cpu        => write!(f, "Cpu"),
+            Discrete   => write!(f, "Discrete GPU"),
+            Integrated => write!(f, "Integrated GPU"),
+            Virtual    => write!(f, "Virtual GPU"),
+            Cpu        => write!(f, "CPU"),
             Other      => write!(f, "Other"),
         }
     }

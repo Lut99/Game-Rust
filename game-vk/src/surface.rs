@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   18 Apr 2022, 15:43:10
+ *   19 Apr 2022, 18:17:48
  * Auto updated?
  *   Yes
  *
@@ -68,6 +68,7 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
     };
 
     // Build the loader for the surface
+    debug!("Creating Windows surface...");
     let loader = khr::Win32Surface::new(entry, instance);
     // Create the new surface
     match loader.create_win32_surface(&surface_info, None) {
@@ -128,6 +129,7 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
     };
 
     // Create the surface!
+    debug!("Creating macOS Cocoa surface...");
     let loader = MacOSSurface::new(entry, instance);
     // Create the new surface
     match loader.create_mac_os_surface(&surface_info, None) {
@@ -175,6 +177,7 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
         };
 
         // Create the Surface with that
+        debug!("Creating X11 surface...");
         let loader = khr::XlibSurface::new(entry, instance);
         match loader.create_xlib_surface(&surface_info, None) {
             Ok(surface) => Ok(surface),
@@ -201,6 +204,7 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
         };
 
         // Create the Surface with that
+        debug!("Creating Wayland surface...");
         let loader = khr::WaylandSurface::new(entry, instance);
         match loader.create_wayland_surface(&surface_info, None) {
             Ok(surface) => Ok(surface),
