@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   18 Apr 2022, 15:25:12
+ *   20 Apr 2022, 17:40:36
  * Auto updated?
  *   Yes
  *
@@ -25,10 +25,11 @@ pub enum RenderSystemError {
     /// Could not instantiate the Gpu
     DeviceCreateError{ err: game_vk::errors::DeviceError },
 
-    /// The given target already exists
-    DuplicateTarget{ type_name: &'static str, id: usize },
     /// Could not initialize a new render system.
     RenderTargetCreateError{ type_name: &'static str, err: String },
+
+    /// Could not initialize a new render pipeline.
+    RenderPipelineCreateError{ type_name: &'static str, err: String },
     
     /// Could not auto-select a GPU
     DeviceAutoSelectError{ err: game_vk::errors::DeviceError },
@@ -46,8 +47,9 @@ impl Display for RenderSystemError {
             InstanceCreateError{ err } => write!(f, "Could not initialize graphics Instance: {}", err),
             DeviceCreateError{ err }   => write!(f, "Could not initialize Device: {}", err),
 
-            DuplicateTarget{ type_name, id }          => write!(f, "Could not register a RenderTarget of type '{}': a target with id {} already exists", type_name, id),
             RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
+            
+            RenderPipelineCreateError{ type_name, err } => write!(f, "Could not initialize render pipeline of type '{}': {}", type_name, err),
 
             DeviceAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
             DeviceListError{ err }       => write!(f, "Could not list GPUs: {}", err),

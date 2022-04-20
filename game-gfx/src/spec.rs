@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   20 Apr 2022, 17:09:56
+ *   20 Apr 2022, 18:00:24
  * Auto updated?
  *   Yes
  *
@@ -16,47 +16,51 @@ use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::sync::Arc;
 
-use winit::event_loop::EventLoop;
-use winit::window::WindowId;
-
 use game_utl::traits::AsAny;
-use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::image::Image;
 
 
-/***** RENDER TARGET STAGE *****/
-/// Defines the type of the RenderTarget. This is used to sort them efficiently for type-specific treatments.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RenderTargetKind {
-    /// A Window
-    Window,
+/***** AUXILLARY NEWTYPES *****/
+/// Defines an ID to reference specific render targets with.
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
+pub struct RenderTargetId(usize);
+
+impl RenderTargetId {
+    /// Spawns the ID with a '0' value
+    #[inline]
+    pub(crate) fn new() -> Self { Self(0) }
+
+    /// Increments the ID in case it's a counter to generate new ones.
+    #[inline]
+    pub(crate) fn increment(&mut self) -> Self { self.0 += 1; Self(self.0) }
 }
 
-impl Display for RenderTargetKind {
+impl Display for RenderTargetId {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderTargetKind::*;
-        match self {
-            Window => write!(f, "Window"),
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 
 
-/// Defines whenever RenderTargets may be called.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RenderTargetStage {
-    /// The target will be called during the main render loop.
-    MainLoop,
+/// Defines an ID to reference specific render pipelines with.
+#[derive(Clone, Copy, Debug, Hash, Eq, Ord, PartialEq, PartialOrd)]
+pub struct RenderPipelineId(usize);
+
+impl RenderPipelineId {
+    /// Spawns the ID with a '0' value
+    #[inline]
+    pub(crate) fn new() -> Self { Self(0) }
+
+    /// Increments the ID in case it's a counter to generate new ones.
+    #[inline]
+    pub(crate) fn increment(&mut self) -> Self { self.0 += 1; Self(self.0) }
 }
 
-impl Display for RenderTargetStage {
+impl Display for RenderPipelineId {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderTargetStage::*;
-        match self {
-            MainLoop => write!(f, "Main Render Loop"),
-        }
+        write!(f, "{}", self.0)
     }
 }
 
@@ -67,11 +71,6 @@ impl Display for RenderTargetStage {
 /***** RENDER TARGET TRAIT *****/
 /// Defines a target that the RenderSystem may render to (like a Window or an Image).
 pub trait RenderTarget: 'static + AsAny {
-    /// Returns the type of this target.
-    fn kind(&self) -> RenderTargetKind;
-
-
-
     /// Returns a renderable target, i.e., an Image to render to.
     /// 
     /// # Returns
@@ -80,40 +79,30 @@ pub trait RenderTarget: 'static + AsAny {
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
     fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn Error>>;
-
-
-
-    /// Returns the identifier of this window if it is a Window, or None otherwise.
-    #[inline]
-    fn window_id(&self) -> Option<WindowId> { None }
-    
-    /// Requests a redraw on this window if this is a window. Does nothing otherwise.
-    #[inline]
-    fn window_request_redraw(&self) {}
 }
 
 
 
 /// Defines the interface to build a new RenderTarget.
-pub trait RenderTargetBuilder: RenderTarget {
+pub trait RenderTargetBuilder<'a>: RenderTarget {
     /// Defines the arguments that will be passed as a single struct to the constructor.
-    type CreateInfo: Sized + Debug + Default + Clone;
+    type CreateInfo: 'a + Sized + Debug + Clone;
 
 
     /// Constructor for the RenderTarget.
     /// 
     /// This initializes a new RenderTarget. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `device`: The Device that may be used to initialize parts of the RenderTarget.
+    /// - `create_info`: The CreateInfo struct specific to the backend RenderTarget, which we use to pass target-specific arguments.
     /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// A new instance of the backend RenderTarget.
     /// 
     /// # Errors
-    /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, gpu: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }
 
@@ -122,8 +111,8 @@ pub trait RenderTargetBuilder: RenderTarget {
 
 
 /***** RENDER PIPELINE TRAIT *****/
-/// Defines a customizeable backend for the graphics pipeline(s) for most of the RenderTargets.
-pub trait RenderPipeline {
+/// Defines a Render-capable pipeline.
+pub trait RenderPipeline: 'static + AsAny {
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.
@@ -131,30 +120,29 @@ pub trait RenderPipeline {
     /// You can assume that the synchronization with e.g. swapchains is already been done.
     /// 
     /// # Errors
-    /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
     fn render(&mut self) -> Result<(), Box<dyn Error>>;
 }
 
-/// Defines a customizeable backend for the graphics pipeline(s) for most of the RenderTargets.
-pub trait RenderPipelineBuilder: RenderPipeline {
+/// Defines a Render-capable pipeline.
+pub trait RenderPipelineBuilder<'a>: RenderPipeline {
     /// Defines the arguments that will be passed as a single struct to the constructor.
-    type CreateInfo: Sized + Debug + Default + Clone;
+    type CreateInfo: 'a + Sized + Debug + Clone;
 
 
-    /// Constructor for the RenderTarget.
+    /// Constructor for the RenderPipeline.
     /// 
-    /// This initializes a new RenderTarget. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
+    /// This initializes a new RenderPipeline. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
+    /// - `create_info`: The CreateInfo struct specific to the backend RenderPipeline, which we use to pass target-specific arguments.
     /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// A new instance of the backend RenderPipeline.
     /// 
     /// # Errors
-    /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: Arc<Instance>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }

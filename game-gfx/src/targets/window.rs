@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   20 Apr 2022, 17:11:01
+ *   20 Apr 2022, 18:04:31
  * Auto updated?
  *   Yes
  *
@@ -28,13 +28,16 @@ use game_vk::swapchain::Swapchain;
 use game_vk::image::{self, Image};
 
 pub use crate::errors::WindowError as Error;
-use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind};
+use crate::spec::{RenderTarget, RenderTargetBuilder};
 
 
 /***** WINDOW *****/
 /// The CreateInfo for this Window.
-#[derive(Debug, Default, Clone)]
-pub struct CreateInfo {
+#[derive(Debug, Clone)]
+pub struct CreateInfo<'a> {
+    /// The EventLoop to bind the Window to.
+    pub event_loop : &'a EventLoop<()>,
+
     /// The title of the new window.
     pub title : String,
 
@@ -110,6 +113,16 @@ impl Window {
 
 
 
+    /// Returns the identifier of this window if it is a Window, or None otherwise.
+    #[inline]
+    pub fn id(&self) -> WindowId { self.window.id() }
+    
+    /// Requests a redraw on this window if this is a window. Does nothing otherwise.
+    #[inline]
+    pub fn request_redraw(&self) { self.window.request_redraw() }
+
+
+
     /// Returns the title of the window.
     #[inline]
     pub fn title(&self) -> &str { &self.title }
@@ -120,29 +133,29 @@ impl Window {
 
 }
 
-impl RenderTargetBuilder for Window {
-    type CreateInfo = CreateInfo;
+impl<'a> RenderTargetBuilder<'a> for Window {
+    type CreateInfo = CreateInfo<'a>;
 
 
     /// Constructor for the Window.
     /// 
-    /// This initializes a new Window and the 
+    /// This initializes a new Window as a RenderTarget.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `device`: The Device to bind the Swapchain etc to.
+    /// - `create_info`: Additional parameters for the Window itself.
     /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// A new Window on success.
     /// 
     /// # Errors
-    /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
+    /// This function errors if the Window or any subsequent resource (like Surfaces or Swapchains) failed to be created. Will always be in the form of an Error.
+    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
         // Build the new Winit window
         let wwindow = match WindowBuilder::new()
             .with_title(&create_info.title)
             .with_inner_size(Size::Physical(PhysicalSize{ width: create_info.width, height: create_info.height }))
-            .build(event_loop)
+            .build(create_info.event_loop)
         {
             Ok(wwindow) => wwindow,
             Err(err)    => { return Err(Box::new(Error::WinitCreateError{ err })); }
@@ -201,12 +214,6 @@ impl RenderTargetBuilder for Window {
 }
 
 impl RenderTarget for Window {
-    /// Returns the type of this target.
-    #[inline]
-    fn kind(&self) -> RenderTargetKind { RenderTargetKind::Window }
-
-
-
     /// Returns a renderable target, i.e., an Image to render to.
     /// 
     /// # Returns
@@ -217,14 +224,4 @@ impl RenderTarget for Window {
     fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn std::error::Error>> {
         panic!("Window::get_target() is not yet implemented");
     }
-
-
-
-    /// Returns the identifier of this window if it is a Window, or None otherwise.
-    #[inline]
-    fn window_id(&self) -> Option<WindowId> { Some(self.window.id()) }
-    
-    /// Requests a redraw on this window if this is a window. Does nothing otherwise.
-    #[inline]
-    fn window_request_redraw(&self) { self.window.request_redraw() }
 }

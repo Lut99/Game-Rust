@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   20 Apr 2022, 17:07:45
+ *   20 Apr 2022, 18:04:18
  * Auto updated?
  *   Yes
  *
@@ -18,12 +18,12 @@ use std::str::FromStr;
 use log::{error, info, LevelFilter};
 use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
+use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::Config;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
-use game_gfx::spec::RenderTargetStage;
 
 
 /***** ENTRYPOINT *****/
@@ -59,8 +59,10 @@ fn main() {
         Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
     };
 
-    // Initialize a new Window RenderTarget with the Triangle pipeline
+    // Initialize a new Window RenderTarget
     let window_info = game_gfx::targets::window::CreateInfo {
+        event_loop: &event_loop,
+
         title : format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")),
 
         width  : 800,
@@ -68,30 +70,78 @@ fn main() {
 
         image_count : 3,
     };
-    if let Err(err) = render_system.register::<
+    let window = match render_system.register_target::<
         game_gfx::targets::window::Window,
         game_gfx::targets::window::CreateInfo,
     >(
-        &event_loop,
-        0,
-        RenderTargetStage::MainLoop,
         window_info,
     ) {
-        error!("Could not initialize render subsystem: {}", err);
-        std::process::exit(1);
-    }
+        Ok(window) => window,
+        Err(err)   => {
+            error!("Could not initialize RenderSystem Window: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    // // Initialize a new Triangle RenderPipeline
+    // let window_info = game_gfx::targets::window::CreateInfo {
+    //     event_loop: &event_loop,
+
+    //     title : format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")),
+
+    //     width  : 800,
+    //     height : 600,
+
+    //     image_count : 3,
+    // };
+    // let window = match render_system.register_target::<
+    //     game_gfx::targets::window::Window,
+    //     game_gfx::targets::window::CreateInfo,
+    // >(
+    //     window_info,
+    // ) {
+    //     Ok(window) => window,
+    //     Err(err)   => {
+    //         error!("Could not initialize RenderSystem Window: {}", err);
+    //         std::process::exit(1);
+    //     }
+    // };
 
 
 
     // Enter the main loop
     info!("Initialization complete; entering game loop...");
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = match render_system.handle_events(&event, control_flow) {
-            Ok(flow) => flow,
-            Err(err) => {
-                error!("{}", err);
-                ControlFlow::Exit
-            }
-        };
+        // Switch on the event type
+        match event {
+            | Event::WindowEvent{ window_id: _window_id, event } => {
+                // Match the event again
+                match event {
+                    | WindowEvent::CloseRequested => {
+                        // For now, we close on _any_ window close, but this should obviously be marginally more clever
+                        *control_flow = ControlFlow::Exit;
+                    },
+
+                    // Ignore the others
+                    _ => {}
+                }
+            },
+
+            | Event::MainEventsCleared => {
+                // Request a redraw of all internal windows
+                render_system.get_target_as::<game_gfx::targets::window::Window>(window).request_redraw();
+            },
+
+            | Event::RedrawRequested(window_id) => {
+                // Check if this concerns our Window
+                if window_id == render_system.get_target_as::<game_gfx::targets::window::Window>(window).id() {
+                    // Render the necessary pipelines
+                    /* TODO */
+                }
+            },
+
+            // We do nothing for all other events
+            _ => {}
+        }
     });
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   18 Apr 2022, 15:42:24
+ *   20 Apr 2022, 18:00:05
  * Auto updated?
  *   Yes
  *
@@ -19,8 +19,6 @@ use std::sync::Arc;
 use ash::vk;
 use log::debug;
 use semver::Version;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_ecs::Ecs;
 use game_vk::auxillary::DeviceKind;
@@ -28,7 +26,7 @@ use game_vk::instance::Instance;
 use game_vk::device::Device;
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind, RenderTargetStage};
+use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderPipelineId, RenderTarget, RenderTargetBuilder, RenderTargetId};
 
 
 /***** CONSTANTS *****/
@@ -66,10 +64,14 @@ pub struct RenderSystem {
     // /// The DescriptorPool from which we allocate descriptors.
     // /// The CommandPool from which we allocate commands.
 
+    /// The last-used RenderTargetId
+    last_target_id   : RenderTargetId,
+    /// The last-used RenderPipelineId
+    last_pipeline_id : RenderPipelineId,
     /// The map of render targets to which we render.
-    /// 
-    /// It is a map of each target stage to each target, defined by a unique identifier.
-    targets : HashMap<RenderTargetStage, HashMap<RenderTargetKind, HashMap<usize, Box<dyn RenderTarget>>>>,
+    targets          : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
+    /// The map of render pipelines which we use to render to.
+    pipelines        : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
 }
 
 impl RenderSystem {
@@ -126,7 +128,10 @@ impl RenderSystem {
             instance : instance,
             device   : device,
 
-            targets : HashMap::with_capacity(1),
+            last_target_id   : RenderTargetId::new(),
+            last_pipeline_id : RenderPipelineId::new(),
+            targets          : HashMap::with_capacity(1),
+            pipelines        : HashMap::with_capacity(1),
         })
     }
 
@@ -134,79 +139,88 @@ impl RenderSystem {
 
     /// Registers a new render target.
     /// 
-    /// Each Render Target is either a window or an image to render to. They are then in charge of their own pipeline(s), and will handle all resources that are derived from the Surface (or similar).
-    /// 
-    /// The Render Target may be called at different stages, which are defined in the RenderTargetStage enum.
+    /// Each RenderTarget is responsible for producing some image that may be rendered to. Then, in the present() step, it is also responsible for somehow getting the result back to the user.
     /// 
     /// # Arguments
-    /// - `event_loop`: The EventLoop to bind eventual Windows to.
-    /// - `id`: A simple, numerical ID to differentiate targets of the same type later.
-    /// - `stage`: The RenderTargetStage when this target should be renderered.
     /// - `create_info`: The RenderTarget-specific CreateInfo to pass arguments to its constructor.
     /// 
     /// # Returns
-    /// Nothing if the registration was successfull, but does add the component internally.
+    /// An identifier to reference the newly added target later on.
     /// 
     /// # Errors
     /// This function errors if the given target could not be initialized properly.
-    pub fn register<R, C>(&mut self, event_loop: &EventLoop<()>, id: usize, stage: RenderTargetStage, create_info: C) -> Result<(), Error> 
+    pub fn register_target<'a, R, C>(&mut self, create_info: C) -> Result<RenderTargetId, Error> 
     where
-        R: RenderTargetBuilder<CreateInfo=C>,
+        R: RenderTargetBuilder<'a, CreateInfo=C>,
         C: Sized,
     {
-        // Check if this ID already exists
-        // Iterate through the different stages
-        for targets in self.targets.values() {
-            // Iterate through the different types
-            for targets in targets.values() {
-                // Iterate through the duplicates of those
-                if targets.contains_key(&id) {
-                    return Err(Error::DuplicateTarget{ type_name: std::any::type_name::<R>(), id });
-                }
-            }
-        }
-
-        // Simply call the constructor
-        let target = match R::new(event_loop, self.device.clone(), create_info) {
+        // Generate a new ID for this RenderTarget
+        let id = self.last_target_id.increment();
+        
+        // Call the constructor
+        let target = match R::new(self.device.clone(), create_info) {
             Ok(target) => target,
             Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };
 
-        // First, add it in the global namespace
-        let kind = target.kind();
-        if let Some(targets) = self.targets.get_mut(&stage) {
-            // Next, add it to the stage namespace
-            if let Some(targets) = targets.get_mut(&kind) {
-                // Add it to the list
-                targets.insert(id, Box::new(target));
+        // Add it in the map
+        self.targets.insert(id, Box::new(target));
 
-            } else {
-                // Create the new HashMap for this type
-                let mut type_targets: HashMap<usize, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-                type_targets.insert(id, Box::new(target));
+        // Return the ID
+        debug!("Registered new render target of type {} as ID {}", std::any::type_name::<R>(), id);
+        Ok(id)
+    }
 
-                // Insert the hashmap in the big one
-                targets.insert(kind, type_targets);
-            }
-        } else {
-            // Create the new HashMap for this stage
-            let mut stage_targets: HashMap<RenderTargetKind, HashMap<usize, Box<dyn RenderTarget>>> = HashMap::with_capacity(1);
+    /// Registers a new render pipeline.
+    /// 
+    /// Each RenderPipeline is responsible for taking vertices and junk and outputting that to a RenderTarget.
+    /// 
+    /// # Arguments
+    /// - `create_info`: The RenderPipeline-specific CreateInfo to pass arguments to its constructor.
+    /// 
+    /// # Returns
+    /// An identifier to reference the newly added target later on.
+    /// 
+    /// # Errors
+    /// This function errors if the given target could not be initialized properly.
+    pub fn register_pipeline<'a, R, C>(&mut self, create_info: C) -> Result<RenderPipelineId, Error> 
+    where
+        R: RenderPipelineBuilder<'a, CreateInfo=C>,
+        C: Sized,
+    {
+        // Generate a new ID for this RenderTarget
+        let id = self.last_pipeline_id.increment();
 
-            // Create the new HashMap for this type
-            let mut type_targets: HashMap<usize, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-            type_targets.insert(id, Box::new(target));
+        // Call the constructor
+        let pipeline = match R::new(self.device.clone(), create_info) {
+            Ok(pipeline) => pipeline,
+            Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+        };
 
-            // Insert the hashmaps in the big ones
-            stage_targets.insert(kind, type_targets);
-            self.targets.insert(stage, stage_targets);
-        }
+        // Add it in the map
+        self.pipelines.insert(id, Box::new(pipeline));
 
-        // Done!
-        debug!("Registered new render target {} of type {} ({}) at stage {}", id, std::any::type_name::<R>(), kind, stage);
-        Ok(())
+        // Return the ID
+        debug!("Registered new render pipeline of type {} as ID {}", std::any::type_name::<R>(), id);
+        Ok(id)
     }
 
 
+
+    /// Performs a single render pass using the given pipeline, rendering to the given target.
+    /// 
+    /// # Arguments
+    /// - `target`: The UID of the target to render to.
+    /// - `pipeline`: The UID of the pipeline to render to.
+    /// 
+    /// # Returns
+    /// Nothing on success, except that the RenderTarget should have new pixels drawn to it.
+    /// 
+    /// # Errors
+    /// This function errors if the given Pipeline errors.
+    pub fn render(target: RenderTargetId, pipeline: RenderPipelineId) -> Result<(), Error> {
+        Ok(())
+    }
 
     /// Automatically selects the best GPU.
     /// 
@@ -276,130 +290,244 @@ impl RenderSystem {
 
 
 
-    /// Handles events from winit's EventLoop.
-    /// 
-    /// This function will ignore any events that are non-relevant for the RenderSystem.
+    // /// Handles events from winit's EventLoop.
+    // /// 
+    // /// This function will ignore any events that are non-relevant for the RenderSystem.
+    // /// 
+    // /// # Arguments
+    // /// - `event`: The Event that was just fired.
+    // /// - `control_flow`: The previous ControlFlow. Might be overridden if the user chose to close the Window(s) we render to.
+    // /// 
+    // /// # Returns
+    // /// The next ControlFlow. Will likely be the one passed, unless overriden somehow.
+    // /// 
+    // /// # Errors
+    // /// Because this function also performs render calls, it may error due to many different reasons.
+    // pub fn handle_events(&mut self, event: &Event<()>, control_flow: &ControlFlow) -> Result<ControlFlow, Error> {
+    //     // Switch on the event type
+    //     match event {
+    //         | Event::WindowEvent{ window_id: _window_id, event } => {
+    //             // Match the event again
+    //             match event {
+    //                 | WindowEvent::CloseRequested => {
+    //                     // For now, we close on _any_ window close, but this should obviously be marginally more clever
+    //                     Ok(ControlFlow::Exit)
+    //                 },
+
+    //                 // Ignore the others
+    //                 _ => {
+    //                     Ok(*control_flow)
+    //                 }
+    //             }
+    //         },
+
+    //         | Event::MainEventsCleared => {
+    //             // Request a redraw of all internal windows
+    //             for target in self.targets.values() {
+    //                 // Request the redraw; if it's not a Window target, then this function will take care of it
+    //                 target.window_request_redraw();
+    //             }
+
+    //             // Done with this event
+    //             Ok(*control_flow)
+    //         },
+
+    //         | Event::RedrawRequested(window_id) => {
+    //             // Request a redraw of all internal windows
+    //             for target in self.targets.values_mut() {
+    //                 // Call render only if the ID matches
+    //                 if &target.window_id().expect("Iterating over Windows, but found non-Window; this should never happen!") == window_id {
+    //                     if let Err(err) = target.render() {
+    //                         return Err(Error::RenderError{ err });
+    //                     };
+    //                     return Ok(*control_flow);
+    //                 }
+    //             }
+
+    //             // Done with this event
+    //             Ok(*control_flow)
+    //         },
+
+    //         // We do nothing for all other events
+    //         _ => {
+    //             Ok(*control_flow)
+    //         }
+    //     }
+    // }
+
+
+
+    /// Returns a(n immuteable) reference to the RenderTarget with the given ID.
     /// 
     /// # Arguments
-    /// - `event`: The Event that was just fired.
-    /// - `control_flow`: The previous ControlFlow. Might be overridden if the user chose to close the Window(s) we render to.
+    /// - `id`: The ID of the RenderTarget to return.
     /// 
     /// # Returns
-    /// The next ControlFlow. Will likely be the one passed, unless overriden somehow.
+    /// The RenderTarget uncasted (so still as a RenderTarget trait).
     /// 
     /// # Errors
-    /// Because this function also performs render calls, it may error due to many different reasons.
-    pub fn handle_events(&mut self, event: &Event<()>, control_flow: &ControlFlow) -> Result<ControlFlow, Error> {
-        // Switch on the event type
-        match event {
-            | Event::WindowEvent{ window_id: _window_id, event } => {
-                // Match the event again
-                match event {
-                    | WindowEvent::CloseRequested => {
-                        // For now, we close on _any_ window close, but this should obviously be marginally more clever
-                        Ok(ControlFlow::Exit)
-                    },
+    /// This function does not error explicitly, but does panic if the ID is unknown.
+    #[inline]
+    pub fn get_target(&self, id: RenderTargetId) -> &dyn RenderTarget {
+        match self.targets.get(&id) {
+            Some(target) => target.as_ref(),
+            None         => { panic!("Unknown RenderTarget {}", id); }
+        }
+    }
 
-                    // Ignore the others
-                    _ => {
-                        Ok(*control_flow)
-                    }
-                }
+    /// Returns a (muteable) reference to the RenderTarget with the given ID.
+    /// 
+    /// # Arguments
+    /// - `id`: The ID of the RenderTarget to return.
+    /// 
+    /// # Returns
+    /// The RenderTarget uncasted (so still as a RenderTarget trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown.
+    #[inline]
+    pub fn get_target_mut(&mut self, id: RenderTargetId) -> &mut dyn RenderTarget {
+        match self.targets.get_mut(&id) {
+            Some(target) => target.as_mut(),
+            None         => { panic!("Unknown RenderTarget {}", id); }
+        }
+    }
+
+    /// Returns a(n immuteable) reference to the RenderTarget with the given ID.
+    /// 
+    /// This function also casts the given RenderTarget to the given type.
+    /// 
+    /// # Generic types
+    /// - `Target`: The Type to cast to.
+    /// 
+    /// # Arguments
+    /// - `id`: The ID of the RenderTarget to return.
+    /// 
+    /// # Returns
+    /// The RenderTarget uncasted (so still as a RenderTarget trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
+    #[inline]
+    pub fn get_target_as<Target: RenderTarget>(&self, id: RenderTargetId) -> &Target {
+        match self.targets.get(&id) {
+            Some(target) => {
+                target.as_any().downcast_ref::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderTarget to {}", type_name::<Target>()))
             },
+            None => { panic!("Unknown RenderTarget {}", id); }
+        }
+    }
 
-            | Event::MainEventsCleared => {
-                // Request a redraw of all internal windows
-                let targets = match self.targets.get(&RenderTargetStage::MainLoop) {
-                    Some(targets) => targets,
-                    None          => { return Ok(*control_flow); }
-                };
-                let targets = match targets.get(&RenderTargetKind::Window) {
-                    Some(targets) => targets,
-                    None          => { return Ok(*control_flow); }
-                };
-                for target in targets.values() {
-                    // Request the redraw
-                    target.window_request_redraw();
-                }
-
-                // Done with this event
-                Ok(*control_flow)
+    /// Returns a (muteable) reference to the RenderTarget with the given ID.
+    /// 
+    /// This function also casts the given RenderTarget to the given type.
+    /// 
+    /// # Generic types
+    /// - `Target`: The Type to cast to.
+    /// 
+    /// # Arguments
+    /// - `id`: The ID of the RenderTarget to return.
+    /// 
+    /// # Returns
+    /// The RenderTarget uncasted (so still as a RenderTarget trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
+    #[inline]
+    pub fn get_target_as_mut<Target: RenderTarget>(&mut self, id: RenderTargetId) -> &mut Target {
+        match self.targets.get_mut(&id) {
+            Some(target) => {
+                target.as_any_mut().downcast_mut::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderTarget to {}", type_name::<Target>()))
             },
-
-            | Event::RedrawRequested(window_id) => {
-                // Request a redraw of all internal windows
-                let targets = match self.targets.get_mut(&RenderTargetStage::MainLoop) {
-                    Some(targets) => targets,
-                    None          => { return Ok(*control_flow); }
-                };
-                let targets = match targets.get_mut(&RenderTargetKind::Window) {
-                    Some(targets) => targets,
-                    None          => { return Ok(*control_flow); }
-                };
-                for target in targets.values_mut() {
-                    // Call render only if the ID matches
-                    if &target.window_id().expect("Iterating over Windows, but found non-Window; this should never happen!") == window_id {
-                        if let Err(err) = target.render() {
-                            return Err(Error::RenderError{ err });
-                        };
-                        return Ok(*control_flow);
-                    }
-                }
-
-                // Done with this event
-                Ok(*control_flow)
-            },
-
-            // We do nothing for all other events
-            _ => {
-                Ok(*control_flow)
-            }
+            None => { panic!("Unknown RenderTarget {}", id); }
         }
     }
 
 
 
-    /// Returns the render target (immutably) with the given ID as the given type.
+    /// Returns a(n immuteable) reference to the RenderPipeline with the given ID.
     /// 
     /// # Arguments
-    /// - `id`: The extra identifier for the RenderTarget of this type.
-    pub fn get_target<T: RenderTarget>(&self, id: usize) -> &T {
-        // Get the target
-        for targets in self.targets.values() {
-            for targets in targets.values() {
-                let target = match targets.get(&id) {
-                    Some(target) => target,
-                    None         => { continue; }
-                };
-
-                // Cast it down to the proper type, then return
-                return target.as_any().downcast_ref::<T>().unwrap_or_else(|| panic!("RenderTarget with ID {} does not cast to a {}", id, type_name::<T>()));
-            }
+    /// - `id`: The ID of the RenderPipeline to return.
+    /// 
+    /// # Returns
+    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown.
+    #[inline]
+    pub fn get_pipeline(&self, id: RenderPipelineId) -> &dyn RenderPipeline {
+        match self.pipelines.get(&id) {
+            Some(pipeline) => pipeline.as_ref(),
+            None           => { panic!("Unknown RenderPipeline {}", id); }
         }
-
-        // We failed to find the target with the given ID
-        panic!("RenderTarget with ID {} not found", id);
     }
 
-    /// Returns the render target (muteably) with the given ID as the given type.
+    /// Returns a (muteable) reference to the RenderPipeline with the given ID.
     /// 
     /// # Arguments
-    /// - `id`: The extra identifier for the RenderTarget of this type.
-    pub fn get_target_mut<T: RenderTarget>(&mut self, id: usize) -> &mut T {
-        // Get the target
-        for targets in self.targets.values_mut() {
-            for targets in targets.values_mut() {
-                let target = match targets.get_mut(&id) {
-                    Some(target) => target,
-                    None         => { continue; }
-                };
-
-                // Cast it down to the proper type
-                return target.as_any_mut().downcast_mut::<T>().unwrap_or_else(|| panic!("RenderTarget with ID {} does not cast to a {}", id, type_name::<T>()));
-            }
+    /// - `id`: The ID of the RenderPipeline to return.
+    /// 
+    /// # Returns
+    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown.
+    #[inline]
+    pub fn get_pipeline_mut(&mut self, id: RenderPipelineId) -> &mut dyn RenderPipeline {
+        match self.pipelines.get_mut(&id) {
+            Some(pipeline) => pipeline.as_mut(),
+            None           => { panic!("Unknown RenderPipeline {}", id); }
         }
+    }
 
-        // We failed to find the target with the given ID
-        panic!("RenderTarget with ID {} not found", id);
+    /// Returns a(n immuteable) reference to the RenderPipeline with the given ID.
+    /// 
+    /// This function also casts the given RenderPipeline to the given type.
+    /// 
+    /// # Generic types
+    /// - `Target`: The Type to cast to.
+    /// 
+    /// # Arguments
+    /// - `id`: The ID of the RenderPipeline to return.
+    /// 
+    /// # Returns
+    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
+    #[inline]
+    pub fn get_pipeline_as<Target: RenderPipeline>(&self, id: RenderPipelineId) -> &Target {
+        match self.pipelines.get(&id) {
+            Some(pipeline) => {
+                pipeline.as_any().downcast_ref::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderPipeline to {}", type_name::<Target>()))
+            },
+            None => { panic!("Unknown RenderPipeline {}", id); }
+        }
+    }
+
+    /// Returns a (muteable) reference to the RenderPipeline with the given ID.
+    /// 
+    /// This function also casts the given RenderPipeline to the given type.
+    /// 
+    /// # Generic types
+    /// - `Target`: The Type to cast to.
+    /// 
+    /// # Arguments
+    /// - `id`: The ID of the RenderPipeline to return.
+    /// 
+    /// # Returns
+    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
+    /// 
+    /// # Errors
+    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
+    #[inline]
+    pub fn get_pipeline_as_mut<Target: RenderPipeline>(&mut self, id: RenderPipelineId) -> &mut Target {
+        match self.pipelines.get_mut(&id) {
+            Some(pipeline) => {
+                pipeline.as_any_mut().downcast_mut::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderPipeline to {}", type_name::<Target>()))
+            },
+            None => { panic!("Unknown RenderPipeline {}", id); }
+        }
     }
 }
