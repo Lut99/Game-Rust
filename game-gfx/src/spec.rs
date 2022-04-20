@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   18 Apr 2022, 15:42:15
+ *   20 Apr 2022, 17:09:56
  * Auto updated?
  *   Yes
  *
@@ -22,6 +22,7 @@ use winit::window::WindowId;
 use game_utl::traits::AsAny;
 use game_vk::instance::Instance;
 use game_vk::device::Device;
+use game_vk::image::Image;
 
 
 /***** RENDER TARGET STAGE *****/
@@ -71,16 +72,14 @@ pub trait RenderTarget: 'static + AsAny {
 
 
 
-    /// Renders a single frame to the given RenderTarget.
+    /// Returns a renderable target, i.e., an Image to render to.
     /// 
-    /// This function performs the actual rendering, and may be called by the RenderSystem either during the main render loop or in some other instance.
-    /// 
-    /// You can assume that the synchronization with e.g. swapchains is already been done.
+    /// # Returns
+    /// A new Image on success.
     /// 
     /// # Errors
-    /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), Box<dyn Error>>;
+    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn Error>>;
 
 
 
@@ -99,7 +98,7 @@ pub trait RenderTarget: 'static + AsAny {
 pub trait RenderTargetBuilder: RenderTarget {
     /// Defines the arguments that will be passed as a single struct to the constructor.
     type CreateInfo: Sized + Debug + Default + Clone;
-    
+
 
     /// Constructor for the RenderTarget.
     /// 

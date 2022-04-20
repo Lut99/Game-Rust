@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   18 Apr 2022, 15:54:01
+ *   20 Apr 2022, 17:11:01
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,7 @@ use game_vk::auxillary::{ImageAspect, ImageViewKind};
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
-use game_vk::image;
+use game_vk::image::{self, Image};
 
 pub use crate::errors::WindowError as Error;
 use crate::spec::{RenderTarget, RenderTargetBuilder, RenderTargetKind};
@@ -207,17 +207,15 @@ impl RenderTarget for Window {
 
 
 
-    /// Renders a single frame to the given RenderTarget.
+    /// Returns a renderable target, i.e., an Image to render to.
     /// 
-    /// This function performs the actual rendering, and may be called by the RenderSystem either during the main render loop or in some other instance.
-    /// 
-    /// You can assume that the synchronization with e.g. swapchains is already been done.
+    /// # Returns
+    /// A new Image on success.
     /// 
     /// # Errors
-    /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
+    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn std::error::Error>> {
+        panic!("Window::get_target() is not yet implemented");
     }
 
 

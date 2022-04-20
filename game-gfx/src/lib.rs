@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:00:33
  * Last edited:
- *   03 Apr 2022, 12:51:37
+ *   20 Apr 2022, 17:06:44
  * Auto updated?
  *   Yes
  *
@@ -22,9 +22,9 @@ pub mod spec;
 pub mod errors;
 /// The module that implements the main RenderSystem.
 pub mod system;
-/// The module that implements the Window render target.
-pub mod window;
+/// The module that implements the different render targets.
+pub mod targets;
 
 // Bring some components into the general package namespace
 pub use system::{Error, RenderSystem};
-pub use window::{Error as WindowError, Window};
+pub use targets::window::{Error as WindowError, Window};
