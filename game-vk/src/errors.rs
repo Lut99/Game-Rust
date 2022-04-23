@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   19 Apr 2022, 21:42:03
+ *   23 Apr 2022, 17:51:35
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,8 @@ use std::error::Error;
 use std::ffi::CString;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::path::PathBuf;
+
+use ash::vk;
 
 
 /***** ERRORS *****/
@@ -36,6 +38,26 @@ impl Display for QueueError {
 }
 
 impl Error for QueueError {}
+
+
+
+/// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
+#[derive(Debug)]
+pub enum AttributeLayoutError {
+    /// Given vk::Format value was a valid vk::Format, but not a valid AttributeLayout
+    IllegalFormatValue{ value: vk::Format },
+}
+
+impl Display for AttributeLayoutError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use AttributeLayoutError::*;
+        match self {
+            IllegalFormatValue{ value } => write!(f, "Encountered valid vk::Format value '{}' ({:?}), but that value is illegal for an AttributeLayout", value.as_raw(), value),
+        }
+    }
+}
+
+impl Error for AttributeLayoutError {}
 
 
 
@@ -239,6 +261,26 @@ impl Display for ShaderError {
 }
 
 impl Error for ShaderError {}
+
+
+
+/// Defines errors that relate to a Pipeline.
+#[derive(Debug)]
+pub enum PipelineError {
+    /// Could not create the final Pipeline struct
+    PipelineCreateError{ err: ash::vk::Result },
+}
+
+impl Display for PipelineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use PipelineError::*;
+        match self {
+            PipelineCreateError{ err } => write!(f, "Could not create new Pipeline: {}", err),
+        }
+    }
+}
+
+impl Error for PipelineError {}
 
 
 

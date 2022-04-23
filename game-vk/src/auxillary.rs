@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   19 Apr 2022, 18:19:42
+ *   23 Apr 2022, 22:20:15
  * Auto updated?
  *   Yes
  *
@@ -15,12 +15,217 @@
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FResult};
+use std::ops::Range;
+use std::ptr;
+use std::slice;
 use std::sync::Arc;
 
 use ash::vk;
 
-pub use crate::errors::QueueError;
+pub use crate::errors::{AttributeLayoutError, QueueError};
 use crate::instance::Instance;
+
+
+/***** GEOMETRY *****/
+/// Defines a 2-dimensional offset with data type T.
+#[derive(Clone, Debug)]
+pub struct Offset2D<T> {
+    /// The X-coordinate of the offset.
+    pub x : T,
+    /// The Y-coordinate of the offset.
+    pub y : T,
+}
+
+impl<T> Offset2D<T> {
+    /// Constructor for the Offset2D.
+    /// 
+    /// # Generic arguments
+    /// - `T`: The data type of the coordinates.
+    /// 
+    /// # Arguments
+    /// - `x`: The X-coordinate of the offset.
+    /// - `y`: The Y-coordinate of the offset.
+    #[inline]
+    pub fn new(x: T, y: T) -> Self {
+        Self { x, y }
+    }
+}
+
+impl<T> From<vk::Offset2D> for Offset2D<T>
+where
+    T: From<i32>
+{
+    #[inline]
+    fn from(value: vk::Offset2D) -> Self {
+        Self {
+            x : T::from(value.x),
+            y : T::from(value.y),
+        }
+    }
+}
+
+impl<T> From<Offset2D<T>> for vk::Offset2D
+where
+    T: Into<i32>
+{
+    #[inline]
+    fn from(value: Offset2D<T>) -> Self {
+        Self {
+            x : value.x.into(),
+            y : value.y.into(),
+        }
+    }
+}
+
+
+
+/// Defines a 2-dimensional extent with data type T.
+#[derive(Clone, Debug)]
+pub struct Extent2D<T> {
+    /// The width of the extent.
+    pub w : T,
+    /// The height of the extent.
+    pub h : T,
+}
+
+impl<T> Extent2D<T> {
+    /// Constructor for the Extent2D.
+    /// 
+    /// # Generic arguments
+    /// - `T`: The data type of the dimensions.
+    /// 
+    /// # Arguments
+    /// - `w`: The width of the extent.
+    /// - `h`: The height of the extent.
+    #[inline]
+    pub fn new(w: T, h: T) -> Self {
+        Self { w, h }
+    }
+}
+
+impl<T> From<vk::Extent2D> for Extent2D<T>
+where
+    T: From<u32>
+{
+    #[inline]
+    fn from(value: vk::Extent2D) -> Self {
+        Self {
+            w : T::from(value.width),
+            h : T::from(value.height),
+        }
+    }
+}
+
+impl<T> From<Extent2D<T>> for vk::Extent2D
+where
+    T: Into<u32>
+{
+    #[inline]
+    fn from(value: Extent2D<T>) -> Self {
+        Self {
+            width  : value.w.into(),
+            height : value.h.into(),
+        }
+    }
+}
+
+
+
+/// Defines a 2-dimensional rectangle with an offset (of datatype T) and an extent (of datatype U).
+#[derive(Clone, Debug)]
+pub struct Rect2D<T, U = T> {
+    /// The offset of the top-left corner of the rectangle.
+    pub offset : Offset2D<T>,
+    /// The extent of rectangle.
+    pub extent : Extent2D<U>,
+}
+
+impl<T, U> Rect2D<T, U> {
+    /// Constructor for the Rect2D.
+    /// 
+    /// # Generic arguments
+    /// - `T`: The data type of the offset.
+    /// - `U`: The data type of the extent.
+    /// 
+    /// # Arguments
+    /// - `x`: The X-coordinate of the offset.
+    /// - `y`: The Y-coordinate of the offset.
+    /// - `w`: The width of the extent.
+    /// - `h`: The height of the extent.
+    #[inline]
+    pub fn new(x: T, y: T, w: U, h: U) -> Self {
+        Self {
+            offset : Offset2D::new(x, y),
+            extent : Extent2D::new(w, h),
+        }
+    }
+
+    /// Constructor for the Rect2D that takes a separate offset and extend.
+    /// 
+    /// # Generic arguments
+    /// - `T`: The data type of the offset.
+    /// - `U`: The data type of the extent.
+    /// 
+    /// # Arguments
+    /// - `offset`: The offset of the rectangle.
+    /// - `extent`: The extent of the rectangle.
+    #[inline]
+    pub fn from_raw(offset: Offset2D<T>, extent: Extent2D<U>) -> Self {
+        Self {
+            offset,
+            extent,
+        }
+    }
+
+
+
+    /// Returns the X-coordinate of the rectangle's offset.
+    #[inline]
+    pub fn x(&self) -> T where T: Copy { self.offset.x }
+
+    /// Returns the Y-coordinate of the rectangle's offset.
+    #[inline]
+    pub fn y(&self) -> T where T: Copy { self.offset.y }
+
+    /// Returns the width of the rectangle's extent.
+    #[inline]
+    pub fn w(&self) -> U where U: Copy { self.extent.w }
+
+    /// Returns the height of the rectangle's extent.
+    #[inline]
+    pub fn h(&self) -> U where U: Copy { self.extent.h }
+}
+
+impl<T, U> From<vk::Rect2D> for Rect2D<T, U>
+where
+    T: From<i32>,
+    U: From<u32>,
+{
+    #[inline]
+    fn from(value: vk::Rect2D) -> Self {
+        Self {
+            offset : value.offset.into(),
+            extent : value.extent.into(),
+        }
+    }
+}
+
+impl<T, U> From<Rect2D<T, U>> for vk::Rect2D
+where
+    T: Into<i32>,
+    U: Into<u32>,
+{
+    #[inline]
+    fn from(value: Rect2D<T, U>) -> Self {
+        Self {
+            offset : value.offset.into(),
+            extent : value.extent.into(),
+        }
+    }
+}
+
+
+
 
 
 /***** DEVICES *****/
@@ -120,6 +325,7 @@ impl From<DeviceKind> for vk::PhysicalDeviceType {
 
 /***** QUEUES *****/
 /// Contains information about the queue families for an instantiated GPU.
+#[derive(Debug)]
 pub struct QueueFamilyInfo {
     /// The index of the queue we're going to use for graphics operations
     pub graphics : u32,
@@ -213,6 +419,7 @@ impl QueueFamilyInfo {
 
 
 /// Implements an iterator over the unique family indices in the QueueFamilyInfo.
+#[derive(Debug)]
 pub struct QueueFamilyInfoUniqueIterator<'a> {
     /// The QueueFamilyInfo over which we iterate
     family_info : &'a QueueFamilyInfo,
@@ -270,6 +477,7 @@ impl<'a> Iterator for QueueFamilyInfoUniqueIterator<'a> {
 
 
 /// Central place where we store the queues of the created logical device.
+#[derive(Debug)]
 pub struct Queues {
     /// The graphics queue
     pub graphics : vk::Queue,
@@ -299,6 +507,7 @@ impl Queues {
 
 /***** SURFACES *****/
 /// Collects information about the SwapchainSupport for this device.
+#[derive(Debug)]
 pub struct SwapchainSupport {
     /// Lists the capabilities of the chosen device/surface combo.
     pub capabilities  : vk::SurfaceCapabilitiesKHR,
@@ -307,6 +516,657 @@ pub struct SwapchainSupport {
     /// Lists the present modes supported by the chosen device/surface combo.
     pub present_modes : Vec<vk::PresentModeKHR>,
 }
+
+
+
+
+
+/***** PIPELINE *****/
+/// Defines the possible layouts for an attribute
+#[derive(Clone, Copy, Debug)]
+pub enum AttributeLayout {
+    /// A three-dimensional vector of 32-bit floating-point numbers
+    Float3,
+}
+
+impl TryFrom<vk::Format> for AttributeLayout {
+    type Error = AttributeLayoutError;
+
+    fn try_from(value: vk::Format) -> Result<Self, Self::Error> {
+        match value {
+            vk::Format::R32G32B32_SFLOAT => Ok(AttributeLayout::Float3),
+            value                        => Err(AttributeLayoutError::IllegalFormatValue{ value }),
+        }
+    }
+}
+
+impl From<AttributeLayout> for vk::Format {
+    fn from(value: AttributeLayout) -> Self {
+        match value {
+            AttributeLayout::Float3 => vk::Format::R32G32B32_SFLOAT,
+        }
+    }
+}
+
+
+
+/// Defines how a single attribute (i.e., field in the Vertex struct) looks like.
+#[derive(Clone, Debug)]
+pub struct VertexAttribute {
+    /// The location in the shader of this attribute (must be arbitrary but unique).
+    pub location : u32,
+    /// The binding (i.e., the Vertex buffer) where this attribute's vertex lives
+    pub binding  : u32,
+    /// Describes the byte layout of this attribute.
+    pub layout   : AttributeLayout,
+    /// Notes where to find the attribute in the parent Vertex struct (offset as bytes)
+    pub offset   : usize,
+}
+
+impl From<vk::VertexInputAttributeDescription> for VertexAttribute {
+    #[inline]
+    fn from(value: vk::VertexInputAttributeDescription) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::VertexInputAttributeDescription> for VertexAttribute {
+    #[inline]
+    fn from(value: &vk::VertexInputAttributeDescription) -> Self {
+        // Simply populate the VertexAttribute via its struct interface
+        Self {
+            location : value.location,
+            binding  : value.binding,
+            layout   : match value.format.try_into() {
+                Ok(layout) => layout,
+                Err(err)   => { panic!("Illegal attribute format: {}", err); }
+            },
+            offset   : value.offset as usize,
+        }
+    }
+}
+
+impl From<VertexAttribute> for vk::VertexInputAttributeDescription {
+    #[inline]
+    fn from(value: VertexAttribute) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&VertexAttribute> for vk::VertexInputAttributeDescription {
+    #[inline]
+    fn from(value: &VertexAttribute) -> Self {
+        // Simply populate the VertexInputAttributeDescription via its struct interface
+        Self {
+            location : value.location,
+            binding  : value.binding,
+            format   : value.layout.into(),
+            offset   : value.offset as u32,
+        }
+    }
+}
+
+
+
+/// Defines how vertices will be read from the buffer (specifically, direct or instanced)
+#[derive(Clone, Copy, Debug)]
+pub enum VertexInputRate {
+    /// Input the vertices as-is
+    Vertex,
+    /// Render instance-based
+    Instance,
+}
+
+impl From<vk::VertexInputRate> for VertexInputRate {
+    #[inline]
+    fn from(value: vk::VertexInputRate) -> Self {
+        match value {
+            vk::VertexInputRate::VERTEX   => VertexInputRate::Vertex,
+            vk::VertexInputRate::INSTANCE => VertexInputRate::Instance,
+            value                         => { panic!("Encountered illegal VkVertexInputRate value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<VertexInputRate> for vk::VertexInputRate {
+    #[inline]
+    fn from(value: VertexInputRate) -> Self {
+        match value {
+            VertexInputRate::Vertex   => vk::VertexInputRate::VERTEX,
+            VertexInputRate::Instance => vk::VertexInputRate::INSTANCE,
+        }
+    }
+}
+
+
+
+/// Defines how a single binding (i.e., vector to a ) looks like.
+#[derive(Clone, Debug)]
+pub struct VertexBinding {
+    /// The binding index of this buffer
+    pub binding : u32,
+    /// The stride, i.e., size of each vertex
+    pub stride  : usize,
+    /// The input rate of the vertices. Concretely, this is either a function of an index or directly reading the vertices from the buffer.
+    pub rate    : VertexInputRate,
+}
+
+impl From<vk::VertexInputBindingDescription> for VertexBinding {
+    #[inline]
+    fn from(value: vk::VertexInputBindingDescription) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::VertexInputBindingDescription> for VertexBinding {
+    #[inline]
+    fn from(value: &vk::VertexInputBindingDescription) -> Self {
+        // Simply populate the VertexBinding via its struct interface
+        Self {
+            binding : value.binding,
+            stride  : value.stride as usize,
+            rate    : value.input_rate.into(),
+        }
+    }
+}
+
+impl From<VertexBinding> for vk::VertexInputBindingDescription {
+    #[inline]
+    fn from(value: VertexBinding) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&VertexBinding> for vk::VertexInputBindingDescription {
+    #[inline]
+    fn from(value: &VertexBinding) -> Self {
+        // Simply populate the VertexInputBindingDescription via its struct interface
+        Self {
+            binding    : value.binding,
+            stride     : value.stride as u32,
+            input_rate : value.rate.into(),
+        }
+    }
+}
+
+
+
+/// Defines the layout of the input vertices given to the pipeline.
+#[derive(Clone, Debug)]
+pub struct VertexInput {
+    /// A list of attributes (as VertexAttribute) of each incoming vertex.
+    pub attributes : Vec<VertexAttribute>,
+    /// A list of bindings (as VertexBinding) of the different Vertex buffers.
+    pub bindings   : Vec<VertexBinding>,
+}
+
+impl From<vk::PipelineVertexInputStateCreateInfo> for VertexInput {
+    fn from(value: vk::PipelineVertexInputStateCreateInfo) -> Self {
+        // Create the two vectors with copies from the vertex attributes
+        let attributes: &[vk::VertexInputAttributeDescription] = unsafe { slice::from_raw_parts(value.p_vertex_attribute_descriptions, value.vertex_attribute_description_count as usize) };
+        let bindings: &[vk::VertexInputBindingDescription]     = unsafe { slice::from_raw_parts(value.p_vertex_binding_descriptions, value.vertex_binding_description_count as usize) };
+
+        // Copy the vectors to our structs
+        let attributes: Vec<VertexAttribute> = attributes.iter().map(|attr| attr.into()).collect();
+        let bindings: Vec<VertexBinding>     = bindings.iter().map(|bind| bind.into()).collect();
+
+        // Return the new instance with these vectors
+        Self {
+            attributes,
+            bindings,
+        }
+    }
+}
+
+impl Into<(vk::PipelineVertexInputStateCreateInfo, (Vec<vk::VertexInputAttributeDescription>, Vec<vk::VertexInputBindingDescription>))> for VertexInput {
+    /// Converts the VertexInputState into a VkPipelineVertexInputStateCreateInfo.
+    /// 
+    /// However, due to the external references made in the VkPipelineVertexInputStateCreateInfo struct, it also returns two vectors that manage the external memory referenced.
+    /// 
+    /// # Returns
+    /// A tuple with:
+    /// - The new VkPipelineVertexInputStateCreateInfo instance
+    /// - A tuple with:
+    ///   - The vector with the attributes
+    ///   - The vector with the bindings
+    fn into(self) -> (vk::PipelineVertexInputStateCreateInfo, (Vec<vk::VertexInputAttributeDescription>, Vec<vk::VertexInputBindingDescription>)) {
+        // Cast the vectors to their Vulkan counterparts
+        let attributes: Vec<vk::VertexInputAttributeDescription> = self.attributes.iter().map(|attr| attr.into()).collect();
+        let bindings: Vec<vk::VertexInputBindingDescription>     = self.bindings.iter().map(|bind| bind.into()).collect();
+
+        // Create the new instance with these vectors
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
+            // Do the standard stuff
+            s_type : vk::StructureType::PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineVertexInputStateCreateFlags::empty(),
+
+            // Add the attributes
+            vertex_attribute_description_count : attributes.len() as u32,
+            p_vertex_attribute_descriptions    : attributes.as_ptr(),
+
+            // Add the bindings
+            vertex_binding_description_count : bindings.len() as u32,
+            p_vertex_binding_descriptions    : bindings.as_ptr(),
+        };
+
+        // Return the struct with its memory managers
+        (vertex_input_state, (attributes, bindings))
+    }
+}
+
+
+
+/// Defines the possible topologies for input vertices.
+#[derive(Clone, Copy, Debug)]
+pub enum VertexTopology {
+    /// The input vertices each define separate points
+    PointList,
+
+    /// The input vertices define a list of separate lines.
+    /// 
+    /// Concretely, every consecutive set of two vertices define a line.
+    LineList,
+    /// The input vertices define a list of consecutive lines.
+    /// 
+    /// Concretely, the first consecutive set of two vertices defines a line. Then, every consecutive new vertex defines a line with the previous vertex.
+    LineStrip,
+    /// The input vertices define a list of separate lines with adjacent points.
+    /// 
+    /// Concretely, every consecutive set of four vertices define a line, drawn between the second and third vertex. The other two are not drawn, but only accessible in the geometry shader.
+    LineListAdjacency,
+    /// The input vertices define a list of consecutive lines with adjacent points.
+    /// 
+    /// Concretely, the very first vertex is skipped. The subsequent consecutive set of two vertices defines a line. Then, every consecutive new vertex defines a line with the previous vertex, except for the last vertex. That and the first vertex are only accessible in the geometry shader.
+    LineStripAdjacency,
+
+    /// The input vertices define a list of separate triangles.
+    /// 
+    /// Concretely, every consecutive set of three vertices define a triangle.
+    TriangleList,
+    /// The input vertices define a list of triangles that share edges.
+    /// 
+    /// Concretely, the first consecutive set of three vertices defines a triangle. Then, every consecutive new vertex defines a triangle with the previous two vertices.
+    TriangleStrip,
+    /// The input vertices define a list of triangles that share a common origin vertex.
+    /// 
+    /// Concretely, the first consecutive set of three vertices defines a triangle. Then, every consecutive set of two vertices defines a triangle with the first vertex in the list.
+    /// 
+    /// Note that this mode might do funky with some sort of portability mode (see https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html#drawing-triangle-fans)
+    TriangleFan,
+    /// The input vertices define a list of separate triangles with adjacent points.
+    /// 
+    /// Concretely, every consecutive set of six vertices define a triangle, drawn between the first, third and fifth vertex. The other three are not drawn, but only accessible in the geometry shader.
+    TriangleListAdjacency,
+    /// The input vertices define a list of triangles that share edges.
+    /// 
+    /// Concretely, the first consecutive set of five vertices defines a triangle, drawn between the first, third and fifth vertex. Then, every consecutive set of two vertices defines a triangle with the the second of those vertices and the previous two (drawn) vertices. The other vertices are not drawn, but only accessible in the geometry shader.
+    TriangleStripAdjacency,
+
+    /// The input vertices define no particular shape.
+    /// 
+    /// Concretely, the vertices are treated to belong to the same shape, and will not be send to vertex post-processing. Instead, they should be used in tessellation to generate renderable primitives.
+    PatchList,
+}
+
+impl From<vk::PrimitiveTopology> for VertexTopology {
+    #[inline]
+    fn from(value: vk::PrimitiveTopology) -> Self {
+        match value {
+            vk::PrimitiveTopology::POINT_LIST => VertexTopology::PointList,
+
+            vk::PrimitiveTopology::LINE_LIST                 => VertexTopology::LineList,
+            vk::PrimitiveTopology::LINE_STRIP                => VertexTopology::LineStrip,
+            vk::PrimitiveTopology::LINE_LIST_WITH_ADJACENCY  => VertexTopology::LineListAdjacency,
+            vk::PrimitiveTopology::LINE_STRIP_WITH_ADJACENCY => VertexTopology::LineStripAdjacency,
+
+            vk::PrimitiveTopology::TRIANGLE_LIST                 => VertexTopology::TriangleList,
+            vk::PrimitiveTopology::TRIANGLE_STRIP                => VertexTopology::TriangleStrip,
+            vk::PrimitiveTopology::TRIANGLE_FAN                  => VertexTopology::TriangleFan,
+            vk::PrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY  => VertexTopology::TriangleListAdjacency,
+            vk::PrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY => VertexTopology::TriangleStripAdjacency,
+
+            vk::PrimitiveTopology::PATCH_LIST => VertexTopology::PatchList,
+
+            value => { panic!("Encountered illegal VkPrimitiveTopology value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<VertexTopology> for vk::PrimitiveTopology {
+    #[inline]
+    fn from(value: VertexTopology) -> Self {
+        match value {
+            VertexTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
+
+            VertexTopology::LineList           => vk::PrimitiveTopology::LINE_LIST,
+            VertexTopology::LineStrip          => vk::PrimitiveTopology::LINE_STRIP,
+            VertexTopology::LineListAdjacency  => vk::PrimitiveTopology::LINE_LIST_WITH_ADJACENCY,
+            VertexTopology::LineStripAdjacency => vk::PrimitiveTopology::LINE_STRIP_WITH_ADJACENCY,
+
+            VertexTopology::TriangleList           => vk::PrimitiveTopology::TRIANGLE_LIST,
+            VertexTopology::TriangleStrip          => vk::PrimitiveTopology::TRIANGLE_STRIP,
+            VertexTopology::TriangleFan            => vk::PrimitiveTopology::TRIANGLE_FAN,
+            VertexTopology::TriangleListAdjacency  => vk::PrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY,
+            VertexTopology::TriangleStripAdjacency => vk::PrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY,
+
+            VertexTopology::PatchList => vk::PrimitiveTopology::PATCH_LIST,
+        }
+    }
+}
+
+
+
+/// Defines how to construct primitives from the input vertices.
+#[derive(Clone, Debug)]
+pub struct VertexAssembly {
+    /// The topology of the input vertices
+    pub topology          : VertexTopology,
+    /// Whether or not a special vertex value is reserved for resetting a primitive mid-way
+    pub restart_primitive : bool,
+}
+
+impl From<vk::PipelineInputAssemblyStateCreateInfo> for VertexAssembly {
+    #[inline]
+    fn from(value: vk::PipelineInputAssemblyStateCreateInfo) -> Self {
+        // Simply use the default struct constructor
+        Self {
+            topology          : value.topology.into(),
+            restart_primitive : value.primitive_restart_enable != 0,
+        }
+    }
+}
+
+impl From<VertexAssembly> for vk::PipelineInputAssemblyStateCreateInfo {
+    #[inline]
+    fn from(value: VertexAssembly) -> Self {
+        // Simply use the default struct constructor
+        Self {
+            // Do the default stuff
+            s_type : vk::StructureType::PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineInputAssemblyStateCreateFlags::empty(),
+
+            // Set the topology and the bool
+            topology                 : value.topology.into(),
+            primitive_restart_enable : value.restart_primitive as u32,
+        }
+    }
+}
+
+
+
+/// Defines the dimensions of a resulting frame.
+#[derive(Clone, Debug)]
+pub struct Viewport {
+    /// The rectangle that defines the viewport's dimensions.
+    /// 
+    /// Note that this will actually be ignored if the viewport is given as a dynamic state.
+    pub viewport : Rect2D<f32>,
+    /// The rectangle that defines any cutoff to the viewport.
+    /// 
+    /// Note that this will actually be ignored if the scissor is given as a dynamic state.
+    pub scissor  : Rect2D<i32, u32>,
+    /// The depth range of the Viewport. Anything that falls outside of it will be clipped.
+    pub depth    : Range<f32>,
+}
+
+impl From<vk::PipelineViewportStateCreateInfo> for Viewport {
+    #[inline]
+    fn from(value: vk::PipelineViewportStateCreateInfo) -> Self {
+        // Make sure the viewport state does not use multiple viewports / scissors
+        if value.viewport_count != 1 || value.scissor_count != 1 { panic!("Encountered VkPipelineViewportStateCreateInfo with multiple viewports and/or scissors"); }
+
+        // Fetch the only viewport and scissor
+        let viewport: vk::Viewport = unsafe { slice::from_raw_parts(value.p_viewports, 1) }[0];
+        let scissor: vk::Rect2D    = unsafe { slice::from_raw_parts(value.p_scissors, 1) }[0];
+
+        // Use the default constructor syntax
+        Self {
+            viewport : Rect2D::new(viewport.x, viewport.y, viewport.width, viewport.height),
+            scissor  : scissor.into(),
+            depth    : viewport.min_depth..viewport.max_depth,
+        }
+    }
+}
+
+impl Into<(vk::PipelineViewportStateCreateInfo, (Box<vk::Viewport>, Box<vk::Rect2D>))> for Viewport {
+    /// Converts the Viewport into a VkPipelineViewportStateCreateInfo.
+    /// 
+    /// However, due to the external references made in the VkPipelineViewportStateCreateInfo struct, it also returns two Boxes that manage the external memory referenced.
+    /// 
+    /// # Returns
+    /// A tuple with:
+    /// - The new VkPipelineViewportStateCreateInfo instance
+    /// - A tuple with:
+    ///   - The Box with the viewport
+    ///   - The Box with the scissor
+    fn into(self) -> (vk::PipelineViewportStateCreateInfo, (Box<vk::Viewport>, Box<vk::Rect2D>)) {
+        // Cast the viewport and scissor to their Vulkan counterparts
+        let viewport: Box<vk::Viewport> = Box::new(vk::Viewport {
+            x         : self.viewport.x(),
+            y         : self.viewport.y(),
+            width     : self.viewport.w(),
+            height    : self.viewport.h(),
+            min_depth : self.depth.start,
+            max_depth : self.depth.end,
+        });
+        let scissor: Box<vk::Rect2D> = Box::new(self.scissor.into());
+
+        // Put the pointers in the new struct to return
+        let result = vk::PipelineViewportStateCreateInfo {
+            // Set the standard fields
+            s_type : vk::StructureType::PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineViewportStateCreateFlags::empty(),
+            
+            // Set the only viewport
+            viewport_count : 1,
+            p_viewports    : &*viewport,
+
+            // Set the only scissor
+            scissor_count : 1,
+            p_scissors    : &*scissor,
+        };
+
+        // Now return the new struct plus its memory manages
+        (result, (viewport, scissor))
+    }
+}
+
+impl From<Viewport> for vk::Viewport {
+    fn from(value: Viewport) -> Self {
+        // Use the default constructor syntax
+        Self {
+            x         : value.viewport.x(),
+            y         : value.viewport.y(),
+            width     : value.viewport.w(),
+            height    : value.viewport.h(),
+            min_depth : value.depth.start,
+            max_depth : value.depth.end,
+        }
+    }
+}
+
+
+
+/// Defines the possible culling modes (i.e., how to discard vertices based on their winding order).
+#[derive(Clone, Copy, Debug)]
+pub enum CullMode {
+    /// Cull vertices that we see from both the front and the back (lol)
+    FrontAndBack,
+    /// Only cull vertices facing us
+    Front,
+    /// Only cull vertices facing away from us
+    Back,
+    /// Do not cull any vertices
+    None,
+}
+
+impl From<vk::CullModeFlags> for CullMode {
+    #[inline]
+    fn from(value: vk::CullModeFlags) -> Self {
+        match value {
+            vk::CullModeFlags::FRONT_AND_BACK => CullMode::FrontAndBack,
+            vk::CullModeFlags::FRONT          => CullMode::Front,
+            vk::CullModeFlags::BACK           => CullMode::Back,
+            vk::CullModeFlags::NONE           => CullMode::None,
+            value                             => { panic!("Encountered illegal VkCullModeFlags value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<CullMode> for vk::CullModeFlags {
+    #[inline]
+    fn from(value: CullMode) -> Self {
+        match value {
+            CullMode::FrontAndBack => vk::CullModeFlags::FRONT_AND_BACK,
+            CullMode::Front        => vk::CullModeFlags::FRONT,
+            CullMode::Back         => vk::CullModeFlags::BACK,
+            CullMode::None         => vk::CullModeFlags::NONE,
+        }
+    }
+}
+
+
+
+/// Defines which winding direction we consider to be 'front'
+#[derive(Clone, Copy, Debug)]
+pub enum FrontFace {
+    /// The clockwise-winded triangles are 'front'
+    Clockwise,
+    /// The counter-clockwise-winded triangles are 'front'
+    CounterClockwise,
+}
+
+impl From<vk::FrontFace> for FrontFace {
+    #[inline]
+    fn from(value: vk::FrontFace) -> Self {
+        match value {
+            vk::FrontFace::CLOCKWISE         => FrontFace::Clockwise,
+            vk::FrontFace::COUNTER_CLOCKWISE => FrontFace::CounterClockwise,
+            value                            => { panic!("Encountered illegal VkFrontFace value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<FrontFace> for vk::FrontFace {
+    #[inline]
+    fn from(value: FrontFace) -> Self {
+        match value {
+            FrontFace::Clockwise        => vk::FrontFace::CLOCKWISE,
+            FrontFace::CounterClockwise => vk::FrontFace::COUNTER_CLOCKWISE,
+        }
+    }
+}
+
+
+
+/// Defines how to draw in-between the vertices
+#[derive(Clone, Copy, Debug)]
+pub enum DrawMode {
+    /// Only draw the points of the primitive shape
+    Point,
+    /// Only draws the countours of the primitive shape
+    Line,
+    /// Fills the entire shape
+    Fill,
+}
+
+impl From<vk::PolygonMode> for DrawMode {
+    #[inline]
+    fn from(value: vk::PolygonMode) -> Self {
+        match value {
+            vk::PolygonMode::POINT => DrawMode::Point,
+            vk::PolygonMode::LINE  => DrawMode::Line,
+            vk::PolygonMode::FILL  => DrawMode::Fill,
+            value                  => { panic!("Encountered illegal VkPolygonMode value '{]'", value); }
+        }
+    }
+}
+
+impl From<DrawMode> for vk::PolygonMode {
+    #[inline]
+    fn from(value: DrawMode) -> vk::PolygonMode {
+        match value {
+            DrawMode::Point => vk::PolygonMode::POINT,
+            DrawMode::Line  => vk::PolygonMode::LINE,
+            DrawMode::Fill  => vk::PolygonMode::FILL,
+        }
+    }
+}
+
+
+
+/// Defines the fixed rasterization stage for a Pipeline.
+#[derive(Clone, Debug)]
+pub struct Rasterization {
+    /// Defines the culling mode for the Rasterization stage
+    pub cull_mode  : CullMode,
+    /// Defines which winding direction we consider to be 'front'
+    pub front_face : FrontFace,
+
+    /// Defines the thickness of the lines drawn by the rasterizer. Note, though, that anything larger than a 1.0f requires a GPU feature
+    pub line_width : f32,
+    /// Defines what to draw in between the vertices
+    pub draw_mode  : DrawMode,
+
+    /// Whether or not to discard the fragments after the rasterizer (lol)
+    pub discard_result : bool,
+
+    /// Whether or not to enable depth clamping
+    pub depth_enable : bool,
+}
+
+impl From<vk::PipelineRasterizationStateCreateInfo> for Rasterization {
+    #[inline]
+    fn from(value: vk::PipelineRasterizationStateCreateInfo) -> Self {
+        // Simply use the default construction syntax
+        Self {
+            cull_mode  : value.cull_mode.into(),
+            front_face : value.front_face.into(),
+
+            line_width : value.line_width,
+            draw_mode  : value.polygon_mode.into(),
+
+            discard_result : value.rasterizer_discard_enable != 0,
+
+            depth_enable : value.depth_bias_enable != 0,
+        }
+    }
+}
+
+impl From<Rasterization> for vk::PipelineRasterizationStateCreateInfo {
+    #[inline]
+    fn from(value: Rasterization) -> Self {
+        // Simply use the default construction syntax
+        Self {
+            // Set the default flags
+            s_type : vk::StructureType::PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineRasterizationStateCreateFlags::empty(),
+
+            // Set the culling mode & associated front face
+            cull_mode  : value.cull_mode.into(),
+            front_face : value.front_face.into(),
+            
+            // Set how to draw the fragments
+            line_width   : value.line_width,
+            polygon_mode : value.draw_mode.into(),
+
+            // Determine whether to keep everything or not (invert that)
+            rasterizer_discard_enable : value.discard_result as u32,
+
+            // Set the depth bias stuff
+            depth_bias_enable : value.depth_enable as u32,
+        }
+    }
+}
+
 
 
 
