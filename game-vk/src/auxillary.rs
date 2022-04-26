@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   23 Apr 2022, 22:20:15
+ *   26 Apr 2022, 22:43:18
  * Auto updated?
  *   Yes
  *
@@ -1084,7 +1084,7 @@ impl From<vk::PolygonMode> for DrawMode {
             vk::PolygonMode::POINT => DrawMode::Point,
             vk::PolygonMode::LINE  => DrawMode::Line,
             vk::PolygonMode::FILL  => DrawMode::Fill,
-            value                  => { panic!("Encountered illegal VkPolygonMode value '{]'", value); }
+            value                  => { panic!("Encountered illegal VkPolygonMode value '{}'", value.as_raw()); }
         }
     }
 }
@@ -1118,8 +1118,17 @@ pub struct Rasterization {
     /// Whether or not to discard the fragments after the rasterizer (lol)
     pub discard_result : bool,
 
-    /// Whether or not to enable depth clamping
-    pub depth_enable : bool,
+    /// Whether to enable depth clamping or not (i.e., clamping objects to a certain depth)
+    pub depth_clamp : bool,
+    /// The value to clamp the depth to (whether upper or lower depends on testing op used)
+    pub clamp_value : f32,
+
+    /// Whether or not to change the depth value before testing and writing
+    pub depth_bias : bool,
+    /// The factor of depth to apply to the depth of each fragment (i.e., scaling)
+    pub depth_factor : f32,
+    /// The factor to apply to the slope(?) of the fragment during depth calculation
+    pub depth_slope  : f32,
 }
 
 impl From<vk::PipelineRasterizationStateCreateInfo> for Rasterization {
@@ -1135,7 +1144,12 @@ impl From<vk::PipelineRasterizationStateCreateInfo> for Rasterization {
 
             discard_result : value.rasterizer_discard_enable != 0,
 
-            depth_enable : value.depth_bias_enable != 0,
+            depth_clamp : value.depth_clamp_enable != 0,
+            clamp_value : value.depth_bias_clamp,
+
+            depth_bias   : value.depth_bias_enable != 0,
+            depth_factor : value.depth_bias_constant_factor,
+            depth_slope  : value.depth_bias_slope_factor,
         }
     }
 }
@@ -1161,8 +1175,230 @@ impl From<Rasterization> for vk::PipelineRasterizationStateCreateInfo {
             // Determine whether to keep everything or not (invert that)
             rasterizer_discard_enable : value.discard_result as u32,
 
+            // Set the depth clamp stuff
+            depth_clamp_enable : value.depth_clamp as u32,
+            depth_bias_clamp   : value.clamp_value,
+
             // Set the depth bias stuff
-            depth_bias_enable : value.depth_enable as u32,
+            depth_bias_enable          : value.depth_bias as u32,
+            depth_bias_constant_factor : value.depth_factor,
+            depth_bias_slope_factor    : value.depth_slope,
+        }
+    }
+}
+
+
+
+/// Defines if and how to multisample for a Pipeline
+#[derive(Clone, Debug)]
+pub struct Multisampling {}
+
+impl From<vk::PipelineMultisampleStateCreateInfo> for Multisampling {
+    #[inline]
+    fn from(_value: vk::PipelineMultisampleStateCreateInfo) -> Self {
+        Self {}
+    }
+}
+
+impl From<Multisampling> for vk::PipelineMultisampleStateCreateInfo {
+    #[inline]
+    fn from(_value: Multisampling) -> Self {
+        Self {
+            // Set the default values
+            s_type : vk::StructureType::PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineMultisampleStateCreateFlags::empty(),
+            
+            // Set the number of samples
+            rasterization_samples : vk::SampleCountFlags::TYPE_1,
+
+            // Set whether to shade the samples
+            sample_shading_enable : vk::FALSE,
+            min_sample_shading    : 0.0,
+
+            // Set a possible mask for the different samples
+            p_sample_mask : ptr::null(),
+
+            // Set some alpha properties for the samples
+            alpha_to_one_enable      : vk::FALSE,
+            alpha_to_coverage_enable : vk::FALSE,
+        }
+    }
+}
+
+
+
+/// Defines possible operations for stencils.
+#[derive(Clone, Copy, Debug)]
+pub enum StencilOp {
+    /// Keeps the fragment (or something else)
+    Keep,
+    /// Sets its value to 0
+    Zero,
+    /// Replaces the fragment with another value
+    Replace,
+    /// Inverts the value of the fragment bitwise
+    Invert,
+
+    /// Increments the value and clamps it to the maximum representable value
+    IncrementClamp,
+    /// Decrements the value and clamps it to 0
+    DecrementClamp,
+
+    /// Increments the value and wraps it around the maximum representable value back to 0
+    IncrementWrap,
+    /// Decrements the value and wraps it around 0 back to the maximum representable value
+    DecrementWrap,
+}
+
+impl From<vk::StencilOp> for StencilOp {
+    #[inline]
+    fn from(value: vk::StencilOp) -> Self {
+        match value {
+            vk::StencilOp::KEEP    => StencilOp::Keep,
+            vk::StencilOp::ZERO    => StencilOp::Zero,
+            vk::StencilOp::REPLACE => StencilOp::Replace,
+            vk::StencilOp::INVERT  => StencilOp::Invert,
+
+            vk::StencilOp::INCREMENT_AND_CLAMP => StencilOp::IncrementClamp,
+            vk::StencilOp::DECREMENT_AND_CLAMP => StencilOp::DecrementClamp,
+
+            vk::StencilOp::INCREMENT_AND_WRAP => StencilOp::IncrementWrap,
+            vk::StencilOp::DECREMENT_AND_WRAP => StencilOp::DecrementWrap,
+
+            value => { panic!("Encountered illegal VkStencilOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<StencilOp> for vk::StencilOp {
+    #[inline]
+    fn from(value: StencilOp) -> Self {
+        match value {
+            StencilOp::Keep    => vk::StencilOp::KEEP,
+            StencilOp::Zero    => vk::StencilOp::ZERO,
+            StencilOp::Replace => vk::StencilOp::REPLACE,
+            StencilOp::Invert  => vk::StencilOp::INVERT,
+
+            StencilOp::IncrementClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
+            StencilOp::DecrementClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
+
+            StencilOp::IncrementWrap => vk::StencilOp::INCREMENT_AND_WRAP,
+            StencilOp::DecrementWrap => vk::StencilOp::DECREMENT_AND_WRAP,
+        }
+    }
+}
+
+
+
+/// Defines possible comparison operations.
+#[derive(Clone, Copy, Debug)]
+pub enum CompareOp {
+    /// The comparison always succeeds
+    Always,
+    /// The comparison never succeeds (always fails)
+    Never,
+
+    /// The comparison succeeds iff A < B
+    Less,
+    /// The comparison succeeds iff A <= B
+    LessEq,
+    /// The comparison succeeds iff A > B
+    Greater,
+    /// The comparison succeeds iff A >= B
+    GreaterEq,
+    /// The comparison succeeds iff A == B
+    Equal,
+    /// The comparison succeeds iff A != B
+    NotEqual,
+}
+
+impl From<vk::CompareOp> for CompareOp {
+    #[inline]
+    fn from(value: vk::CompareOp) -> Self {
+        match value {
+            vk::CompareOp::ALWAYS => CompareOp::Always,
+            vk::CompareOp::NEVER  => CompareOp::Never,
+
+            vk::CompareOp::LESS             => CompareOp::Less,
+            vk::CompareOp::LESS_OR_EQUAL    => CompareOp::LessEq,
+            vk::CompareOp::GREATER          => CompareOp::Greater,
+            vk::CompareOp::GREATER_OR_EQUAL => CompareOp::GreaterEq,
+            vk::CompareOp::EQUAL            => CompareOp::Equal,
+            vk::CompareOp::NOT_EQUAL        => CompareOp::NotEqual,
+
+            value => { panic!("Encountered illegal VkCompareOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<CompareOp> for vk::CompareOp {
+    #[inline]
+    fn from(value: CompareOp) -> Self {
+        match value {
+            CompareOp::Always => vk::CompareOp::ALWAYS,
+            CompareOp::Never  => vk::CompareOp::NEVER,
+
+            CompareOp::Less      => vk::CompareOp::LESS,
+            CompareOp::LessEq    => vk::CompareOp::LESS_OR_EQUAL,
+            CompareOp::Greater   => vk::CompareOp::GREATER,
+            CompareOp::GreaterEq => vk::CompareOp::GREATER_OR_EQUAL,
+            CompareOp::Equal     => vk::CompareOp::EQUAL,
+            CompareOp::NotEqual  => vk::CompareOp::NOT_EQUAL,
+        }
+    }
+}
+
+
+
+/// Defines how to interact with a given stencil
+#[derive(Clone, Debug)]
+pub struct StencilOps {
+    /// Defines what to do if the stencil test fails
+    pub on_stencil_fail : StencilOp,
+    /// Defines what to do if the depth test fails
+    pub on_depth_fail   : StencilOp,
+    /// Defines what to do if the stencil test and depth test succeed
+    pub on_success      : StencilOp,
+
+    /// Defines the operator used in the stencil test
+    pub compare_op   : CompareOp,
+    /// Defines the mask to apply to value that are considered during the test
+    pub compare_mask : u32,
+    /// Defines the mask to apply when writing a victorious value
+    pub write_mask   : u32,
+    /// The integer reference that is used during the stencil test
+    pub reference    : u32,
+}
+
+impl From<vk::StencilOpState> for StencilOps {
+    #[inline]
+    fn from(value: vk::StencilOpState) -> Self {
+        Self {
+            on_stencil_fail : value.fail_op.into(),
+            on_depth_fail   : value.depth_fail_op.into(),
+            on_success      : value.pass_op.into(),
+
+            compare_op   : value.compare_op.into(),
+            compare_mask : value.compare_mask,
+            write_mask   : value.write_mask,
+            reference    : value.reference,
+        }
+    }
+}
+
+impl From<StencilOps> for vk::StencilOpState {
+    #[inline]
+    fn from(value: StencilOps) -> Self {
+        Self {
+            fail_op       : value.on_stencil_fail.into(),
+            depth_fail_op : value.on_depth_fail.into(),
+            pass_op       : value.on_success.into(),
+
+            compare_op   : value.compare_op.into(),
+            compare_mask : value.compare_mask,
+            write_mask   : value.write_mask,
+            reference    : value.reference,
         }
     }
 }

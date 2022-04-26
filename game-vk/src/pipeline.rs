@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   23 Apr 2022, 21:55:06
+ *   26 Apr 2022, 22:22:23
  * Auto updated?
  *   Yes
  *
@@ -18,7 +18,7 @@ use ash::vk;
 use log::{debug, warn};
 
 pub use crate::errors::PipelineError as Error;
-pub use crate::auxillary::{VertexAssembly, VertexInput, VertexTopology, Viewport};
+pub use crate::auxillary::{Multisampling, Rasterization, VertexAssembly, VertexInput, VertexTopology, Viewport};
 
 
 /***** LIBRARY *****/
@@ -40,9 +40,13 @@ pub struct PipelineBuilder {
 
     // Non-default stuff
     /// Describes how the input vertices look like.
-    vertex_input : Option<VertexInput>,
+    vertex_input  : Option<VertexInput>,
     /// Describes the output images dimensions, cutoff and depth.
-    viewport     : Option<Viewport>,
+    viewport      : Option<Viewport>,
+    /// Describes the rasterization stage
+    rasterization : Option<Rasterization>,
+    /// Describes the multisample stage
+    multisampling : Option<Multisampling>,
 }
 
 impl PipelineBuilder {
@@ -65,8 +69,10 @@ impl PipelineBuilder {
                 restart_primitive : false,
             },
 
-            vertex_input : None,
-            viewport     : None,
+            vertex_input  : None,
+            viewport      : None,
+            rasterization : None,
+            multisampling : None,
         }
     }
 
@@ -182,6 +188,44 @@ impl PipelineBuilder {
 
         // Done, return us again
         debug!("Defined non-default viewport state");
+        self
+    }
+
+    /// Defines the configuration of the rasterization stage.
+    /// 
+    /// This is one of the non-default functions that must always be called to define the input (unless from_pipeline() is used as constructor or set_pipeline() is called).
+    /// 
+    /// # Arguments
+    /// - `info`: The new Rasterization struct that describes the config.
+    /// 
+    /// # Returns
+    /// Because this function is consuming, returns the same instance of self as passed to it.
+    /// 
+    /// # Errors
+    /// This function doesn't error directly, but may pass any incoming errors to the build() call.
+    pub fn rasterization(mut self, info: Rasterization) -> Self {
+        // Set the state
+        self.rasterization = Some(info);
+
+        // Done, return us again
+        debug!("Defined non-default rasterization state");
+        self
+    }
+
+    /// Define a non-default configuration of how to multisample.
+    /// 
+    /// By default, no multisampling is used.
+    /// 
+    /// # Arguments
+    /// - `info`: The new Multisampling struct that describes the config.
+    /// 
+    /// # Returns
+    /// Because this function is consuming, returns the same instance of self as passed to it.
+    /// 
+    /// # Errors
+    /// This function doesn't error directly, but may pass any incoming errors to the build() call.
+    pub fn multisampling(self, _info: Multisampling) -> Self {
+        warn!("Called useless PipelineBuilder::multisampling() function");
         self
     }
 }
