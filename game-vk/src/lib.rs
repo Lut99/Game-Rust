@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   23 Apr 2022, 17:28:12
+ *   27 Apr 2022, 12:32:52
  * Auto updated?
  *   Yes
  *
@@ -26,8 +26,14 @@ pub mod surface;
 pub mod swapchain;
 /// The module for the shaders
 pub mod shader;
+/// The module for descriptor layouts and sets
+pub mod descriptors;
+/// The module for the pipeline layout
+pub mod layout;
 /// The module for the pipeline
 pub mod pipeline;
+/// The module for the various pools
+pub mod pools;
 /// The module for the images & image views
 pub mod image;
 

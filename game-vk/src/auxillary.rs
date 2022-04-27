@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   26 Apr 2022, 22:43:18
+ *   27 Apr 2022, 12:28:02
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,7 @@
 
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FResult};
-use std::ops::Range;
+use std::ops::{BitOr, BitOrAssign, Range};
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
@@ -520,6 +520,227 @@ pub struct SwapchainSupport {
 
 
 
+/***** SHADERS *****/
+/// The ShaderStage where a shader or a resource lives.
+#[derive(Clone, Copy, Debug)]
+pub struct ShaderStage(u16);
+
+impl ShaderStage {
+    /// A ShaderStage that hits all stages
+    pub const ALL: Self   = Self(0xFFFF);
+    /// A ShaderStage that hits all graphics stages
+    pub const ALL_GRAPHICS: Self   = Self(0x001F);
+    /// An empty ShaderStage
+    pub const EMPTY: Self = Self(0x0000);
+
+    /// The Vertex stage
+    pub const VERTEX: Self                 = Self(0x0001);
+    /// The control stage of the Tesselation stage
+    pub const TESSELLATION_CONTROL: Self    = Self(0x0002);
+    /// The evaluation stage of the Tesselation stage
+    pub const TESSELLATION_EVALUATION: Self = Self(0x0004);
+    /// The Geometry stage
+    pub const GEOMETRY: Self               = Self(0x0008);
+    /// The Fragment stage
+    pub const FRAGMENT: Self               = Self(0x0010);
+    /// The Compute stage
+    pub const COMPUTE: Self                = Self(0x0020);
+
+
+    /// Returns whether the given ShaderStage is a subset of this one.
+    /// 
+    /// # Arguments
+    /// - `value`: The ShaderStage that should be a subset of this one. For example, if value is Self::VERTEX, then returns true if the Vertex shader stage was enabled in this ShaderStage.
+    #[inline]
+    pub fn check(&self, other: ShaderStage) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for ShaderStage {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for ShaderStage {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl From<vk::ShaderStageFlags> for ShaderStage {
+    #[inline]
+    fn from(value: vk::ShaderStageFlags) -> Self {
+        // Construct it manually for portability
+        let mut result = ShaderStage::EMPTY;
+        if (value & vk::ShaderStageFlags::VERTEX).as_raw() != 0 { result |= ShaderStage::VERTEX; }
+        if (value & vk::ShaderStageFlags::TESSELLATION_CONTROL).as_raw() != 0 { result |= ShaderStage::TESSELLATION_CONTROL; }
+        if (value & vk::ShaderStageFlags::TESSELLATION_EVALUATION).as_raw() != 0 { result |= ShaderStage::TESSELLATION_EVALUATION; }
+        if (value & vk::ShaderStageFlags::GEOMETRY).as_raw() != 0 { result |= ShaderStage::GEOMETRY; }
+        if (value & vk::ShaderStageFlags::FRAGMENT).as_raw() != 0 { result |= ShaderStage::FRAGMENT; }
+        if (value & vk::ShaderStageFlags::COMPUTE).as_raw() != 0 { result |= ShaderStage::COMPUTE; }
+
+        // Return it
+        result
+    }
+}
+
+impl From<ShaderStage> for vk::ShaderStageFlags {
+    fn from(value: ShaderStage) -> Self {
+        // Construct it manually due to private constructors ;(
+        let mut result = vk::ShaderStageFlags::empty();
+        if value.check(ShaderStage::VERTEX) { result |= vk::ShaderStageFlags::VERTEX; }
+        if value.check(ShaderStage::TESSELLATION_CONTROL) { result |= vk::ShaderStageFlags::TESSELLATION_CONTROL; }
+        if value.check(ShaderStage::TESSELLATION_EVALUATION) { result |= vk::ShaderStageFlags::TESSELLATION_EVALUATION; }
+        if value.check(ShaderStage::GEOMETRY) { result |= vk::ShaderStageFlags::GEOMETRY; }
+        if value.check(ShaderStage::FRAGMENT) { result |= vk::ShaderStageFlags::FRAGMENT; }
+        if value.check(ShaderStage::COMPUTE) { result |= vk::ShaderStageFlags::COMPUTE; }
+
+        // Return it
+        result
+    }
+}
+
+
+
+
+
+/***** DESCRIPTOR SETS / LAYOUTS *****/
+/// Defines the possible Descriptor types.
+#[derive(Clone, Copy, Debug)]
+pub enum DescriptorKind {
+    /// Describes a uniform buffer.
+    UniformBuffer,
+    /// Describes a storage buffer.
+    StorageBuffer, 
+    /// Describes a dynamic uniform buffer.
+    UniformDynamicBuffer,
+    /// Describes a dynamic storage buffer.
+    StorageDynamicBuffer, 
+    /// Describes a uniform texel buffer.
+    UniformTexelBuffer,
+    /// Describes a storage texel buffer.
+    StorageTexelBuffer, 
+
+    /// Describes an input attachment.
+    InputAttachment,
+    /// Describes a single storage image.
+    StorageImage,
+    /// Describes a single, sampled image.
+    SampledImage,
+
+    /// Describes a texture sampler.
+    Sampler,
+    /// Describes a combined image sampler.
+    CombindImageSampler,
+}
+
+impl From<vk::DescriptorType> for DescriptorKind {
+    #[inline]
+    fn from(value: vk::DescriptorType) -> Self {
+        match value {
+            vk::DescriptorType::UNIFORM_BUFFER         => DescriptorKind::UniformBuffer,
+            vk::DescriptorType::STORAGE_BUFFER         => DescriptorKind::StorageBuffer,
+            vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC => DescriptorKind::UniformDynamicBuffer,
+            vk::DescriptorType::STORAGE_BUFFER_DYNAMIC => DescriptorKind::StorageDynamicBuffer,
+            vk::DescriptorType::UNIFORM_TEXEL_BUFFER   => DescriptorKind::UniformTexelBuffer,
+            vk::DescriptorType::STORAGE_TEXEL_BUFFER   => DescriptorKind::StorageTexelBuffer,
+
+            vk::DescriptorType::INPUT_ATTACHMENT => DescriptorKind::InputAttachment,
+            vk::DescriptorType::STORAGE_IMAGE    => DescriptorKind::StorageImage,
+            vk::DescriptorType::SAMPLED_IMAGE    => DescriptorKind::SampledImage,
+
+            vk::DescriptorType::SAMPLER                => DescriptorKind::Sampler,
+            vk::DescriptorType::COMBINED_IMAGE_SAMPLER => DescriptorKind::CombindImageSampler,
+
+            value => { panic!("Encountered illegal VkDescriptorType value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<DescriptorKind> for vk::DescriptorType {
+    #[inline]
+    fn from(value: DescriptorKind) -> Self {
+        match value {
+            DescriptorKind::UniformBuffer        => vk::DescriptorType::UNIFORM_BUFFER,
+            DescriptorKind::StorageBuffer        => vk::DescriptorType::STORAGE_BUFFER,
+            DescriptorKind::UniformDynamicBuffer => vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+            DescriptorKind::StorageDynamicBuffer => vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+            DescriptorKind::UniformTexelBuffer   => vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+            DescriptorKind::StorageTexelBuffer   => vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+
+            DescriptorKind::InputAttachment => vk::DescriptorType::INPUT_ATTACHMENT,
+            DescriptorKind::StorageImage    => vk::DescriptorType::STORAGE_IMAGE,
+            DescriptorKind::SampledImage    => vk::DescriptorType::SAMPLED_IMAGE,
+
+            DescriptorKind::Sampler             => vk::DescriptorType::SAMPLER,
+            DescriptorKind::CombindImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+        }
+    }
+}
+
+
+
+/// Defines a single binding for the DescriptorSetLayout
+#[derive(Clone, Debug)]
+pub struct DescriptorBinding {
+    /// The binding index of this binding (for use in shaders).
+    pub binding : u32,
+    /// The type of this binding.
+    pub kind    : DescriptorKind,
+    /// The shader stage where this binding is bound to.
+    pub stage   : ShaderStage,
+    /// The number of descriptors in this binding.
+    pub count   : u32,
+}
+
+impl From<vk::DescriptorSetLayoutBinding> for DescriptorBinding {
+    #[inline]
+    fn from(value: vk::DescriptorSetLayoutBinding) -> Self {
+        // Use the reference one instead
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::DescriptorSetLayoutBinding> for DescriptorBinding {
+    #[inline]
+    fn from(value: &vk::DescriptorSetLayoutBinding) -> Self {
+        Self {
+            binding : value.binding,
+            kind    : value.descriptor_type.into(),
+            stage   : value.stage_flags.into(),
+            count   : value.descriptor_count,
+        }
+    }
+}
+
+impl From<DescriptorBinding> for vk::DescriptorSetLayoutBinding {
+    #[inline]
+    fn from(value: DescriptorBinding) -> Self {
+        // Use the reference one instead
+        Self::from(&value)
+    }
+}
+
+impl From<&DescriptorBinding> for vk::DescriptorSetLayoutBinding {
+    #[inline]
+    fn from(value: &DescriptorBinding) -> Self {
+        Self {
+            binding              : value.binding,
+            descriptor_type      : value.kind.into(),
+            stage_flags          : value.stage.into(),
+            descriptor_count     : value.count,
+            p_immutable_samplers : ptr::null(),
+        }
+    }
+}
+
+
+
+
 
 /***** PIPELINE *****/
 /// Defines the possible layouts for an attribute
@@ -697,15 +918,15 @@ impl From<&VertexBinding> for vk::VertexInputBindingDescription {
 
 /// Defines the layout of the input vertices given to the pipeline.
 #[derive(Clone, Debug)]
-pub struct VertexInput {
+pub struct VertexInputState {
     /// A list of attributes (as VertexAttribute) of each incoming vertex.
     pub attributes : Vec<VertexAttribute>,
     /// A list of bindings (as VertexBinding) of the different Vertex buffers.
     pub bindings   : Vec<VertexBinding>,
 }
 
-impl From<vk::PipelineVertexInputStateCreateInfo> for VertexInput {
-    fn from(value: vk::PipelineVertexInputStateCreateInfo) -> Self {
+impl From<&vk::PipelineVertexInputStateCreateInfo> for VertexInputState {
+    fn from(value: &vk::PipelineVertexInputStateCreateInfo) -> Self {
         // Create the two vectors with copies from the vertex attributes
         let attributes: &[vk::VertexInputAttributeDescription] = unsafe { slice::from_raw_parts(value.p_vertex_attribute_descriptions, value.vertex_attribute_description_count as usize) };
         let bindings: &[vk::VertexInputBindingDescription]     = unsafe { slice::from_raw_parts(value.p_vertex_binding_descriptions, value.vertex_binding_description_count as usize) };
@@ -722,7 +943,7 @@ impl From<vk::PipelineVertexInputStateCreateInfo> for VertexInput {
     }
 }
 
-impl Into<(vk::PipelineVertexInputStateCreateInfo, (Vec<vk::VertexInputAttributeDescription>, Vec<vk::VertexInputBindingDescription>))> for VertexInput {
+impl Into<(vk::PipelineVertexInputStateCreateInfo, (Vec<vk::VertexInputAttributeDescription>, Vec<vk::VertexInputBindingDescription>))> for VertexInputState {
     /// Converts the VertexInputState into a VkPipelineVertexInputStateCreateInfo.
     /// 
     /// However, due to the external references made in the VkPipelineVertexInputStateCreateInfo struct, it also returns two vectors that manage the external memory referenced.
@@ -863,14 +1084,14 @@ impl From<VertexTopology> for vk::PrimitiveTopology {
 
 /// Defines how to construct primitives from the input vertices.
 #[derive(Clone, Debug)]
-pub struct VertexAssembly {
+pub struct VertexAssemblyState {
     /// The topology of the input vertices
     pub topology          : VertexTopology,
     /// Whether or not a special vertex value is reserved for resetting a primitive mid-way
     pub restart_primitive : bool,
 }
 
-impl From<vk::PipelineInputAssemblyStateCreateInfo> for VertexAssembly {
+impl From<vk::PipelineInputAssemblyStateCreateInfo> for VertexAssemblyState {
     #[inline]
     fn from(value: vk::PipelineInputAssemblyStateCreateInfo) -> Self {
         // Simply use the default struct constructor
@@ -881,9 +1102,9 @@ impl From<vk::PipelineInputAssemblyStateCreateInfo> for VertexAssembly {
     }
 }
 
-impl From<VertexAssembly> for vk::PipelineInputAssemblyStateCreateInfo {
+impl From<VertexAssemblyState> for vk::PipelineInputAssemblyStateCreateInfo {
     #[inline]
-    fn from(value: VertexAssembly) -> Self {
+    fn from(value: VertexAssemblyState) -> Self {
         // Simply use the default struct constructor
         Self {
             // Do the default stuff
@@ -902,7 +1123,7 @@ impl From<VertexAssembly> for vk::PipelineInputAssemblyStateCreateInfo {
 
 /// Defines the dimensions of a resulting frame.
 #[derive(Clone, Debug)]
-pub struct Viewport {
+pub struct ViewportState {
     /// The rectangle that defines the viewport's dimensions.
     /// 
     /// Note that this will actually be ignored if the viewport is given as a dynamic state.
@@ -915,9 +1136,9 @@ pub struct Viewport {
     pub depth    : Range<f32>,
 }
 
-impl From<vk::PipelineViewportStateCreateInfo> for Viewport {
+impl From<&vk::PipelineViewportStateCreateInfo> for ViewportState {
     #[inline]
-    fn from(value: vk::PipelineViewportStateCreateInfo) -> Self {
+    fn from(value: &vk::PipelineViewportStateCreateInfo) -> Self {
         // Make sure the viewport state does not use multiple viewports / scissors
         if value.viewport_count != 1 || value.scissor_count != 1 { panic!("Encountered VkPipelineViewportStateCreateInfo with multiple viewports and/or scissors"); }
 
@@ -934,7 +1155,7 @@ impl From<vk::PipelineViewportStateCreateInfo> for Viewport {
     }
 }
 
-impl Into<(vk::PipelineViewportStateCreateInfo, (Box<vk::Viewport>, Box<vk::Rect2D>))> for Viewport {
+impl Into<(vk::PipelineViewportStateCreateInfo, (Box<vk::Viewport>, Box<vk::Rect2D>))> for ViewportState {
     /// Converts the Viewport into a VkPipelineViewportStateCreateInfo.
     /// 
     /// However, due to the external references made in the VkPipelineViewportStateCreateInfo struct, it also returns two Boxes that manage the external memory referenced.
@@ -978,8 +1199,8 @@ impl Into<(vk::PipelineViewportStateCreateInfo, (Box<vk::Viewport>, Box<vk::Rect
     }
 }
 
-impl From<Viewport> for vk::Viewport {
-    fn from(value: Viewport) -> Self {
+impl From<ViewportState> for vk::Viewport {
+    fn from(value: ViewportState) -> Self {
         // Use the default constructor syntax
         Self {
             x         : value.viewport.x(),
@@ -1104,7 +1325,7 @@ impl From<DrawMode> for vk::PolygonMode {
 
 /// Defines the fixed rasterization stage for a Pipeline.
 #[derive(Clone, Debug)]
-pub struct Rasterization {
+pub struct RasterizerState {
     /// Defines the culling mode for the Rasterization stage
     pub cull_mode  : CullMode,
     /// Defines which winding direction we consider to be 'front'
@@ -1131,7 +1352,7 @@ pub struct Rasterization {
     pub depth_slope  : f32,
 }
 
-impl From<vk::PipelineRasterizationStateCreateInfo> for Rasterization {
+impl From<vk::PipelineRasterizationStateCreateInfo> for RasterizerState {
     #[inline]
     fn from(value: vk::PipelineRasterizationStateCreateInfo) -> Self {
         // Simply use the default construction syntax
@@ -1154,9 +1375,9 @@ impl From<vk::PipelineRasterizationStateCreateInfo> for Rasterization {
     }
 }
 
-impl From<Rasterization> for vk::PipelineRasterizationStateCreateInfo {
+impl From<RasterizerState> for vk::PipelineRasterizationStateCreateInfo {
     #[inline]
-    fn from(value: Rasterization) -> Self {
+    fn from(value: RasterizerState) -> Self {
         // Simply use the default construction syntax
         Self {
             // Set the default flags
@@ -1191,18 +1412,18 @@ impl From<Rasterization> for vk::PipelineRasterizationStateCreateInfo {
 
 /// Defines if and how to multisample for a Pipeline
 #[derive(Clone, Debug)]
-pub struct Multisampling {}
+pub struct MultisampleState {}
 
-impl From<vk::PipelineMultisampleStateCreateInfo> for Multisampling {
+impl From<vk::PipelineMultisampleStateCreateInfo> for MultisampleState {
     #[inline]
     fn from(_value: vk::PipelineMultisampleStateCreateInfo) -> Self {
         Self {}
     }
 }
 
-impl From<Multisampling> for vk::PipelineMultisampleStateCreateInfo {
+impl From<MultisampleState> for vk::PipelineMultisampleStateCreateInfo {
     #[inline]
-    fn from(_value: Multisampling) -> Self {
+    fn from(_value: MultisampleState) -> Self {
         Self {
             // Set the default values
             s_type : vk::StructureType::PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -1351,9 +1572,9 @@ impl From<CompareOp> for vk::CompareOp {
 
 
 
-/// Defines how to interact with a given stencil
+/// Defines how to interact with a given stencil.
 #[derive(Clone, Debug)]
-pub struct StencilOps {
+pub struct StencilOpState {
     /// Defines what to do if the stencil test fails
     pub on_stencil_fail : StencilOp,
     /// Defines what to do if the depth test fails
@@ -1371,7 +1592,7 @@ pub struct StencilOps {
     pub reference    : u32,
 }
 
-impl From<vk::StencilOpState> for StencilOps {
+impl From<vk::StencilOpState> for StencilOpState {
     #[inline]
     fn from(value: vk::StencilOpState) -> Self {
         Self {
@@ -1387,9 +1608,9 @@ impl From<vk::StencilOpState> for StencilOps {
     }
 }
 
-impl From<StencilOps> for vk::StencilOpState {
+impl From<StencilOpState> for vk::StencilOpState {
     #[inline]
-    fn from(value: StencilOps) -> Self {
+    fn from(value: StencilOpState) -> Self {
         Self {
             fail_op       : value.on_stencil_fail.into(),
             depth_fail_op : value.on_depth_fail.into(),
@@ -1399,6 +1620,672 @@ impl From<StencilOps> for vk::StencilOpState {
             compare_mask : value.compare_mask,
             write_mask   : value.write_mask,
             reference    : value.reference,
+        }
+    }
+}
+
+
+
+
+/// Defines if a depth stencil is present in the Pipeline and how.
+#[derive(Clone, Debug)]
+pub struct DepthTestingState {
+    /// Whether to enable depth testing
+    pub enable_depth   : bool,
+    /// Whether to enable depth writing (only if `enable_depth` is true).
+    pub enable_write   : bool,
+    /// Whether to enable normal stencil testing
+    pub enable_stencil : bool,
+    /// Whether to enable depth bounds testing
+    pub enable_bounds : bool,
+
+    /// The compare operation to perform when testing the depth
+    pub compare_op    : CompareOp,
+
+    /// The properties of the stencil test before the depth testing
+    pub pre_stencil_test : StencilOpState,
+    /// The properties of the stencil test after the depth testing
+    pub post_stencil_test : StencilOpState,
+
+    /// The minimum depth bound used in the depth bounds test
+    pub min_bound : f32,
+    /// The maximum depth bound used in the depth bounds test
+    pub max_bound : f32,
+}
+
+impl From<vk::PipelineDepthStencilStateCreateInfo> for DepthTestingState {
+    #[inline]
+    fn from(value: vk::PipelineDepthStencilStateCreateInfo) -> Self {
+        Self {
+            enable_depth   : value.depth_test_enable != 0,
+            enable_write   : value.depth_write_enable != 0,
+            enable_stencil : value.stencil_test_enable != 0,
+            enable_bounds  : value.depth_bounds_test_enable != 0,
+
+            compare_op : value.depth_compare_op.into(),
+
+            pre_stencil_test  : value.front.into(),
+            post_stencil_test : value.back.into(),
+
+            min_bound : value.min_depth_bounds,
+            max_bound : value.max_depth_bounds,
+        }
+    }
+}
+
+impl From<DepthTestingState> for vk::PipelineDepthStencilStateCreateInfo {
+    #[inline]
+    fn from(value: DepthTestingState) -> Self {
+        Self {
+            // Do the default stuff
+            s_type : vk::StructureType::PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineDepthStencilStateCreateFlags::empty(),
+
+            // Define which tests to enable
+            depth_test_enable        : value.enable_depth as u32,
+            depth_write_enable       : value.enable_write as u32,
+            stencil_test_enable      : value.enable_stencil as u32,
+            depth_bounds_test_enable : value.enable_bounds as u32,
+
+            // Define the compare operation for the depth test
+            depth_compare_op : value.compare_op.into(),
+
+            // Define the stencil test states
+            front : value.pre_stencil_test.into(),
+            back  : value.post_stencil_test.into(),
+
+            // Define the bounds for the bounds test
+            min_depth_bounds : value.min_bound,
+            max_depth_bounds : value.max_bound,
+        }
+    }
+}
+
+
+
+/// Defines logic operations to perform.
+#[derive(Clone, Copy, Debug)]
+pub enum LogicOp {
+    /// Leaves the destination as-is (`d = d`)
+    NoOp,
+    /// Set the bits of the destination to 0 (`d = 0`)
+    Clear,
+    /// Set the bits of the destination to 1 (`d = ~0`)
+    Set,
+    /// Copies the bits of the source to the destination (`d = s`)
+    Copy,
+    /// Copies the bits of the source after negating them (`d = ~s`)
+    CopyInv,
+
+    /// Negates the destination (`d = ~d`)
+    Not,
+
+    /// Performs a bitwise-AND (`d = s & d`)
+    And,
+    /// Performs a bitwise-AND, negating the source (`d = ~s & d`)
+    AndInv,
+    /// Performs a bitwise-AND, negating the destination (`d = s & ~d`)
+    AndRev,
+    /// Performs a negated bitwise-AND (`d = ~(s & d)`)
+    NAnd,
+
+    /// Performs a bitwise-XOR (`d = s ^ d`)
+    Xor,
+    /// Performs a negated bitwise-XOR (`d = ~(s ^ d)`)
+    NXor,
+
+    /// Performs a bitwise-OR (`d = s | d`)
+    Or,
+    /// Performs a bitwise-OR, negating the source (`d = ~s | d`)
+    OrInv,
+    /// Performs a bitwise-OR, negating the destination (`d = s | ~d`)
+    OrRev,
+    /// Performs a negated bitwise-OR (`d = ~(s | d)`)
+    NOr,
+}
+
+impl From<vk::LogicOp> for LogicOp {
+    #[inline]
+    fn from(value: vk::LogicOp) -> Self {
+        match value {
+            vk::LogicOp::NO_OP         => LogicOp::NoOp,
+            vk::LogicOp::CLEAR         => LogicOp::Clear,
+            vk::LogicOp::SET           => LogicOp::Set,
+            vk::LogicOp::COPY          => LogicOp::Copy,
+            vk::LogicOp::COPY_INVERTED => LogicOp::CopyInv,
+
+            vk::LogicOp::INVERT => LogicOp::Not,
+
+            vk::LogicOp::AND          => LogicOp::And,
+            vk::LogicOp::AND_INVERTED => LogicOp::AndInv,
+            vk::LogicOp::AND_REVERSE  => LogicOp::AndRev,
+            vk::LogicOp::NAND         => LogicOp::NAnd,
+
+            vk::LogicOp::XOR        => LogicOp::Xor,
+            vk::LogicOp::EQUIVALENT => LogicOp::NXor,
+
+            vk::LogicOp::OR          => LogicOp::Or,
+            vk::LogicOp::OR_INVERTED => LogicOp::OrInv,
+            vk::LogicOp::OR_REVERSE  => LogicOp::OrRev,
+            vk::LogicOp::NOR         => LogicOp::NOr,
+
+            _ => { panic!("Encountered illegal VkLogicOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<LogicOp> for vk::LogicOp {
+    #[inline]
+    fn from(value: LogicOp) -> Self {
+        match value {
+            LogicOp::NoOp    => vk::LogicOp::NO_OP,
+            LogicOp::Clear   => vk::LogicOp::CLEAR,
+            LogicOp::Set     => vk::LogicOp::SET,
+            LogicOp::Copy    => vk::LogicOp::COPY,
+            LogicOp::CopyInv => vk::LogicOp::COPY_INVERTED,
+
+            LogicOp::Not => vk::LogicOp::INVERT,
+
+            LogicOp::And    => vk::LogicOp::AND,
+            LogicOp::AndInv => vk::LogicOp::AND_INVERTED,
+            LogicOp::AndRev => vk::LogicOp::AND_REVERSE,
+            LogicOp::NAnd   => vk::LogicOp::NAND,
+
+            LogicOp::Xor  => vk::LogicOp::XOR,
+            LogicOp::NXor => vk::LogicOp::EQUIVALENT,
+
+            LogicOp::Or    => vk::LogicOp::OR,
+            LogicOp::OrInv => vk::LogicOp::OR_INVERTED,
+            LogicOp::OrRev => vk::LogicOp::OR_REVERSE,
+            LogicOp::NOr   => vk::LogicOp::NOR,
+        }
+    }
+}
+
+
+
+/// Defines the factor of some value to take in a blending operation.
+#[derive(Clone, Copy, Debug)]
+pub enum BlendFactor {
+    /// Use none of the colour (`(0.0, 0.0, 0.0, 0.0)`)
+    Zero,
+    /// Use all of the colour (`(1.0, 1.0, 1.0, 1.0)`)
+    One,
+
+    /// Use the source colour as the factor in blending (`(Rs, Gs, Bs, As)`)
+    SrcColour,
+    /// Use one minus the source colour as the factor in blending (`(1.0 - Rs, 1.0 - Gs, 1.0 - Bs, 1.0 - As)`)
+    OneMinusSrcColour,
+    /// Use the destination colour as the factor in blending (`(Rd, Gd, Bd, Ad)`)
+    DstColour,
+    /// Use one minus the destination colour as the factor in blending (`(1.0 - Rd, 1.0 - Gd, 1.0 - Bd, 1.0 - Ad)`)
+    OneMinusDstColour,
+
+    /// Use the source alpha as the factor in blending (`(As, As, As, As)`)
+    SrcAlpha,
+    /// Use one minus the source alpha as the factor in blending (`(1.0 - As, 1.0 - As, 1.0 - As, 1.0 - As)`)
+    OneMinusSrcAlpha,
+    /// Use the destination alpha as the factor in blending (`(Ad, Ad, Ad, Ad)`)
+    DstAlpha,
+    /// Use one minus the destination alpha as the factor in blending (`(1.0 - Ad, 1.0 - Ad, 1.0 - Ad, 1.0 - Ad)`)
+    OneMinusDstAlpha,
+
+    /// Use the constant factors given in the ColourBlendState as the factors (`(Fr, Fg, Fb, Fa)`)
+    ConstColour,
+    /// Use one minus the constant factors given in the ColourBlendState as the factors (`(1.0 - Fr, 1.0 - Fg, 1.0 - Fb, 1.0 - Fa)`)
+    OneMinusConstColour,
+    /// Use the constant alpha factor given in the ColourBlendState as the factors (`(Fa, Fa, Fa, Fa)`)
+    ConstAlpha,
+    /// Use one minus the constant alpha factor given in the ColourBlendState as the factors (`(1.0 - Fa, 1.0 - Fa, 1.0 - Fa, 1.0 - Fa)`)
+    OneMinusConstAlpha,
+
+    /// When using double source channels, use the colour of the second channel (`(Rs2, Gs2, Bs2, As2)`).
+    SrcColour2,
+    /// When using double source channels, use one minus the colour of the second channel (`(1.0 - Rs2, 1.0 - Gs2, 1.0 - Bs2, 1.0 - As2)`).
+    OneMinusSrcColour2,
+    /// When using double source channels, use the alpha of the second channel (`(As2, As2, As2, As2)`).
+    SrcAlpha2,
+    /// When using double source channels, use one minus the alpha of the second channel (`(1.0 - As2, 1.0 - As2, 1.0 - As2, 1.0 - As2)`).
+    OneMinusSrcAlpha2,
+
+    /// Saturates the colour according to the alpha channel (`(min(As, 1.0 - Ad), min(As, 1.0 - Ad), min(As, 1.0 - Ad), 1.0)`)
+    SrcAlphaSaturate,
+}
+
+impl From<vk::BlendFactor> for BlendFactor {
+    #[inline]
+    fn from(value: vk::BlendFactor) -> Self {
+        match value {
+            vk::BlendFactor::ZERO => BlendFactor::Zero,
+            vk::BlendFactor::ONE  => BlendFactor::One,
+
+            vk::BlendFactor::SRC_COLOR           => BlendFactor::SrcColour,
+            vk::BlendFactor::ONE_MINUS_SRC_COLOR => BlendFactor::OneMinusSrcColour,
+            vk::BlendFactor::DST_COLOR           => BlendFactor::DstColour,
+            vk::BlendFactor::ONE_MINUS_DST_COLOR => BlendFactor::OneMinusDstColour,
+
+            vk::BlendFactor::SRC_ALPHA           => BlendFactor::SrcAlpha,
+            vk::BlendFactor::ONE_MINUS_SRC_ALPHA => BlendFactor::OneMinusSrcAlpha,
+            vk::BlendFactor::DST_ALPHA           => BlendFactor::DstAlpha,
+            vk::BlendFactor::ONE_MINUS_DST_ALPHA => BlendFactor::OneMinusDstAlpha,
+
+            vk::BlendFactor::CONSTANT_COLOR           => BlendFactor::ConstColour,
+            vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR => BlendFactor::OneMinusConstColour,
+            vk::BlendFactor::CONSTANT_ALPHA           => BlendFactor::ConstAlpha,
+            vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA => BlendFactor::OneMinusConstAlpha,
+
+            vk::BlendFactor::SRC1_COLOR           => BlendFactor::SrcColour2,
+            vk::BlendFactor::ONE_MINUS_SRC1_COLOR => BlendFactor::OneMinusSrcColour2,
+            vk::BlendFactor::SRC1_ALPHA           => BlendFactor::SrcAlpha2,
+            vk::BlendFactor::ONE_MINUS_SRC1_ALPHA => BlendFactor::OneMinusSrcAlpha2,
+
+            vk::BlendFactor::SRC_ALPHA_SATURATE => BlendFactor::SrcAlphaSaturate,
+
+            value => { panic!("Encountered illegal VkBlendFactor value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<BlendFactor> for vk::BlendFactor {
+    #[inline]
+    fn from(value: BlendFactor) -> Self {
+        match value {
+            BlendFactor::Zero => vk::BlendFactor::ZERO,
+            BlendFactor::One  => vk::BlendFactor::ONE,
+
+            BlendFactor::SrcColour         => vk::BlendFactor::SRC_COLOR,
+            BlendFactor::OneMinusSrcColour => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+            BlendFactor::DstColour         => vk::BlendFactor::DST_COLOR,
+            BlendFactor::OneMinusDstColour => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+
+            BlendFactor::SrcAlpha         => vk::BlendFactor::SRC_ALPHA,
+            BlendFactor::OneMinusSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+            BlendFactor::DstAlpha         => vk::BlendFactor::DST_ALPHA,
+            BlendFactor::OneMinusDstAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+
+            BlendFactor::ConstColour         => vk::BlendFactor::CONSTANT_COLOR,
+            BlendFactor::OneMinusConstColour => vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR,
+            BlendFactor::ConstAlpha          => vk::BlendFactor::CONSTANT_ALPHA,
+            BlendFactor::OneMinusConstAlpha  => vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA,
+
+            BlendFactor::SrcColour2         => vk::BlendFactor::SRC1_COLOR,
+            BlendFactor::OneMinusSrcColour2 => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
+            BlendFactor::SrcAlpha2          => vk::BlendFactor::SRC1_ALPHA,
+            BlendFactor::OneMinusSrcAlpha2  => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
+
+            BlendFactor::SrcAlphaSaturate => vk::BlendFactor::SRC_ALPHA_SATURATE,
+        }
+    }
+}
+
+
+
+/// Defines blend operations to perform.
+#[derive(Clone, Copy, Debug)]
+pub enum BlendOp {
+    /// Add the proper fractions of the colours together:
+    /// ```
+    /// Rd = Rs * FCs + Rd * FCd
+    /// Gd = Gs * FCs + Gd * FCd
+    /// Bd = Bs * FCs + Bd * FCd
+    /// Ad = As * FAs + Ad * FAd
+    /// ```
+    /// (`Xs` is the source channel, `Xd` is the destination channel, `FCx` is the source or destination colour fraction and `FAx` is the source or destination alpha fraction)
+    Add,
+    /// Subtract the proper fractions of the colours from each other:
+    /// ```
+    /// Rd = Rs * FCs - Rd * FCd
+    /// Gd = Gs * FCs - Gd * FCd
+    /// Bd = Bs * FCs - Bd * FCd
+    /// Ad = As * FAs - Ad * FAd
+    /// ```
+    /// (`Xs` is the source channel, `Xd` is the destination channel, `FCx` is the source or destination colour fraction and `FAx` is the source or destination alpha fraction)
+    Sub,
+    /// Subtract the proper fractions of the colours from each other:
+    /// ```
+    /// Rd = Rd * FCd - Rs * FCs
+    /// Gd = Gd * FCd - Gs * FCs
+    /// Bd = Bd * FCd - Bs * FCs
+    /// Ad = Ad * FAd - As * FAs
+    /// ```
+    /// (`Xs` is the source channel, `Xd` is the destination channel, `FCx` is the source or destination colour fraction and `FAx` is the source or destination alpha fraction)
+    SubRev,
+
+    /// Take the minimal value of the colours (ignoring fractions):
+    /// ```
+    /// Rd = min(Rs, Rd)
+    /// Gd = min(Gs, Gd)
+    /// Bd = min(Bs, Bd)
+    /// Ad = min(As, Ad)
+    /// ```
+    /// (`Xs` is the source channel and `Xd` is the destination channel)
+    Min,
+    /// Take the maximum value of the colours (ignoring fractions):
+    /// ```
+    /// Rd = max(Rs, Rd)
+    /// Gd = max(Gs, Gd)
+    /// Bd = max(Bs, Bd)
+    /// Ad = max(As, Ad)
+    /// ```
+    /// (`Xs` is the source channel and `Xd` is the destination channel)
+    Max,
+}
+
+impl From<vk::BlendOp> for BlendOp {
+    #[inline]
+    fn from(value: vk::BlendOp) -> Self {
+        match value {
+            vk::BlendOp::ADD              => BlendOp::Add,
+            vk::BlendOp::SUBTRACT         => BlendOp::Sub,
+            vk::BlendOp::REVERSE_SUBTRACT => BlendOp::SubRev,
+
+            vk::BlendOp::MIN => BlendOp::Min,
+            vk::BlendOp::MAX => BlendOp::Max,
+
+            value => { panic!("Encountered illegal VkBlendOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<BlendOp> for vk::BlendOp {
+    #[inline]
+    fn from(value: BlendOp) -> Self {
+        match value {
+            BlendOp::Add    => vk::BlendOp::ADD,
+            BlendOp::Sub    => vk::BlendOp::SUBTRACT,
+            BlendOp::SubRev => vk::BlendOp::REVERSE_SUBTRACT,
+
+            BlendOp::Min => vk::BlendOp::MIN,
+            BlendOp::Max => vk::BlendOp::MAX,
+        }
+    }
+}
+
+
+
+/// Defines the channel mask to use when writing.
+#[derive(Clone, Copy, Debug)]
+pub struct ColourMask(u8);
+
+impl ColourMask {
+    /// A ColourMask that hits all channels
+    pub const ALL: Self   = Self(0b00001111);
+    /// An empty ColourMask
+    pub const EMPTY: Self = Self(0b00000000);
+
+    /// A colour mask for only the red colour channel.
+    pub const R: Self = Self(0b00000001);
+    /// A colour mask for only the green colour channel.
+    pub const G: Self = Self(0b00000010);
+    /// A colour mask for only the blue colour channel.
+    pub const B: Self = Self(0b00000100);
+    /// A colour mask for only the alpha channel.
+    pub const A: Self = Self(0b00001000);
+
+
+    /// Returns whether the given ColourMask is a subset of this one.
+    /// 
+    /// # Arguments
+    /// - `value`: The ColourMask that should be a subset of this one. For example, if value is Self::R, then returns true if the red colour channel was enabled in this ColourMask.
+    #[inline]
+    pub fn check(&self, other: ColourMask) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for ColourMask {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitOrAssign for ColourMask {
+    #[inline]
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0;
+    }
+}
+
+impl From<vk::ColorComponentFlags> for ColourMask {
+    #[inline]
+    fn from(value: vk::ColorComponentFlags) -> Self {
+        // Construct it manually for portability
+        let mut result = ColourMask::EMPTY;
+        if (value & vk::ColorComponentFlags::R).as_raw() != 0 { result |= ColourMask::R; }
+        if (value & vk::ColorComponentFlags::G).as_raw() != 0 { result |= ColourMask::G; }
+        if (value & vk::ColorComponentFlags::B).as_raw() != 0 { result |= ColourMask::B; }
+        if (value & vk::ColorComponentFlags::A).as_raw() != 0 { result |= ColourMask::A; }
+
+        // Return it
+        result
+    }
+}
+
+impl From<ColourMask> for vk::ColorComponentFlags {
+    fn from(value: ColourMask) -> Self {
+        // Construct it manually due to private constructors ;(
+        let mut result = vk::ColorComponentFlags::empty();
+        if value.check(ColourMask::R) { result |= vk::ColorComponentFlags::R; }
+        if value.check(ColourMask::G) { result |= vk::ColorComponentFlags::G; }
+        if value.check(ColourMask::B) { result |= vk::ColorComponentFlags::B; }
+        if value.check(ColourMask::A) { result |= vk::ColorComponentFlags::A; }
+
+        // Return it
+        result
+    }
+}
+
+
+
+/// Defines how to write colours to a single colour attachment.
+#[derive(Clone, Debug)]
+pub struct AttachmentBlendState {
+    /// Whether to enable blending or not (values pass through unmodified if false).
+    pub enable_blend : bool,
+
+    /// The proportion of colour we take from the source.
+    pub src_colour : BlendFactor,
+    /// The proportion of colour we take from the destination.
+    pub dst_colour : BlendFactor,
+    /// The operator to use to blend the two colours
+    pub colour_op  : BlendOp,
+
+    /// The proportion of alpha we take from the source.
+    pub src_alpha : BlendFactor,
+    /// The proportion of alpha we take from the destination.
+    pub dst_alpha : BlendFactor,
+    /// The operator to use to blend the two alphas
+    pub alpha_op  : BlendOp,
+
+    /// A mask that specifies which channels are available for writing the blend.
+    pub write_mask : ColourMask,
+}
+
+impl From<vk::PipelineColorBlendAttachmentState> for AttachmentBlendState {
+    #[inline]
+    fn from(value: vk::PipelineColorBlendAttachmentState) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::PipelineColorBlendAttachmentState> for AttachmentBlendState {
+    #[inline]
+    fn from(value: &vk::PipelineColorBlendAttachmentState) -> Self {
+        Self {
+            enable_blend : value.blend_enable != 0,
+
+            src_colour : value.src_color_blend_factor.into(),
+            dst_colour : value.dst_color_blend_factor.into(),
+            colour_op  : value.color_blend_op.into(),
+
+            src_alpha : value.src_alpha_blend_factor.into(),
+            dst_alpha : value.dst_alpha_blend_factor.into(),
+            alpha_op  : value.alpha_blend_op.into(),
+
+            write_mask : value.color_write_mask.into(),
+        }
+    }
+}
+
+impl From<AttachmentBlendState> for vk::PipelineColorBlendAttachmentState {
+    #[inline]
+    fn from(value: AttachmentBlendState) -> Self {
+        // Use the reference version
+        Self::from(&value)
+    }
+}
+
+impl From<&AttachmentBlendState> for vk::PipelineColorBlendAttachmentState {
+    #[inline]
+    fn from(value: &AttachmentBlendState) -> Self {
+        Self {
+            blend_enable : value.enable_blend as u32,
+
+            src_color_blend_factor : value.src_colour.into(),
+            dst_color_blend_factor : value.dst_colour.into(),
+            color_blend_op         : value.colour_op.into(),
+
+            src_alpha_blend_factor : value.src_alpha.into(),
+            dst_alpha_blend_factor : value.dst_alpha.into(),
+            alpha_blend_op         : value.alpha_op.into(),
+
+            color_write_mask : value.write_mask.into(),
+        }
+    }
+}
+
+
+
+/// Defines how to write colours to the (multiple) colour attachments.
+#[derive(Clone, Debug)]
+pub struct ColourBlendState {
+    /// Whether to apply any logic operations for all attachments.
+    /// 
+    /// If set to true, then ignores the attachment operations.
+    pub enable_logic : bool,
+    /// The logic operator to apply, if enabled.
+    pub logic_op     : LogicOp,
+
+    /// The list of colour attachment blend states that describe the per-attachment stats.
+    pub attachment_states : Vec<AttachmentBlendState>,
+    /// The constants for blending.
+    pub blend_constants   : [f32; 4],
+}
+
+impl From<&vk::PipelineColorBlendStateCreateInfo> for ColourBlendState {
+    fn from(value: &vk::PipelineColorBlendStateCreateInfo) -> Self {
+        // Collect the raw pointers in a slice
+        let attachments = unsafe { slice::from_raw_parts(value.p_attachments, value.attachment_count as usize) };
+
+        // Cast them to our attachments, in a vec
+        let attachments: Vec<AttachmentBlendState> = attachments.iter().map(|att| att.into()).collect();
+
+        // Now create the struct with it and other properties
+        Self {
+            enable_logic : value.logic_op_enable != 0,
+            logic_op     : value.logic_op.into(),
+
+            attachment_states : attachments,
+            blend_constants   : value.blend_constants.clone(),
+        }
+    }
+}
+
+impl Into<(vk::PipelineColorBlendStateCreateInfo, Vec<vk::PipelineColorBlendAttachmentState>)> for ColourBlendState {
+    /// Converts the ColourBlendState into a VkPipelineColorBlendStateCreateInfo.
+    /// 
+    /// However, due to the external references made in the VkPipelineColorBlendStateCreateInfo struct, it also returns one Vec that manages the external memory referenced.
+    /// 
+    /// # Returns
+    /// A tuple with:
+    /// - The new VkPipelineColorBlendStateCreateInfo instance
+    /// - The Vec with the referenced memory
+    fn into(self) -> (vk::PipelineColorBlendStateCreateInfo, Vec<vk::PipelineColorBlendAttachmentState>) {
+        // Cast our own attachment states to Vulkan's
+        let attachments: Vec<vk::PipelineColorBlendAttachmentState> = self.attachment_states.iter().map(|att| att.into()).collect();
+
+        // Now create the struct with it and other properties
+        let result = vk::PipelineColorBlendStateCreateInfo {
+            // Set the default stuff
+            s_type : vk::StructureType::PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            p_next : ptr::null(),
+            flags  : vk::PipelineColorBlendStateCreateFlags::empty(),
+
+            // Set the logic properties
+            logic_op_enable : self.enable_logic as u32,
+            logic_op        : self.logic_op.into(),
+
+            // Set the attachments and the blend constants
+            p_attachments    : attachments.as_ptr(),
+            attachment_count : attachments.len() as u32,
+            blend_constants  : self.blend_constants.clone(),
+        };
+
+        // Done, return both it and the memory
+        (result, attachments)
+    }
+}
+
+
+
+/// Defines a part of the pipeline that may be set to dynamic
+#[derive(Clone, Debug)]
+pub enum DynamicState {
+    /// Defines that the viewport of the ViewportState may be dynamic.
+    Viewport,
+    /// Defines that the scissor of the ViewportState may be dynamic.
+    Scissor,
+    /// Defines that the drawn line width may be dynamic.
+    LineWidth,
+    /// Defines that the depth bias for depth testing may be dynamic.
+    DepthBias,
+    /// Defines that the depth bounds for depth testing may be dynamic.
+    DepthBounds,
+    /// Defines that the compare mask of a stencil test may be dynamic.
+    StencilCompareMask,
+    /// Defines that the write mask of a stencil test may be dynamic.
+    StencilWriteMask,
+    /// Defines that the reference of a stencil test may be dynamic.
+    StencilReference,
+    /// Defines that the blend constants in colour blending may be dynamic.
+    BlendConstants,
+}
+
+impl From<vk::DynamicState> for DynamicState {
+    #[inline]
+    fn from(value: vk::DynamicState) -> Self {
+        match value {
+            vk::DynamicState::VIEWPORT             => DynamicState::Viewport,
+            vk::DynamicState::SCISSOR              => DynamicState::Scissor,
+            vk::DynamicState::LINE_WIDTH           => DynamicState::LineWidth,
+            vk::DynamicState::DEPTH_BIAS           => DynamicState::DepthBias,
+            vk::DynamicState::DEPTH_BOUNDS         => DynamicState::DepthBounds,
+            vk::DynamicState::STENCIL_COMPARE_MASK => DynamicState::StencilCompareMask,
+            vk::DynamicState::STENCIL_WRITE_MASK   => DynamicState::StencilWriteMask,
+            vk::DynamicState::STENCIL_REFERENCE    => DynamicState::StencilReference,
+            vk::DynamicState::BLEND_CONSTANTS      => DynamicState::BlendConstants,
+
+            value => { panic!("Encountered illegal VkDynamicState value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<DynamicState> for vk::DynamicState {
+    #[inline]
+    fn from(value: DynamicState) -> Self {
+        match value {
+            DynamicState::Viewport           => vk::DynamicState::VIEWPORT,
+            DynamicState::Scissor            => vk::DynamicState::SCISSOR,
+            DynamicState::LineWidth          => vk::DynamicState::LINE_WIDTH,
+            DynamicState::DepthBias          => vk::DynamicState::DEPTH_BIAS,
+            DynamicState::DepthBounds        => vk::DynamicState::DEPTH_BOUNDS,
+            DynamicState::StencilCompareMask => vk::DynamicState::STENCIL_COMPARE_MASK,
+            DynamicState::StencilWriteMask   => vk::DynamicState::STENCIL_WRITE_MASK,
+            DynamicState::StencilReference   => vk::DynamicState::STENCIL_REFERENCE,
+            DynamicState::BlendConstants     => vk::DynamicState::BLEND_CONSTANTS,
         }
     }
 }

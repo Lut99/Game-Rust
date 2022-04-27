@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   23 Apr 2022, 17:51:35
+ *   27 Apr 2022, 12:40:05
  * Auto updated?
  *   Yes
  *
@@ -22,7 +22,7 @@ use ash::vk;
 
 /***** ERRORS *****/
 /// Defines errors relating to Queue properties and management.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum QueueError {
     /// One of the operations we want for the queue families is unsupported
     OperationUnsupported{ index: usize, name: String, operation: ash::vk::QueueFlags },
@@ -42,7 +42,7 @@ impl Error for QueueError {}
 
 
 /// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AttributeLayoutError {
     /// Given vk::Format value was a valid vk::Format, but not a valid AttributeLayout
     IllegalFormatValue{ value: vk::Format },
@@ -102,7 +102,7 @@ impl Error for InstanceError {}
 
 
 /// Defines errors that occur when setting up an Instance.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum DeviceError {
     /// Could not enumerate over the available device extensions
     DeviceExtensionEnumerateError{ err: ash::vk::Result },
@@ -173,7 +173,7 @@ impl Error for DeviceError {}
 
 
 /// Defines errors that occur when setting up a Surface.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SurfaceError {
     /// Could not create a new Windows surface
     WindowsSurfaceKHRCreateError{ err: ash::vk::Result },
@@ -205,7 +205,7 @@ impl Error for SurfaceError {}
 
 
 /// Defines errors that occur when setting up a Surface.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SwapchainError {
     /// The given surface was not supported at all by the given GPU.
     DeviceSurfaceSupportError{ index: usize, name: String, err: DeviceError },
@@ -264,9 +264,54 @@ impl Error for ShaderError {}
 
 
 
+/// Defines errors that relate to DescriptorSets and DescriptorSetLayouts.
+#[derive(Clone, Debug)]
+pub enum DescriptorError {
+    /// Could not create a new layout
+    DescriptorSetLayoutCreateError{ err: ash::vk::Result },
+}
+
+impl Display for DescriptorError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use DescriptorError::*;
+        match self {
+            DescriptorSetLayoutCreateError{ err } => write!(f, "Could not create new DescriptorSetLayout: {}", err),
+        }
+    }
+}
+
+impl Error for DescriptorError {}
+
+
+
+/// Defines errors that relate to a PipelineLayout.
+#[derive(Clone, Debug)]
+pub enum PipelineLayoutError {
+    /// One of the given DescriptorSetLayout results failed.
+    DescriptorSetLayoutCreateError{ err: DescriptorError },
+    /// Could not create the PipelineLayout struct
+    PipelineLayoutCreateError{ err: ash::vk::Result },
+}
+
+impl Display for PipelineLayoutError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use PipelineLayoutError::*;
+        match self {
+            DescriptorSetLayoutCreateError{ err } => write!(f, "Given DescriptorSetLayout constructor call was a fail: {}", err),
+            PipelineLayoutCreateError{ err }      => write!(f, "Could not create new PipelineLayout: {}", err),
+        }
+    }
+}
+
+impl Error for PipelineLayoutError {}
+
+
+
 /// Defines errors that relate to a Pipeline.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum PipelineError {
+    /// The given PipelineLayout result did was not a success
+    LayoutCreateError{ err: PipelineLayoutError },
     /// Could not create the final Pipeline struct
     PipelineCreateError{ err: ash::vk::Result },
 }
@@ -275,6 +320,7 @@ impl Display for PipelineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use PipelineError::*;
         match self {
+            LayoutCreateError{ err }   => write!(f, "Given PipelineLayout constructor call was a fail: {}", err),
             PipelineCreateError{ err } => write!(f, "Could not create new Pipeline: {}", err),
         }
     }
@@ -285,7 +331,7 @@ impl Error for PipelineError {}
 
 
 /// Defines errors that relate to an Image.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ImageError {
     /// Temporary placeholder error
     Temp,
@@ -305,7 +351,7 @@ impl Error for ImageError {}
 
 
 /// Defines errors that relate to an ImageView.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ImageViewError {
     /// Could not construct the image view
     ViewCreateError{ err: ash::vk::Result },
