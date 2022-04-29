@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   27 Apr 2022, 12:40:05
+ *   29 Apr 2022, 18:03:00
  * Auto updated?
  *   Yes
  *
@@ -307,9 +307,31 @@ impl Error for PipelineLayoutError {}
 
 
 
-/// Defines errors that relate to a Pipeline.
+/// Defines errors that relate to a RenderPass.
 #[derive(Clone, Debug)]
+pub enum RenderPassError {
+    /// Could not create a RenderPass.
+    RenderPassCreateError{ err: ash::vk::Result },
+}
+
+impl Display for RenderPassError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use RenderPassError::*;
+        match self {
+            RenderPassCreateError{ err } => write!(f, "Could not create new RenderPass: {}", err),
+        }
+    }
+}
+
+impl Error for RenderPassError {}
+
+
+
+/// Defines errors that relate to a Pipeline.
+#[derive(Debug)]
 pub enum PipelineError {
+    /// The given Shader result was not a success
+    ShaderCreateError{ err: ShaderError },
     /// The given PipelineLayout result did was not a success
     LayoutCreateError{ err: PipelineLayoutError },
     /// Could not create the final Pipeline struct
@@ -320,6 +342,7 @@ impl Display for PipelineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use PipelineError::*;
         match self {
+            ShaderCreateError{ err }   => write!(f, "Given Shader constructor call was a fail: {}", err),
             LayoutCreateError{ err }   => write!(f, "Given PipelineLayout constructor call was a fail: {}", err),
             PipelineCreateError{ err } => write!(f, "Could not create new Pipeline: {}", err),
         }

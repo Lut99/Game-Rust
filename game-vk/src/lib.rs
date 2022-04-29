@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   27 Apr 2022, 12:32:52
+ *   29 Apr 2022, 18:16:32
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,8 @@
 
 /// The module for the the component lists.
 pub mod errors;
+/// The module for extra traits and other interfaces.
+pub mod spec;
 /// The module for wrapper structs around Vulkan structs
 pub mod auxillary;
 /// The module for the instance
@@ -30,6 +32,8 @@ pub mod shader;
 pub mod descriptors;
 /// The module for the pipeline layout
 pub mod layout;
+/// The module for the render pass(es)
+pub mod render_pass;
 /// The module for the pipeline
 pub mod pipeline;
 /// The module for the various pools

@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   27 Apr 2022, 11:57:17
+ *   29 Apr 2022, 18:14:09
  * Auto updated?
  *   Yes
  *
@@ -19,6 +19,8 @@ use log::{debug, warn};
 
 pub use crate::errors::PipelineError as Error;
 pub use crate::auxillary::{AttachmentBlendState, BlendFactor, BlendOp, ColourBlendState, ColourMask, CompareOp, DepthTestingState, DynamicState, LogicOp, MultisampleState, RasterizerState, StencilOp, StencilOpState, VertexAssemblyState, VertexInputState, VertexTopology, ViewportState};
+pub use crate::device::Device;
+pub use crate::shader::{Error as ShaderError, Shader};
 pub use crate::layout::{Error as PipelineLayoutError, PipelineLayout};
 
 
@@ -33,7 +35,7 @@ pub struct PipelineCache {
 /// Extended constructor for the Pipeline that may be used to configure it.
 pub struct PipelineBuilder {
     /// Collects errors until build() gets called.
-    error : Option<Error>,
+    error  : Option<Error>,
     
     // Default stuff
     /// Describes how we treat the input vertices.
@@ -48,6 +50,8 @@ pub struct PipelineBuilder {
     dynamic         : Vec<DynamicState>,
 
     // Non-default stuff
+    /// Defines the different shaders used in this pipeline
+    shaders       : Vec<Arc<Shader>>,
     /// Describes how the input vertices look like.
     vertex_input  : Option<VertexInputState>,
     /// Describes the output images dimensions, cutoff and depth.
@@ -69,7 +73,7 @@ impl PipelineBuilder {
     /// - PipelineBuilder::rasterization()
     /// - PipelineBuilder::layout()
     /// 
-    /// Also note that any errors that will occur during building will be postponed until the PipelineBuilder::build() call.
+    /// When done, call RenderPassBuilder::build() to get the RenderPass. Any errors that occur mid-build will be propagated until that function.
     #[inline]
     pub fn new() -> Self {
         debug!("Starting Pipeline construction");
@@ -134,6 +138,7 @@ impl PipelineBuilder {
             },
             dynamic : vec![],
 
+            shaders       : vec![],
             vertex_input  : None,
             viewport      : None,
             rasterization : None,
@@ -192,6 +197,61 @@ impl PipelineBuilder {
     }
 
 
+
+    /// Adds a certain Shader to the pipeline.
+    /// 
+    /// You should probably define a shader for at least the vertex and fragment stages.
+    /// 
+    /// # Arguments
+    /// - `shader`: The Shader to add to the Pipeline.
+    /// 
+    /// # Returns
+    /// Because this function is consuming, returns the same instance of self as passed to it.
+    /// 
+    /// # Errors
+    /// This function doesn't error directly, but may pass any incoming errors to the PipelineBuilder::build() call.
+    pub fn shader(mut self, shader: Arc<Shader>) -> Self {
+        if self.error.is_some() { return self; }
+
+        // Add the shader internall
+        self.shaders.push(shader);
+
+        // Done, return ourselves again
+        self
+    }
+
+    /// ATries to add a certain Shader to the pipeline directly after its constructor call.
+    /// 
+    /// Errors if the call fails (though it propagates this to build()).
+    /// 
+    /// You should probably define a shader for at least the vertex and fragment stages.
+    /// 
+    /// # Arguments
+    /// - `shader`: The result of the Shader constructor call to add to the Pipeline.
+    /// 
+    /// # Returns
+    /// Because this function is consuming, returns the same instance of self as passed to it.
+    /// 
+    /// # Errors
+    /// This function doesn't error directly, but may pass any incoming errors to the PipelineBuilder::build() call.
+    pub fn try_shader(mut self, shader: Result<Arc<Shader>, ShaderError>) -> Self {
+        if self.error.is_some() { return self; }
+
+        // Try to unpack the shader
+        let shader = match shader {
+            Ok(shader) => shader,
+            Err(err)   => {
+                self.error = Some(Error::ShaderCreateError{ err });
+                return self;
+            }
+        };
+
+        // Add the shader internally
+        self.shaders.push(shader);
+
+        // Done, return ourselves again
+        self
+    }
 
     /// Define a VertexInputState for this Pipeline.
     /// 
@@ -432,6 +492,10 @@ impl PipelineBuilder {
         debug!("Defined pipeline layout");
         self
     }
+
+
+
+    
 }
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   27 Apr 2022, 12:28:02
+ *   29 Apr 2022, 18:50:40
  * Auto updated?
  *   Yes
  *
@@ -741,6 +741,174 @@ impl From<&DescriptorBinding> for vk::DescriptorSetLayoutBinding {
 
 
 
+/***** RENDER PASSES *****/
+/// Defines a load operation for attachments.
+#[derive(Clone, Copy, Debug)]
+pub enum AttachmentLoadOp {
+    /// We don't care what the value of the attachment is (so they'll be undefined).
+    /// 
+    /// # Synchronization
+    /// - For colour attachments, this uses the `VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` operation (???).
+    /// - For depth / stencil attachments, this uses the `VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT` operation (???).
+    DontCare,
+
+    /// Clear the attachment upon loading. The clear value is specified in the RenderPass.
+    /// 
+    /// # Synchronization
+    /// - For colour attachments, this uses the `VK_ACCESS_COLOR_ATTACHMENT_READ_BIT` operation.
+    /// - For depth / stencil attachments, this uses the `VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT` operation.
+    Clear,
+    /// Loads whatever values where already in the attachment.
+    /// 
+    /// # Synchronization
+    /// - For colour attachments, this uses the `VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` operation.
+    /// - For depth / stencil attachments, this uses the `VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT` operation.
+    Load,
+}
+
+impl From<vk::AttachmentLoadOp> for AttachmentLoadOp {
+    #[inline]
+    fn from(value: vk::AttachmentLoadOp) -> Self {
+        match value {
+            vk::AttachmentLoadOp::DONT_CARE => AttachmentLoadOp::DontCare,
+
+            vk::AttachmentLoadOp::CLEAR => AttachmentLoadOp::Clear,
+            vk::AttachmentLoadOp::LOAD  => AttachmentLoadOp::Load,
+
+            value => { panic!("Encountered illegal VkAttachmentLoadOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<AttachmentLoadOp> for vk::AttachmentLoadOp {
+    #[inline]
+    fn from(value: AttachmentLoadOp) -> Self {
+        match value {
+            AttachmentLoadOp::DontCare => vk::AttachmentLoadOp::DONT_CARE,
+
+            AttachmentLoadOp::Clear => vk::AttachmentLoadOp::CLEAR,
+            AttachmentLoadOp::Load  => vk::AttachmentLoadOp::LOAD,
+        }
+    }
+}
+
+
+
+/// Defines a store operation for attachments.
+#[derive(Clone, Copy, Debug)]
+pub enum AttachmentStoreOp {
+    /// We don't care what the value of the attachment will be (so they'll be undefined).
+    /// 
+    /// # Synchronization
+    /// - For colour attachments, this uses the `VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` operation (???).
+    /// - For depth / stencil attachments, this uses the `VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT` operation (???).
+    DontCare,
+
+    /// Stores the values of the attachment 'permanently' so they may be propagated to the next subpass / presentation.
+    /// 
+    /// # Synchronization
+    /// - For colour attachments, this uses the `VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT` operation.
+    /// - For depth / stencil attachments, this uses the `VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT` operation.
+    Store,
+}
+
+impl From<vk::AttachmentStoreOp> for AttachmentStoreOp {
+    #[inline]
+    fn from(value: vk::AttachmentStoreOp) -> Self {
+        match value {
+            vk::AttachmentStoreOp::DONT_CARE => AttachmentStoreOp::DontCare,
+
+            vk::AttachmentStoreOp::STORE => AttachmentStoreOp::Store,
+
+            value => { panic!("Encountered illegal VkAttachmentStoreOp value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<AttachmentStoreOp> for vk::AttachmentStoreOp {
+    #[inline]
+    fn from(value: AttachmentStoreOp) -> Self {
+        match value {
+            AttachmentStoreOp::DontCare => vk::AttachmentStoreOp::DONT_CARE,
+
+            AttachmentStoreOp::Store => vk::AttachmentStoreOp::STORE,
+        }
+    }
+}
+
+
+
+/// Describes a single attachment
+#[derive(Clone, Debug)]
+pub struct AttachmentDescription {
+    /// The format of the attachment.
+    pub format  : Format,
+    /// The number of samples to take of this image.
+    pub samples : SampleCount,
+
+    /// Defines what to do when loading this attachment (both for the colour _and_ depth aspects).
+    pub on_load  : AttachmentLoadOp,
+    /// Defines what to do with the pixels generated during the render pass (both for the colour _and_ depth aspects).
+    pub on_store : AttachmentStoreOp,
+
+    /// Defines what to do with any stencil attachment (if present).
+    pub on_stencil_load  : AttachmentLoadOp,
+    /// Defines what to do with the stencil values generated during the render pass (if present).
+    pub on_stencil_store : AttachmentStoreOp,
+
+    /// Define the layout of the attachment before the render pass (should match the previous).
+    pub start_layout : ImageLayout,
+    /// Define the layout of the attachment after the render pass (may be anything, will transition automatically).
+    pub end_layout   : ImageLayout,
+}
+
+impl From<vk::AttachmentDescription> for AttachmentDescription {
+    #[inline]
+    fn from(value: vk::AttachmentDescription) -> Self {
+        Self {
+            format  : value.format.into(),
+            samples : value.samples.into(),
+
+            on_load  : value.load_op.into(),
+            on_store : value.store_op.into(),
+
+            on_stencil_load  : value.stencil_load_op.into(),
+            on_stencil_store : value.stencil_store_op.into(),
+
+            start_layout : value.initial_layout.into(),
+            end_layout   : value.final_layout.into(),
+        }
+    }
+}
+
+impl From<AttachmentDescription> for vk::AttachmentDescription {
+    #[inline]
+    fn from(value: AttachmentDescription) -> Self {
+        Self {
+            // Do the default stuff
+            flags : vk::AttachmentDescriptionFlags::empty(),
+
+            // Set some image attachment properties
+            format  : value.format.into(),
+            samples : value.samples.into(),
+
+            // Define what to do when loading and storing this attachment
+            load_op  : value.on_load.into(),
+            store_op : value.on_store.into(),
+
+            // Define what to do when loading and storing the stencil part of this attachment
+            stencil_load_op  : value.on_stencil_load.into(),
+            stencil_store_op : value.on_stencil_store.into(),
+
+            initial_layout : value.start_layout.into(),
+            final_layout   : value.end_layout.into(),
+        }
+    }
+}
+
+
+
+
 
 /***** PIPELINE *****/
 /// Defines the possible layouts for an attribute
@@ -1404,6 +1572,59 @@ impl From<RasterizerState> for vk::PipelineRasterizationStateCreateInfo {
             depth_bias_enable          : value.depth_bias as u32,
             depth_bias_constant_factor : value.depth_factor,
             depth_bias_slope_factor    : value.depth_slope,
+        }
+    }
+}
+
+
+
+/// Defines a possible number of samples.
+#[derive(Clone, Copy, Debug)]
+pub enum SampleCount {
+    /// Only one sample
+    One,
+    /// Take two samples
+    Two,
+    /// Take four samples
+    Four,
+    /// Take eight samples
+    Eight,
+    /// Now we're getting somewhere: sixteen samples
+    Sixteen,
+    /// _Hardcore_: thirty-two samples!
+    ThirtyTwo,
+    /// What?! Sixty-four whole samples?! :0
+    SixtyFour,
+}
+
+impl From<vk::SampleCountFlags> for SampleCount {
+    #[inline]
+    fn from(value: vk::SampleCountFlags) -> Self {
+        match value {
+            vk::SampleCountFlags::TYPE_1  => SampleCount::One,
+            vk::SampleCountFlags::TYPE_2  => SampleCount::Two,
+            vk::SampleCountFlags::TYPE_4  => SampleCount::Four,
+            vk::SampleCountFlags::TYPE_8  => SampleCount::Eight,
+            vk::SampleCountFlags::TYPE_16 => SampleCount::Sixteen,
+            vk::SampleCountFlags::TYPE_32 => SampleCount::ThirtyTwo,
+            vk::SampleCountFlags::TYPE_64 => SampleCount::SixtyFour,
+
+            value => { panic!("Encountered illegal VkSampleCountFlags value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<SampleCount> for vk::SampleCountFlags {
+    #[inline]
+    fn from(value: SampleCount) -> Self {
+        match value {
+            SampleCount::One       => vk::SampleCountFlags::TYPE_1,
+            SampleCount::Two       => vk::SampleCountFlags::TYPE_2,
+            SampleCount::Four      => vk::SampleCountFlags::TYPE_4,
+            SampleCount::Eight     => vk::SampleCountFlags::TYPE_8,
+            SampleCount::Sixteen   => vk::SampleCountFlags::TYPE_16,
+            SampleCount::ThirtyTwo => vk::SampleCountFlags::TYPE_32,
+            SampleCount::SixtyFour => vk::SampleCountFlags::TYPE_64,
         }
     }
 }
@@ -3333,6 +3554,32 @@ impl From<Format> for vk::Format {
             Format::ASTC12X10SRgbBlock => vk::Format::ASTC_12X10_SRGB_BLOCK,
             Format::ASTC12X12UNormBlock => vk::Format::ASTC_12X12_UNORM_BLOCK,
             Format::ASTC12X12SRgbBlock => vk::Format::ASTC_12X12_SRGB_BLOCK,
+        }
+    }
+}
+
+
+
+/// The layout of an Image.
+#[derive(Clone, Copy, Debug)]
+pub enum ImageLayout {
+    
+}
+
+impl From<vk::ImageLayout> for ImageLayout {
+    #[inline]
+    fn from(value: vk::ImageLayout) -> Self {
+        match value {
+            
+        }
+    }
+}
+
+impl From<ImageLayout> for vk::ImageLayout {
+    #[inline]
+    fn from(value: ImageLayout) -> Self {
+        match value {
+            
         }
     }
 }
