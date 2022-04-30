@@ -4,7 +4,7 @@
  * Created:
  *   27 Apr 2022, 11:41:07
  * Last edited:
- *   27 Apr 2022, 12:40:15
+ *   30 Apr 2022, 17:04:12
  * Auto updated?
  *   Yes
  *
@@ -19,7 +19,7 @@ use ash::vk;
 
 pub use crate::errors::PipelineLayoutError as Error;
 use crate::device::Device;
-use crate::descriptors::{Error as DescriptorSetLayoutError, DescriptorSetLayout};
+use crate::descriptors::DescriptorSetLayout;
 
 
 /***** POPULATE FUNCTIONS *****/
@@ -39,8 +39,8 @@ fn populate_layout_info(layouts: &[vk::DescriptorSetLayout]) -> vk::PipelineLayo
         flags  : vk::PipelineLayoutCreateFlags::empty(),
 
         // Attach the layouts
-        p_set_layouts    : layouts.as_ptr(),
         set_layout_count : layouts.len() as u32,
+        p_set_layouts    : if layouts.len() > 0 { layouts.as_ptr() } else { ptr::null() },
 
         // Attach the push constants
         p_push_constant_ranges    : ptr::null(),
@@ -80,50 +80,6 @@ impl PipelineLayout {
 
         // Create the create info
         let layout_info = populate_layout_info(&layouts);
-
-        // Create the pipeline layout itself
-        let layout = unsafe {
-            match device.create_pipeline_layout(&layout_info, None) {
-                Ok(layout) => layout,
-                Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
-            }
-        };
-
-        // Wrap it in this struct and done
-        Ok(Arc::new(Self {
-            device,
-            layout,
-        }))
-    }
-    
-    /// Constructor for the PipelineLayout that takes DescriptorSetLayout results instead of the already resolved layouts.
-    /// 
-    /// # Arguments
-    /// - `device`: The Device to build the pipeline layout on.
-    /// - `layouts`: A list of DescriptorSetLayout results for this layout.
-    /// - `push_constants`: A list of PushConstants for this layout.
-    /// 
-    /// # Returns
-    /// A new PipelineLayout instance on success.
-    /// 
-    /// # Errors
-    /// This function errors if the underlying Vulkan backend could not create the new layout.
-    pub fn try_new(device: Arc<Device>, layouts: &[Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutError>]) -> Result<Arc<Self>, Error> {
-        // Cast the layouts to their Vulkan counterparts
-        let mut vk_layouts: Vec<vk::DescriptorSetLayout> = Vec::with_capacity(layouts.len());
-        for layout in layouts {
-            // Try to resolve it
-            let layout = match layout {
-                Ok(layout) => layout,
-                Err(err)   => { return Err(Error::DescriptorSetLayoutCreateError{ err: err.clone() }); }
-            };
-
-            // Add it to the list
-            vk_layouts.push(layout.vk());
-        }
-
-        // Create the create info
-        let layout_info = populate_layout_info(&vk_layouts);
 
         // Create the pipeline layout itself
         let layout = unsafe {

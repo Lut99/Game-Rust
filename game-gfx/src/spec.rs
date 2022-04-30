@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   20 Apr 2022, 18:00:24
+ *   30 Apr 2022, 17:15:42
  * Auto updated?
  *   Yes
  *
@@ -17,6 +17,7 @@ use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::sync::Arc;
 
 use game_utl::traits::AsAny;
+use game_vk::auxillary::ImageFormat;
 use game_vk::device::Device;
 use game_vk::image::Image;
 
@@ -136,6 +137,7 @@ pub trait RenderPipelineBuilder<'a>: RenderPipeline {
     /// 
     /// # Arguments
     /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
+    /// - `format`: The ImageFormat of the target frame where this pipeline will render to.
     /// - `create_info`: The CreateInfo struct specific to the backend RenderPipeline, which we use to pass target-specific arguments.
     /// 
     /// # Returns
@@ -143,6 +145,6 @@ pub trait RenderPipelineBuilder<'a>: RenderPipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(device: Arc<Device>, format: ImageFormat, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }

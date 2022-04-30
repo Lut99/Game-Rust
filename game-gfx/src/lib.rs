@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:00:33
  * Last edited:
- *   20 Apr 2022, 17:06:44
+ *   30 Apr 2022, 17:00:20
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,8 @@ pub mod errors;
 pub mod system;
 /// The module that implements the different render targets.
 pub mod targets;
+/// The module that implements the different pipelines.
+pub mod pipelines;
 
 // Bring some components into the general package namespace
 pub use system::{Error, RenderSystem};

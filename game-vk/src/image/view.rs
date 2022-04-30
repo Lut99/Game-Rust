@@ -4,7 +4,7 @@
  * Created:
  *   05 Apr 2022, 17:41:18
  * Last edited:
- *   18 Apr 2022, 15:43:39
+ *   30 Apr 2022, 16:44:10
  * Auto updated?
  *   Yes
  *
@@ -19,7 +19,7 @@ use ash::vk;
 
 // pub use crate::errors::ImageError;
 pub use crate::errors::ImageViewError as Error;
-use crate::auxillary::{ComponentSwizzle, Format, ImageAspect, ImageViewKind};
+use crate::auxillary::{ComponentSwizzle, ImageFormat, ImageAspect, ImageViewKind};
 use crate::device::Device;
 use crate::image::Image;
 
@@ -31,7 +31,7 @@ pub struct CreateInfo {
     /// Defines the type of the image view
     pub kind    : ImageViewKind,
     /// Defines the format of the image
-    pub format  : Format,
+    pub format  : ImageFormat,
     /// Defines the channel mapping for the image
     pub swizzle : ComponentSwizzle,
 

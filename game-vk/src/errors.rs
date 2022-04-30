@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   29 Apr 2022, 18:03:00
+ *   30 Apr 2022, 17:03:43
  * Auto updated?
  *   Yes
  *
@@ -287,8 +287,6 @@ impl Error for DescriptorError {}
 /// Defines errors that relate to a PipelineLayout.
 #[derive(Clone, Debug)]
 pub enum PipelineLayoutError {
-    /// One of the given DescriptorSetLayout results failed.
-    DescriptorSetLayoutCreateError{ err: DescriptorError },
     /// Could not create the PipelineLayout struct
     PipelineLayoutCreateError{ err: ash::vk::Result },
 }
@@ -297,7 +295,6 @@ impl Display for PipelineLayoutError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use PipelineLayoutError::*;
         match self {
-            DescriptorSetLayoutCreateError{ err } => write!(f, "Given DescriptorSetLayout constructor call was a fail: {}", err),
             PipelineLayoutCreateError{ err }      => write!(f, "Could not create new PipelineLayout: {}", err),
         }
     }
@@ -330,10 +327,17 @@ impl Error for RenderPassError {}
 /// Defines errors that relate to a Pipeline.
 #[derive(Debug)]
 pub enum PipelineError {
+    /// Could not open the PipelineCache file
+    PipelineCacheOpenError{ path: PathBuf, err: std::io::Error },
+    /// Could not read the PipelineCache file
+    PipelineCacheReadError{ path: PathBuf, err: std::io::Error },
+    /// Could not create a new PipelineCache
+    PipelineCacheCreateError{ err: ash::vk::Result },
+
+    /// The given PipelineCache result was not a success
+    PipelineCacheError{ err: Box<Self> },
     /// The given Shader result was not a success
-    ShaderCreateError{ err: ShaderError },
-    /// The given PipelineLayout result did was not a success
-    LayoutCreateError{ err: PipelineLayoutError },
+    ShaderError{ err: ShaderError },
     /// Could not create the final Pipeline struct
     PipelineCreateError{ err: ash::vk::Result },
 }
@@ -342,8 +346,12 @@ impl Display for PipelineError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use PipelineError::*;
         match self {
-            ShaderCreateError{ err }   => write!(f, "Given Shader constructor call was a fail: {}", err),
-            LayoutCreateError{ err }   => write!(f, "Given PipelineLayout constructor call was a fail: {}", err),
+            PipelineCacheOpenError{ path, err } => write!(f, "Could not open pipeline cache file '{}': {}", path.display(), err),
+            PipelineCacheReadError{ path, err } => write!(f, "Could not read pipeline cache file '{}': {}", path.display(), err),
+            PipelineCacheCreateError{ err }     => write!(f, "Could not create new PipelineCache: {}", err),
+
+            PipelineCacheError{ err }  => write!(f, "Given PipelineCache constructor call was a fail: {}", err),
+            ShaderError{ err }         => write!(f, "Given Shader constructor call was a fail: {}", err),
             PipelineCreateError{ err } => write!(f, "Could not create new Pipeline: {}", err),
         }
     }
