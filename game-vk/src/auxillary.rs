@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   01 May 2022, 12:47:23
+ *   01 May 2022, 17:20:57
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,18 @@ use ash::vk;
 
 pub use crate::errors::{AttributeLayoutError, QueueError};
 use crate::instance::Instance;
+
+
+/***** MACROS *****/
+/// Exports the pointer of a vector or NULL if that vector is empty.
+macro_rules! vec_as_ptr {
+    ($vec:ident) => {
+        (if $vec.is_empty() { ptr::null() } else { $vec.as_ptr() })
+    };
+}
+
+
+
 
 
 /***** GEOMETRY *****/
@@ -1123,7 +1135,7 @@ impl From<vk::SubpassDescription> for SubpassDescription {
     }
 }
 
-impl Into<(vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>)> for SubpassDescription {
+impl Into<(vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>))> for SubpassDescription {
     /// Converts the ColourBlendState into a VkPipelineColorBlendStateCreateInfo.
     /// 
     /// However, due to the external references made in the VkPipelineColorBlendStateCreateInfo struct, it also returns one Vec that manages the external memory referenced.
@@ -1137,22 +1149,13 @@ impl Into<(vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::At
     ///   - A vector with the resolve attachments (same length as the colour attachments)
     ///   - A vector with the preserve attachments (as unsigned integers)
     ///   - A box with the depth stencil attachment
-    fn into(self) -> (vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>) {
+    fn into(self) -> (vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)) {
         // Cast the vectors of self to the appropriate type
         let input_attaches: Vec<vk::AttachmentReference>        = self.input_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let colour_attaches: Vec<vk::AttachmentReference>       = self.colour_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let resolve_attaches: Vec<vk::AttachmentReference>      = self.resolve_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let preserve_attaches: Vec<u32>                         = self.preserve_attaches.clone();
         let depth_stencil: Option<Box<vk::AttachmentReference>> = self.depth_stencil.map(|attach_ref| Box::new(attach_ref.into()));
-
-        // Join them in the memory tuple
-        let mem = Box::new((
-            input_attaches,
-            colour_attaches,
-            resolve_attaches,
-            preserve_attaches,
-            depth_stencil,
-        ));
 
         // Create the VUlkan struct with the references
         let result = vk::SubpassDescription {
@@ -1163,27 +1166,34 @@ impl Into<(vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::At
             pipeline_bind_point : self.bind_point.into(),
 
             // Set the input attachments
-            input_attachment_count : mem.0.len() as u32,
-            p_input_attachments    : mem.0.as_ptr(),
+            input_attachment_count : input_attaches.len() as u32,
+            p_input_attachments    : vec_as_ptr!(input_attaches),
 
             // Set the colour & associated resolve attachments
-            color_attachment_count : mem.1.len() as u32,
-            p_color_attachments    : mem.1.as_ptr(),
-            p_resolve_attachments  : mem.2.as_ptr(),
+            color_attachment_count : colour_attaches.len() as u32,
+            p_color_attachments    : vec_as_ptr!(colour_attaches),
+            p_resolve_attachments  : vec_as_ptr!(resolve_attaches),
 
             // Set the preserve attachments
-            preserve_attachment_count : mem.3.len() as u32,
-            p_preserve_attachments    : mem.3.as_ptr(),
+            preserve_attachment_count : preserve_attaches.len() as u32,
+            p_preserve_attachments    : vec_as_ptr!(preserve_attaches),
 
             // Set the depth stencil
-            p_depth_stencil_attachment : match mem.4.as_ref() {
+            p_depth_stencil_attachment : match depth_stencil.as_ref() {
                 Some(depth_stencil) => &**depth_stencil,
                 None                => ptr::null(),
             },
         };
 
         // Done - return it and its memory managers
-        (result, mem)
+        log::debug!("Depth stencil at the moment of into(): {:?}", if let Some(p) = depth_stencil.as_ref() { &**p as *const vk::AttachmentReference } else { ptr::null() });
+        (result, (
+            input_attaches,
+            colour_attaches,
+            resolve_attaches,
+            preserve_attaches,
+            depth_stencil,
+        ))
     }
 }
 
@@ -1802,11 +1812,11 @@ impl Into<(vk::PipelineVertexInputStateCreateInfo, (Vec<vk::VertexInputAttribute
 
             // Add the attributes
             vertex_attribute_description_count : attributes.len() as u32,
-            p_vertex_attribute_descriptions    : attributes.as_ptr(),
+            p_vertex_attribute_descriptions    : vec_as_ptr!(attributes),
 
             // Add the bindings
             vertex_binding_description_count : bindings.len() as u32,
-            p_vertex_binding_descriptions    : bindings.as_ptr(),
+            p_vertex_binding_descriptions    : vec_as_ptr!(bindings),
         };
 
         // Return the struct with its memory managers
@@ -3106,8 +3116,8 @@ impl Into<(vk::PipelineColorBlendStateCreateInfo, Vec<vk::PipelineColorBlendAtta
             logic_op        : self.logic_op.into(),
 
             // Set the attachments and the blend constants
-            p_attachments    : attachments.as_ptr(),
             attachment_count : attachments.len() as u32,
+            p_attachments    : vec_as_ptr!(attachments),
             blend_constants  : self.blend_constants.clone(),
         };
 
