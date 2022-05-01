@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   18 Apr 2022, 15:43:23
+ *   01 May 2022, 12:34:26
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,7 @@ use ash::extensions::khr;
 use log::{debug, warn};
 
 pub use crate::errors::SwapchainError as Error;
-use crate::auxillary::SwapchainSupport;
+use crate::auxillary::{Extent2D, ImageFormat, SwapchainSupport};
 use crate::device::Device;
 use crate::surface::Surface;
 use crate::image::Image;
@@ -118,7 +118,9 @@ pub struct Swapchain {
     images    : Vec<Arc<Image>>,
     
     /// The chosen format of the swapchain
-    format : vk::Format,
+    format : ImageFormat,
+    /// The chosen extent of the swapchain
+    extent : Extent2D<u32>,
 }
 
 impl Swapchain {
@@ -231,7 +233,8 @@ impl Swapchain {
             swapchain,
             images,
             
-            format,
+            format : format.into(),
+            extent : extent.into(),
         }))
     }
 
@@ -263,7 +266,11 @@ impl Swapchain {
 
     /// Returns the chosen format for this Swapchain.
     #[inline]
-    pub fn format(&self) -> vk::Format { self.format }
+    pub fn format(&self) -> ImageFormat { self.format }
+
+    /// Returns the chosen extent for this Swapchain.
+    #[inline]
+    pub fn extent(&self) -> &Extent2D<u32> { &self.extent }
 }
 
 impl Drop for Swapchain {

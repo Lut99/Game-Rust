@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   30 Apr 2022, 18:09:09
+ *   01 May 2022, 12:47:23
  * Auto updated?
  *   Yes
  *
@@ -48,6 +48,14 @@ impl<T> Offset2D<T> {
     #[inline]
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
+    }
+
+
+
+    /// Casts this Offset2D to another Offset2D with convertible types
+    #[inline]
+    pub fn cast<U: From<T>>(self) -> Offset2D<U> {
+        Offset2D::new(U::from(self.x), U::from(self.y))
     }
 }
 
@@ -100,6 +108,14 @@ impl<T> Extent2D<T> {
     #[inline]
     pub fn new(w: T, h: T) -> Self {
         Self { w, h }
+    }
+
+
+
+    /// Casts this Extent2D to another Extent2D with convertible types
+    #[inline]
+    pub fn cast<U: From<T>>(self) -> Extent2D<U> {
+        Extent2D::new(U::from(self.w), U::from(self.h))
     }
 }
 
@@ -175,6 +191,14 @@ impl<T, U> Rect2D<T, U> {
             offset,
             extent,
         }
+    }
+
+
+
+    /// Casts this Rect2D to another Rect2D with convertible types
+    #[inline]
+    pub fn cast<V: From<T>, W: From<U>>(self) -> Rect2D<V, W> {
+        Rect2D::from_raw(self.offset.cast(), self.extent.cast())
     }
 
 
@@ -1099,7 +1123,7 @@ impl From<vk::SubpassDescription> for SubpassDescription {
     }
 }
 
-impl Into<(vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>))> for SubpassDescription {
+impl Into<(vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>)> for SubpassDescription {
     /// Converts the ColourBlendState into a VkPipelineColorBlendStateCreateInfo.
     /// 
     /// However, due to the external references made in the VkPipelineColorBlendStateCreateInfo struct, it also returns one Vec that manages the external memory referenced.
@@ -1113,13 +1137,22 @@ impl Into<(vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::Attach
     ///   - A vector with the resolve attachments (same length as the colour attachments)
     ///   - A vector with the preserve attachments (as unsigned integers)
     ///   - A box with the depth stencil attachment
-    fn into(self) -> (vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)) {
+    fn into(self) -> (vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>) {
         // Cast the vectors of self to the appropriate type
         let input_attaches: Vec<vk::AttachmentReference>        = self.input_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let colour_attaches: Vec<vk::AttachmentReference>       = self.colour_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let resolve_attaches: Vec<vk::AttachmentReference>      = self.resolve_attaches.iter().map(|attach_ref| attach_ref.into()).collect();
         let preserve_attaches: Vec<u32>                         = self.preserve_attaches.clone();
         let depth_stencil: Option<Box<vk::AttachmentReference>> = self.depth_stencil.map(|attach_ref| Box::new(attach_ref.into()));
+
+        // Join them in the memory tuple
+        let mem = Box::new((
+            input_attaches,
+            colour_attaches,
+            resolve_attaches,
+            preserve_attaches,
+            depth_stencil,
+        ));
 
         // Create the VUlkan struct with the references
         let result = vk::SubpassDescription {
@@ -1130,33 +1163,27 @@ impl Into<(vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::Attach
             pipeline_bind_point : self.bind_point.into(),
 
             // Set the input attachments
-            input_attachment_count : input_attaches.len() as u32,
-            p_input_attachments    : input_attaches.as_ptr(),
+            input_attachment_count : mem.0.len() as u32,
+            p_input_attachments    : mem.0.as_ptr(),
 
             // Set the colour & associated resolve attachments
-            color_attachment_count : colour_attaches.len() as u32,
-            p_color_attachments    : colour_attaches.as_ptr(),
-            p_resolve_attachments  : resolve_attaches.as_ptr(),
+            color_attachment_count : mem.1.len() as u32,
+            p_color_attachments    : mem.1.as_ptr(),
+            p_resolve_attachments  : mem.2.as_ptr(),
 
             // Set the preserve attachments
-            preserve_attachment_count : preserve_attaches.len() as u32,
-            p_preserve_attachments    : preserve_attaches.as_ptr(),
+            preserve_attachment_count : mem.3.len() as u32,
+            p_preserve_attachments    : mem.3.as_ptr(),
 
             // Set the depth stencil
-            p_depth_stencil_attachment : match depth_stencil.as_ref() {
+            p_depth_stencil_attachment : match mem.4.as_ref() {
                 Some(depth_stencil) => &**depth_stencil,
                 None                => ptr::null(),
             },
         };
 
         // Done - return it and its memory managers
-        (result, (
-            input_attaches,
-            colour_attaches,
-            resolve_attaches,
-            preserve_attaches,
-            depth_stencil,
-        ))
+        (result, mem)
     }
 }
 
@@ -2152,7 +2179,7 @@ pub struct RasterizerState {
     pub clamp_value : f32,
 
     /// Whether or not to change the depth value before testing and writing
-    pub depth_bias : bool,
+    pub depth_bias   : bool,
     /// The factor of depth to apply to the depth of each fragment (i.e., scaling)
     pub depth_factor : f32,
     /// The factor to apply to the slope(?) of the fragment during depth calculation

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   20 Apr 2022, 18:00:05
+ *   01 May 2022, 12:31:22
  * Auto updated?
  *   Yes
  *
@@ -176,6 +176,7 @@ impl RenderSystem {
     /// Each RenderPipeline is responsible for taking vertices and junk and outputting that to a RenderTarget.
     /// 
     /// # Arguments
+    /// - `target`: The ID of the render target where this pipeline will render to.
     /// - `create_info`: The RenderPipeline-specific CreateInfo to pass arguments to its constructor.
     /// 
     /// # Returns
@@ -183,16 +184,19 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function errors if the given target could not be initialized properly.
-    pub fn register_pipeline<'a, R, C>(&mut self, create_info: C) -> Result<RenderPipelineId, Error> 
+    pub fn register_pipeline<'a, R, C>(&mut self, target: RenderTargetId, create_info: C) -> Result<RenderPipelineId, Error> 
     where
         R: RenderPipelineBuilder<'a, CreateInfo=C>,
         C: Sized,
     {
+        // Try to get the referenced render target
+        let target: &dyn RenderTarget = self.targets.get(&target).unwrap_or_else(|| panic!("Given RenderTargetId '{}' is not registered", target)).as_ref();
+
         // Generate a new ID for this RenderTarget
         let id = self.last_pipeline_id.increment();
 
         // Call the constructor
-        let pipeline = match R::new(self.device.clone(), create_info) {
+        let pipeline = match R::new(self.device.clone(), target, create_info) {
             Ok(pipeline) => pipeline,
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };

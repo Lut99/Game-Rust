@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 17:57:08
  * Last edited:
- *   30 Apr 2022, 17:29:27
+ *   01 May 2022, 12:45:50
  * Auto updated?
  *   Yes
  *
@@ -182,28 +182,33 @@ impl RenderPassBuilder {
         if let Some(err) = self.error { return Err(err); }
 
         // Cast the attachments to their Vulkan counterparts
+        debug!("Casting attachments...");
         let attachments: Vec<vk::AttachmentDescription> = self.attachments.iter().map(|attach| attach.into()).collect();
 
         // Cast the subpasses (with associated memory) to Vulkan counterparts
+        debug!("Casting subpasses...");
         let mut subpasses: Vec<vk::SubpassDescription> = Vec::with_capacity(self.subpasses.len());
-        let mut _subpasses_mem: Vec<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)> = Vec::with_capacity(self.subpasses.len());
+        let mut _subpasses_mem: Vec<Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>> = Vec::with_capacity(self.subpasses.len());
         for subpass in self.subpasses {
             // Convert to Vulkan
-            let result: (vk::SubpassDescription, (Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)) = subpass.into();
+            let result: (vk::SubpassDescription, Box<(Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<vk::AttachmentReference>, Vec<u32>, Option<Box<vk::AttachmentReference>>)>) = subpass.into();
 
             // Store in the arrays
             subpasses.push(result.0);
             _subpasses_mem.push(result.1);
-        }
+        // }
 
         // Cast the dependencies
+        debug!("Casting dependencies...");
         let dependencies: Vec<vk::SubpassDependency> = self.dependencies.iter().map(|dep| dep.into()).collect();
 
         // Now populate the create info for the render pass with this
+        debug!("Populating render pass info...");
         let render_pass_info = populate_render_pass_info(&attachments, &subpasses, &dependencies);
 
         // Create the new RenderPass...
         let render_pass = unsafe {
+            debug!("Creating VkRenderPass...");
             match device.create_render_pass(&render_pass_info, None) {
                 Ok(render_pass) => render_pass,
                 Err(err)        => { return Err(Error::RenderPassCreateError{ err }); }
@@ -212,10 +217,12 @@ impl RenderPassBuilder {
 
         // Done! Wrap in the new struct and return
         info!("Successfully built RenderPass");
-        Ok(Arc::new(RenderPass {
+        return Ok(Arc::new(RenderPass {
             device,
             render_pass,
-        }))
+        }));
+    }
+    panic!("que");
     }
 }
 

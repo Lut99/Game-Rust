@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   30 Apr 2022, 17:03:43
+ *   01 May 2022, 12:07:16
  * Auto updated?
  *   Yes
  *
@@ -246,6 +246,9 @@ pub enum ShaderError {
     FileOpenError{ path: PathBuf, err: std::io::Error },
     /// Could not read from the given shader file
     FileReadError{ path: PathBuf, err: std::io::Error },
+
+    /// Could not unpack an embedded file
+    EmbeddedError,
 }
 
 impl Display for ShaderError {
@@ -256,6 +259,8 @@ impl Display for ShaderError {
 
             FileOpenError{ path, err } => write!(f, "Could not open given SPIR-V shader file '{}': {}", path.display(), err),
             FileReadError{ path, err } => write!(f, "Could not read given SPIR-V shader file '{}': {}", path.display(), err),
+
+            EmbeddedError => write!(f, "Could not load embedded shader code"),
         }
     }
 }

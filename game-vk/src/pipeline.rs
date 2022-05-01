@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   30 Apr 2022, 16:55:19
+ *   01 May 2022, 12:27:46
  * Auto updated?
  *   Yes
  *
@@ -688,8 +688,6 @@ impl PipelineBuilder {
     /// - `PipelineBuilder::vertex_input()`.
     /// - `PipelineBuilder::viewport()`.
     /// - `PipelineBuilder::rasterization()`.
-    /// - `PipelineBuilder::layout()` or `PipelineBuilder::try_layout()`.
-    /// - `PipelineBuilder::render_pass()` or `PipelineBuilder::try_render_pass()`.
     /// 
     /// After the build is complete, you can use this builder to generate more pipelines. Those subsequent pipelines will use this pipeline as their base (unless `PipelineBuilder::set_pipeline()` is called to override it).
     /// 

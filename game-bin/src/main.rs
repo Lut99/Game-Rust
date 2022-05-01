@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   20 Apr 2022, 18:04:18
+ *   01 May 2022, 12:35:49
  * Auto updated?
  *   Yes
  *
@@ -83,29 +83,20 @@ fn main() {
         }
     };
 
-    // // Initialize a new Triangle RenderPipeline
-    // let window_info = game_gfx::targets::window::CreateInfo {
-    //     event_loop: &event_loop,
-
-    //     title : format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")),
-
-    //     width  : 800,
-    //     height : 600,
-
-    //     image_count : 3,
-    // };
-    // let window = match render_system.register_target::<
-    //     game_gfx::targets::window::Window,
-    //     game_gfx::targets::window::CreateInfo,
-    // >(
-    //     window_info,
-    // ) {
-    //     Ok(window) => window,
-    //     Err(err)   => {
-    //         error!("Could not initialize RenderSystem Window: {}", err);
-    //         std::process::exit(1);
-    //     }
-    // };
+    // Initialize a new Triangle RenderPipeline
+    let triangle = match render_system.register_pipeline::<
+        game_gfx::pipelines::TrianglePipeline,
+        (),
+    >(
+        window,
+        (),
+    ) {
+        Ok(triangle) => triangle,
+        Err(err)     => {
+            error!("Could not initialize RenderSystem TrianglePipeline: {}", err);
+            std::process::exit(1);
+        }
+    };
 
 
 

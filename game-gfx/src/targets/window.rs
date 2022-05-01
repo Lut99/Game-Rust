@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   20 Apr 2022, 18:04:31
+ *   01 May 2022, 12:33:04
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,7 @@ use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
-use game_vk::auxillary::{ImageAspect, ImageViewKind};
+use game_vk::auxillary::{Extent2D, ImageAspect, ImageFormat, ImageViewKind};
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
@@ -224,4 +224,14 @@ impl RenderTarget for Window {
     fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn std::error::Error>> {
         panic!("Window::get_target() is not yet implemented");
     }
+
+
+
+    /// Returns the ImageFormat of this RenderTarget.
+    #[inline]
+    fn format(&self) -> ImageFormat { self.swapchain.format() }
+
+    /// Returns the extent of this RenderTarget.
+    #[inline]
+    fn extent(&self) -> &Extent2D<u32> { self.swapchain.extent() }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   19 Apr 2022, 21:21:27
  * Last edited:
- *   30 Apr 2022, 11:56:27
+ *   01 May 2022, 12:07:27
  * Auto updated?
  *   Yes
  *
@@ -20,6 +20,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use ash::vk;
+use rust_embed::EmbeddedFile;
 
 pub use crate::errors::ShaderError as Error;
 use crate::device::Device;
@@ -121,6 +122,49 @@ impl Shader {
 
         // With the bytes collected, use from_bytes() to do the actual shader builder
         Self::from_bytes(device, bytes)
+    }
+
+    /// Constructor for the Shader, which builds it from embedded SPIR-V code.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device on which the Shader will live.
+    /// - `data`: The EmbeddedFile struct that contains the data.
+    /// 
+    /// # Returns
+    /// A new Shader instance on success.
+    /// 
+    /// # Errors
+    /// This function errors if the bytecode is invalid or if the shader module could not be created in the Vulkan backend.
+    pub fn from_embedded(device: Arc<Device>, data: EmbeddedFile) -> Result<Arc<Shader>, Error> {
+        // Get the data
+        let data: &[u8] = data.data.as_ref();
+
+        // Pass it to the other function
+        Self::from_bytes(device, data)
+    }
+
+    /// Constructor for the Shader, which builds it from embedded SPIR-V code.
+    /// 
+    /// This overload takes a Result of an EmbeddedFile load rather than the EmbeddedFile directly.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device on which the Shader will live.
+    /// - `result`: The Option<EmbeddedFile> struct that contains the data.
+    /// 
+    /// # Returns
+    /// A new Shader instance on success.
+    /// 
+    /// # Errors
+    /// This function errors if the given result is a failure, the bytecode is invalid or if the shader module could not be created in the Vulkan backend.
+    pub fn try_embedded(device: Arc<Device>, result: Option<EmbeddedFile>) -> Result<Arc<Shader>, Error> {
+        // Unpack the data
+        let data = match result {
+            Some(data) => data,
+            None       => { return Err(Error::EmbeddedError); }
+        };
+
+        // Pass it to the other function
+        Self::from_embedded(device, data)
     }
 
 
