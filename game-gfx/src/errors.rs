@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   20 Apr 2022, 17:40:36
+ *   01 May 2022, 17:59:50
  * Auto updated?
  *   Yes
  *
@@ -76,6 +76,9 @@ pub enum WindowError {
     ImagesCreateError{ err: game_vk::image::ViewError },
     /// Could not build the child pipeline
     PipelineCreateError{ type_name: &'static str, err: Box<dyn Error> },
+
+    /// Could not get the new swapchain image
+    SwapchainNextImageError{ err: game_vk::swapchain::Error },
 }
 
 impl Display for WindowError {
@@ -87,6 +90,8 @@ impl Display for WindowError {
             SwapchainCreateError{ err }           => write!(f, "Could not build Swapchain: {}", err),
             ImagesCreateError{ err }              => write!(f, "Could not build Views around Swapchain images: {}", err),
             PipelineCreateError{ type_name, err } => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
+
+            SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
         }
     }
 }

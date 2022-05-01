@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   01 May 2022, 12:35:49
+ *   01 May 2022, 18:07:01
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use game_cfg::Config;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
+use game_gfx::spec::RenderTarget;
 
 
 /***** ENTRYPOINT *****/
@@ -84,7 +85,7 @@ fn main() {
     };
 
     // Initialize a new Triangle RenderPipeline
-    let triangle = match render_system.register_pipeline::<
+    let _triangle = match render_system.register_pipeline::<
         game_gfx::pipelines::TrianglePipeline,
         (),
     >(
@@ -125,7 +126,11 @@ fn main() {
 
             | Event::RedrawRequested(window_id) => {
                 // Check if this concerns our Window
-                if window_id == render_system.get_target_as::<game_gfx::targets::window::Window>(window).id() {
+                let window = render_system.get_target_as_mut::<game_gfx::targets::window::Window>(window);
+                if window_id == window.id() {
+                    // // Get the next to-be-rendered target
+                    // let view = window.get_view();
+
                     // Render the necessary pipelines
                     /* TODO */
                 }

@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   01 May 2022, 12:34:26
+ *   01 May 2022, 18:00:56
  * Auto updated?
  *   Yes
  *
@@ -25,6 +25,7 @@ use crate::auxillary::{Extent2D, ImageFormat, SwapchainSupport};
 use crate::device::Device;
 use crate::surface::Surface;
 use crate::image::Image;
+use crate::sync::{Fence, Semaphore};
 
 
 /***** HELPER FUNCTIONS *****/
@@ -236,6 +237,43 @@ impl Swapchain {
             format : format.into(),
             extent : extent.into(),
         }))
+    }
+
+
+
+    /// Tries to acquire the next image.
+    /// 
+    /// # Arguments
+    /// - `semaphore`: An optional Semaphore to call when done.
+    /// - `fence`: An optional Fence to call when done.
+    /// - `timeout`: An optional timeout for waiting for a new image.
+    /// 
+    /// # Returns
+    /// If the swapchain is still valid, returns the index of the image that is ready. If it's not valid but needs a resize, then 'None' is returned.
+    /// 
+    /// # Errors
+    /// This function errors if the underlying Vulkan backend failed to get the next image (for any other reason than a Swapchain that needs resizing).
+    pub fn next_image(&self, semaphore: Option<&Semaphore>, fence: Option<&Fence>, timeout: Option<u64>) -> Result<Option<usize>, Error> {
+        // Resolve the semaphores, fences and timeouts
+        let vk_semaphore: vk::Semaphore = match semaphore {
+            Some(semaphore) => semaphore.vk(),
+            None            => vk::Semaphore::null(),
+        };
+        let vk_fence: vk::Fence = match fence {
+            Some(fence) => fence.vk(),
+            None        => vk::Fence::null(),
+        };
+        let vk_timeout: u64 = timeout.unwrap_or(u64::MAX);
+
+        // Call the function on the internal loader
+        let index = match unsafe { self.loader.acquire_next_image(self.swapchain, vk_timeout, vk_semaphore, vk_fence) } {
+            Ok((index, not_optimal))                    => { if !not_optimal { index } else { return Ok(None); } },
+            Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => { return Ok(None); }
+            Err(err)                                    => { return Err(Error::SwapchainNextImageError{ err }); }
+        };
+
+        // Success; return it
+        Ok(Some(index as usize))
     }
 
 

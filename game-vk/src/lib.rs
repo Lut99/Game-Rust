@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   29 Apr 2022, 18:16:32
+ *   01 May 2022, 17:26:23
  * Auto updated?
  *   Yes
  *
@@ -40,5 +40,7 @@ pub mod pipeline;
 pub mod pools;
 /// The module for the images & image views
 pub mod image;
+/// The module that contains synchronization primitives
+pub mod sync;
 
 // Bring some components into the general package namespace

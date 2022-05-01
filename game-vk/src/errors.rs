@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   01 May 2022, 12:07:16
+ *   01 May 2022, 17:49:01
  * Auto updated?
  *   Yes
  *
@@ -217,6 +217,9 @@ pub enum SwapchainError {
     SwapchainImagesError{ err: ash::vk::Result },
     /// Could not create an Image around one of the swapchain's images.
     ImageError{ err: ImageError },
+
+    /// Could not get the next available image in the swapchain
+    SwapchainNextImageError{ err: ash::vk::Result },
 }
 
 impl Display for SwapchainError {
@@ -228,6 +231,8 @@ impl Display for SwapchainError {
             SwapchainCreateError{ err }                   => write!(f, "Could not create Swapchain: {}", err),
             SwapchainImagesError{ err }                   => write!(f, "Could not get Swapchain images: {}", err),
             ImageError{ err }                             => write!(f, "Could not create Image from swapchain image: {}", err),
+
+            SwapchainNextImageError{ err } => write!(f, "Could not get next swapchain image: {}", err),
         }
     }
 }
@@ -403,3 +408,27 @@ impl Display for ImageViewError {
 }
 
 impl Error for ImageViewError {}
+
+
+
+/// Defines errors for synchronization primitives
+#[derive(Clone, Debug)]
+pub enum SyncError {
+    /// Could not create a new Semaphore
+    SemaphoreCreateError{ err: ash::vk::Result },
+    /// Could not create a new Fence
+    FenceCreateError{ err: ash::vk::Result },
+}
+
+impl Display for SyncError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use SyncError::*;
+        match self {
+            SemaphoreCreateError{ err } => write!(f, "Could not create Sempahore: {}", err),
+            FenceCreateError{ err }     => write!(f, "Could not create Fence: {}", err),
+        }
+    }
+}
+
+impl Error for SyncError {}

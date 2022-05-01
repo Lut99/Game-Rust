@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   01 May 2022, 12:17:04
+ *   01 May 2022, 18:06:51
  * Auto updated?
  *   Yes
  *
@@ -19,7 +19,7 @@ use std::sync::Arc;
 use game_utl::traits::AsAny;
 use game_vk::auxillary::{Extent2D, ImageFormat};
 use game_vk::device::Device;
-use game_vk::image::Image;
+use game_vk::image;
 
 
 /***** AUXILLARY NEWTYPES *****/
@@ -72,16 +72,19 @@ impl Display for RenderPipelineId {
 /***** RENDER TARGET TRAIT *****/
 /// Defines a target that the RenderSystem may render to (like a Window or an Image).
 pub trait RenderTarget: 'static + AsAny {
-    /// Returns a renderable target, i.e., an Image to render to.
+    /// Returns a renderable target, i.e., an image::View to render to.
     /// 
     /// # Returns
-    /// A new Image on success.
+    /// A new ImageView on success.
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn Error>>;
+    fn get_view(&mut self) -> Result<Arc<image::View>, Box<dyn Error>>;
 
 
+
+    /// Returns a list of all image views in the RenderTarget.
+    fn views(&self) -> &Vec<Arc<image::View>>;
 
     /// Returns the ImageFormat of this RenderTarget.
     fn format(&self) -> ImageFormat;

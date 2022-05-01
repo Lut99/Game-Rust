@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   01 May 2022, 12:33:04
+ *   01 May 2022, 18:06:42
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,7 @@ use game_vk::auxillary::{Extent2D, ImageAspect, ImageFormat, ImageViewKind};
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
-use game_vk::image::{self, Image};
+use game_vk::image;
 
 pub use crate::errors::WindowError as Error;
 use crate::spec::{RenderTarget, RenderTargetBuilder};
@@ -214,18 +214,30 @@ impl<'a> RenderTargetBuilder<'a> for Window {
 }
 
 impl RenderTarget for Window {
-    /// Returns a renderable target, i.e., an Image to render to.
+    /// Returns a renderable target, i.e., an image::View to render to.
     /// 
     /// # Returns
-    /// A new Image on success.
+    /// A new image::View on success.
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_target(&mut self) -> Result<Arc<Image>, Box<dyn std::error::Error>> {
-        panic!("Window::get_target() is not yet implemented");
+    fn get_view(&mut self) -> Result<Arc<image::View>, Box<dyn std::error::Error>> {
+        // Try to get an image from the swapchain
+        let index = match self.swapchain.next_image(None, None, None) {
+            Ok(Some(index)) => index,
+            Ok(None)        => { panic!("Swapchain resize is not yet implemented"); }
+            Err(err)        => { return Err(Box::new(Error::SwapchainNextImageError{ err })); }
+        };
+
+        // Return the view in that index
+        Ok(self.views[index].clone())
     }
 
 
+
+    /// Returns a list of all image views in the RenderTarget.
+    #[inline]
+    fn views(&self) -> &Vec<Arc<image::View>> { &self.views }
 
     /// Returns the ImageFormat of this RenderTarget.
     #[inline]
