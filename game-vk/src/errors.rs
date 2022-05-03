@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   01 May 2022, 17:49:01
+ *   03 May 2022, 18:23:10
  * Auto updated?
  *   Yes
  *
@@ -408,6 +408,27 @@ impl Display for ImageViewError {
 }
 
 impl Error for ImageViewError {}
+
+
+
+/// Defines errors that relate to framebuffers
+#[derive(Clone, Debug)]
+pub enum FramebufferError {
+    /// Could not create a new Framebuffer
+    FramebufferCreateError{ err: ash::vk::Result },
+}
+
+impl Display for FramebufferError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use FramebufferError::*;
+        match self {
+            FramebufferCreateError{ err } => write!(f, "Could not create Framebuffer: {}", err),
+        }
+    }
+}
+
+impl Error for FramebufferError {}
 
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   01 May 2022, 12:34:41
+ *   03 May 2022, 18:52:27
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,8 @@ use game_vk::shader::Shader;
 use game_vk::layout::PipelineLayout;
 use game_vk::render_pass::{RenderPass, RenderPassBuilder};
 use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
+use game_vk::image;
+use game_vk::framebuffer::Framebuffer;
 
 pub use crate::pipelines::errors::TriangleError as Error;
 use crate::pipelines::triangle::Shaders;
@@ -34,7 +36,9 @@ use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderTarget};
 /// The Triangle Pipeline, which implements a simple pipeline that only renders a hardcoded triangle to the screen.
 pub struct Pipeline {
     /// The VkPipeline we wrap
-    pipeline : Arc<VkPipeline>,
+    pipeline     : Arc<VkPipeline>,
+    /// The framebuffers for this pipeline
+    framebuffers : Vec<Arc<Framebuffer>>,
 }
 
 impl RenderPipelineBuilder<'static> for Pipeline {
@@ -124,11 +128,15 @@ impl RenderPipelineBuilder<'static> for Pipeline {
                 depth_factor : 0.0,
                 depth_slope  : 0.0,
             })
-            .build(device, layout, render_pass)
+            .build(device, layout, render_pass.clone())
         {
             Ok(pipeline) => pipeline,
             Err(err)     => { return Err(Box::new(Error::VkPipelineCreateError{ err })); }
         };
+
+        // Create the framebuffers for this target
+        let views: &[Arc<image::View>] = target.views();
+        let framebuffers: Vec<Arc<Framebuffer>> = Vec::with_capacity(target.views)
 
         // Done, store the pipeline
         Ok(Self {
