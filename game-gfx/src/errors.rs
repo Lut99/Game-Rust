@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   05 May 2022, 11:55:48
+ *   05 May 2022, 21:34:10
  * Auto updated?
  *   Yes
  *
@@ -26,38 +26,46 @@ pub enum RenderSystemError {
     DeviceCreateError{ err: game_vk::errors::DeviceError },
     /// Could not create the CommandPool
     CommandPoolCreateError{ err: game_vk::pools::errors::CommandPoolError },
-
     /// Could not initialize a new render system.
-    RenderTargetCreateError{ type_name: &'static str, err: String },
-
+    RenderTargetCreateError{ name: &'static str, err: Box<dyn Error> },
     /// Could not initialize a new render pipeline.
-    RenderPipelineCreateError{ type_name: &'static str, err: String },
-    
+    RenderPipelineCreateError{ name: &'static str, err: Box<dyn Error> },
+    /// Failed to create a Semaphore
+    SemaphoreCreateError{ err: game_vk::sync::Error },
+    /// Failed to create a Fence
+    FenceCreateError{ err: game_vk::sync::Error },
+
+    /// Could not poll if a fence is ready
+    FencePollError{ err: game_vk::sync::Error },
+    /// Could not get the next index of the image to render to.
+    TargetGetIndexError{ err: Box<dyn Error> },
+    /// Could not render one of the Pipelines
+    RenderError{ err: Box<dyn Error> },
+
     /// Could not auto-select a GPU
     DeviceAutoSelectError{ err: game_vk::errors::DeviceError },
     /// Could not list the GPUs
     DeviceListError{ err: game_vk::errors::DeviceError },
-
-    /// Could not render to one of the RenderTargets
-    RenderError{ err: Box<dyn Error> },
 }
 
 impl Display for RenderSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use RenderSystemError::*;
         match self {
-            InstanceCreateError{ err }    => write!(f, "Could not initialize graphics Instance: {}", err),
-            DeviceCreateError{ err }      => write!(f, "Could not initialize Device: {}", err),
-            CommandPoolCreateError{ err } => write!(f, "Could not initialize CommandPool: {}", err),
+            InstanceCreateError{ err }             => write!(f, "Could not initialize graphics Instance: {}", err),
+            DeviceCreateError{ err }               => write!(f, "Could not initialize Device: {}", err),
+            CommandPoolCreateError{ err }          => write!(f, "Could not initialize CommandPool: {}", err),
+            RenderTargetCreateError{ name, err }   => write!(f, "Could not initialize render target '{}': {}", name, err),
+            RenderPipelineCreateError{ name, err } => write!(f, "Could not initialize render pipeline '{}': {}", name, err),
+            SemaphoreCreateError{ err }            => write!(f, "Failed to create Semaphore: {}", err),
+            FenceCreateError{ err }                => write!(f, "Failed to create Fence: {}", err),
 
-            RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
-            
-            RenderPipelineCreateError{ type_name, err } => write!(f, "Could not initialize render pipeline of type '{}': {}", type_name, err),
+            FencePollError{ err }      => write!(f, "Could not poll Fence: {}", err),
+            TargetGetIndexError{ err } => write!(f, "Could not get next image index: {}", err),
+            RenderError{ err }         => write!(f, "Could not render to RenderTarget: {}", err),
 
             DeviceAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
             DeviceListError{ err }       => write!(f, "Could not list GPUs: {}", err),
-
-            RenderError{ err } => write!(f, "Could not render to RenderTarget: {}", err),
         }
     }
 }

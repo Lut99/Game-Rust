@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   05 May 2022, 12:19:25
+ *   05 May 2022, 21:37:59
  * Auto updated?
  *   Yes
  *
@@ -19,15 +19,19 @@ use std::rc::Rc;
 use ash::vk;
 use log::debug;
 use semver::Version;
+use winit::event_loop::EventLoop;
 
 use game_ecs::Ecs;
 use game_vk::auxillary::DeviceKind;
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
+use game_vk::sync::{Fence, Semaphore};
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderPipelineId, RenderTarget, RenderTargetBuilder, RenderTargetId};
+use crate::spec::{RenderPipeline, RenderPipelineId, RenderTarget, RenderTargetId};
+use crate::targets;
+use crate::pipelines;
 
 
 /***** CONSTANTS *****/
@@ -57,23 +61,28 @@ lazy_static!{
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
     /// The Instance on which this RenderSystem is based.
-    instance     : Rc<Instance>,
+    _instance     : Rc<Instance>,
     /// The Device we'll use for rendering.
-    device       : Rc<Device>,
+    _device       : Rc<Device>,
     // /// The MemoryPool we use to allocate CPU-accessible buffers.
     // /// The MemoryPool we use to allocate GPU-local buffers.
     // /// The DescriptorPool from which we allocate descriptors.
     /// The CommandPool from which we allocate commands.
-    command_pool : Rc<CommandPool>,
+    _command_pool : Rc<CommandPool>,
 
-    /// The last-used RenderTargetId
-    last_target_id   : RenderTargetId,
-    /// The last-used RenderPipelineId
-    last_pipeline_id : RenderPipelineId,
     /// The map of render targets to which we render.
-    targets          : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
+    targets   : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
     /// The map of render pipelines which we use to render to.
-    pipelines        : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
+    pipelines : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
+
+    /// The Semaphores that signal when an image is ready (one per image that is in-flight).
+    image_ready  : Vec<Rc<Semaphore>>,
+    /// The Semaphores that signal when a frame is done being rendered (one per image that is in-flight).
+    render_ready : Vec<Rc<Semaphore>>,
+    /// The number of images that are in-flight (one per image that is in-flight).
+    in_flight    : Vec<Rc<Fence>>,
+    /// The current frame we render from the in-flight frames.
+    current_frame : usize,
 }
 
 impl RenderSystem {
@@ -93,7 +102,9 @@ impl RenderSystem {
     /// - `version`: The version of the application to register in the Vulkan driver.
     /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
     /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
+    /// - `event_loop`: The EventLoop to use for triggering Window events and such.
     /// - `gpu`: The index of the GPU to use for rendering.
+    /// - `targets_in_flight`: The maximum number of frames that are in-flight while rendering.
     /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
     /// # Returns
@@ -101,9 +112,11 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
-    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, gpu: usize, debug: bool) -> Result<Self, Error> {
+    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, event_loop: &EventLoop<()>, gpu: usize, targets_in_flight: usize, debug: bool) -> Result<Self, Error> {
         // Register components
         /* TBD */
+
+
 
         // Create the instance
         let layers = if debug {
@@ -130,108 +143,179 @@ impl RenderSystem {
             Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
         };
 
+
+
+        // Initiate the render targets
+        let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
+        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", 800, 600, 3) {
+            Ok(target) => Box::new(target),
+            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
+        });
+    
+
+    
+        // Initiate the render pipelines
+        let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
+        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), command_pool.clone()) {
+            Ok(pipeline) => Box::new(pipeline),
+            Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err: Box::new(err) }); }
+        });
+
+
+
+        // Prepare the necessary synchronization primitives
+        let mut image_ready: Vec<Rc<Semaphore>>  = Vec::with_capacity(targets_in_flight);
+        let mut render_ready: Vec<Rc<Semaphore>> = Vec::with_capacity(targets_in_flight);
+        let mut in_flight: Vec<Rc<Fence>>        = Vec::with_capacity(targets_in_flight);
+        for _ in 0..targets_in_flight {
+            // Add each of the primitives
+            image_ready.push(match Semaphore::new(device.clone()) {
+                Ok(semaphore) => semaphore,
+                Err(err)      => { return Err(Error::SemaphoreCreateError{ err }); }
+            });
+            render_ready.push(match Semaphore::new(device.clone()) {
+                Ok(semaphore) => semaphore,
+                Err(err)      => { return Err(Error::SemaphoreCreateError{ err }); }
+            });
+            in_flight.push(match Fence::new(device.clone(), true) {
+                Ok(fence) => fence,
+                Err(err)  => { return Err(Error::FenceCreateError{ err }); }
+            });
+        }
+
+
+
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            instance,
-            device,
-            command_pool,
+            _instance     : instance,
+            _device       : device,
+            _command_pool : command_pool,
 
-            last_target_id   : RenderTargetId::new(),
-            last_pipeline_id : RenderPipelineId::new(),
-            targets          : HashMap::with_capacity(1),
-            pipelines        : HashMap::with_capacity(1),
+            targets,
+            pipelines,
+
+            image_ready,
+            render_ready,
+            in_flight,
+            current_frame : 0,
         })
     }
 
 
 
-    /// Registers a new render target.
-    /// 
-    /// Each RenderTarget is responsible for producing some image that may be rendered to. Then, in the present() step, it is also responsible for somehow getting the result back to the user.
-    /// 
-    /// # Arguments
-    /// - `create_info`: The RenderTarget-specific CreateInfo to pass arguments to its constructor.
-    /// 
-    /// # Returns
-    /// An identifier to reference the newly added target later on.
-    /// 
-    /// # Errors
-    /// This function errors if the given target could not be initialized properly.
-    pub fn register_target<'a, R, C>(&mut self, create_info: C) -> Result<RenderTargetId, Error> 
-    where
-        R: RenderTargetBuilder<'a, CreateInfo=C>,
-        C: Sized,
-    {
-        // Generate a new ID for this RenderTarget
-        let id = self.last_target_id.increment();
+    // /// Registers a new render target.
+    // /// 
+    // /// Each RenderTarget is responsible for producing some image that may be rendered to. Then, in the present() step, it is also responsible for somehow getting the result back to the user.
+    // /// 
+    // /// # Arguments
+    // /// - `create_info`: The RenderTarget-specific CreateInfo to pass arguments to its constructor.
+    // /// 
+    // /// # Returns
+    // /// An identifier to reference the newly added target later on.
+    // /// 
+    // /// # Errors
+    // /// This function errors if the given target could not be initialized properly.
+    // pub fn register_target<'a, R, C>(&mut self, create_info: C) -> Result<RenderTargetId, Error> 
+    // where
+    //     R: RenderTargetBuilder<'a, CreateInfo=C>,
+    //     C: Sized,
+    // {
+    //     // Generate a new ID for this RenderTarget
+    //     let id = self.last_target_id.increment();
         
-        // Call the constructor
-        let target = match R::new(self.device.clone(), create_info) {
-            Ok(target) => target,
-            Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
-        };
+    //     // Call the constructor
+    //     let target = match R::new(self.device.clone(), create_info) {
+    //         Ok(target) => target,
+    //         Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+    //     };
 
-        // Add it in the map
-        self.targets.insert(id, Box::new(target));
+    //     // Add it in the map
+    //     self.targets.insert(id, Box::new(target));
 
-        // Return the ID
-        debug!("Registered new render target of type {} as ID {}", std::any::type_name::<R>(), id);
-        Ok(id)
-    }
+    //     // Return the ID
+    //     debug!("Registered new render target of type {} as ID {}", std::any::type_name::<R>(), id);
+    //     Ok(id)
+    // }
 
-    /// Registers a new render pipeline.
-    /// 
-    /// Each RenderPipeline is responsible for taking vertices and junk and outputting that to a RenderTarget.
-    /// 
-    /// # Arguments
-    /// - `target`: The ID of the render target where this pipeline will render to.
-    /// - `create_info`: The RenderPipeline-specific CreateInfo to pass arguments to its constructor.
-    /// 
-    /// # Returns
-    /// An identifier to reference the newly added target later on.
-    /// 
-    /// # Errors
-    /// This function errors if the given target could not be initialized properly.
-    pub fn register_pipeline<'a, R, C>(&mut self, target: RenderTargetId, create_info: C) -> Result<RenderPipelineId, Error> 
-    where
-        R: RenderPipelineBuilder<'a, CreateInfo=C>,
-        C: Sized,
-    {
-        // Try to get the referenced render target
-        let target: &dyn RenderTarget = self.targets.get(&target).unwrap_or_else(|| panic!("Given RenderTargetId '{}' is not registered", target)).as_ref();
+    // /// Registers a new render pipeline.
+    // /// 
+    // /// Each RenderPipeline is responsible for taking vertices and junk and outputting that to a RenderTarget.
+    // /// 
+    // /// # Arguments
+    // /// - `target`: The ID of the render target where this pipeline will render to.
+    // /// - `create_info`: The RenderPipeline-specific CreateInfo to pass arguments to its constructor.
+    // /// 
+    // /// # Returns
+    // /// An identifier to reference the newly added target later on.
+    // /// 
+    // /// # Errors
+    // /// This function errors if the given target could not be initialized properly.
+    // pub fn register_pipeline<'a, R, C>(&mut self, target: RenderTargetId, create_info: C) -> Result<RenderPipelineId, Error> 
+    // where
+    //     R: RenderPipelineBuilder<'a, CreateInfo=C>,
+    //     C: Sized,
+    // {
+    //     // Try to get the referenced render target
+    //     let target: &dyn RenderTarget = self.targets.get(&target).unwrap_or_else(|| panic!("Given RenderTargetId '{}' is not registered", target)).as_ref();
 
-        // Generate a new ID for this RenderTarget
-        let id = self.last_pipeline_id.increment();
+    //     // Generate a new ID for this RenderTarget
+    //     let id = self.last_pipeline_id.increment();
 
-        // Call the constructor
-        let pipeline = match R::new(self.device.clone(), target, self.command_pool.clone(), create_info) {
-            Ok(pipeline) => pipeline,
-            Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
-        };
+    //     // Call the constructor
+    //     let pipeline = match R::new(self.device.clone(), target, self.command_pool.clone(), create_info) {
+    //         Ok(pipeline) => pipeline,
+    //         Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+    //     };
 
-        // Add it in the map
-        self.pipelines.insert(id, Box::new(pipeline));
+    //     // Add it in the map
+    //     self.pipelines.insert(id, Box::new(pipeline));
 
-        // Return the ID
-        debug!("Registered new render pipeline of type {} as ID {}", std::any::type_name::<R>(), id);
-        Ok(id)
-    }
+    //     // Return the ID
+    //     debug!("Registered new render pipeline of type {} as ID {}", std::any::type_name::<R>(), id);
+    //     Ok(id)
+    // }
 
 
 
     /// Performs a single render pass using the given pipeline, rendering to the given target.
     /// 
     /// # Arguments
-    /// - `target`: The UID of the target to render to.
     /// - `pipeline`: The UID of the pipeline to render to.
+    /// - `target`: The UID of the target to render to.
     /// 
     /// # Returns
     /// Nothing on success, except that the RenderTarget should have new pixels drawn to it.
     /// 
     /// # Errors
     /// This function errors if the given Pipeline errors.
-    pub fn render(&mut self, target: RenderTargetId, pipeline: RenderPipelineId) -> Result<(), Error> {
+    pub fn render(&mut self, pipeline: RenderPipelineId, target: RenderTargetId) -> Result<(), Error> {
+        // If the next fence is not yet available, early quit
+        match self.in_flight[self.current_frame].poll() {
+            Ok(res)  => if !res { return Ok(()); },
+            Err(err) => { return Err(Error::FencePollError{ err }) }
+        };
+
+        // Fetch the RenderTarget and the RenderPipeline for this render call
+        let target: &dyn RenderTarget         = self.targets.get(&target).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target)).as_ref();
+        let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline)).as_mut();
+
+        // Get the next image index from the render target
+        let frame_index: usize = match target.get_index(Some(&self.image_ready[self.current_frame])) {
+            Ok(index) => index,
+            Err(err)  => { return Err(Error::TargetGetIndexError{ err }); }
+        };
+
+        // Tell the pipeline to render
+        if let Err(err) = pipeline.render(frame_index, &[&self.image_ready[self.current_frame]], &[&self.render_ready[self.current_frame]], &self.in_flight[self.current_frame]) {
+            return Err(Error::RenderError{ err });
+        }
+
+        // Even though the frame is not being rendered and such, schedule its presentation
+        if let Err(err) = target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
+            
+        }
+
         Ok(())
     }
 

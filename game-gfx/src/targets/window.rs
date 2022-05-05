@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   05 May 2022, 12:07:07
+ *   05 May 2022, 21:52:56
  * Auto updated?
  *   Yes
  *
@@ -13,45 +13,64 @@
  *   a Window instance.
 **/
 
-use std::fmt::Debug;
+use std::error;
+use std::ptr;
 use std::rc::Rc;
 
+use ash::vk;
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
+use game_vk::vec_as_ptr;
 use game_vk::auxillary::{Extent2D, ImageAspect, ImageFormat, ImageViewKind};
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
 use game_vk::image;
+use game_vk::sync::Semaphore;
 
 pub use crate::errors::WindowError as Error;
-use crate::spec::{RenderTarget, RenderTargetBuilder};
+use crate::spec::RenderTarget;
 
 
-/***** WINDOW *****/
-/// The CreateInfo for this Window.
-#[derive(Debug, Clone)]
-pub struct CreateInfo<'a> {
-    /// The EventLoop to bind the Window to.
-    pub event_loop : &'a EventLoop<()>,
+/***** POPULATE FUNCTIONS *****/
+/// Populates a VkPresentInfoKHR struct.
+/// 
+/// # Arguments
+/// - `swapchains`: The list of Swapchains to present to.
+/// - `indices`: The list of image indices in each Swapchain to present to.
+/// - `wait_semaphores`: The list of Semaphores to wait to before presentation.
+fn populate_present_info(swapchains: &[vk::SwapchainKHR], indices: &[u32], wait_semaphores: &[vk::Semaphore]) -> vk::PresentInfoKHR {
+    // Do a few sanity checks
+    if swapchains.len() != indices.len() { panic!("Given list of Swapchains (swapchains) is not the same length as the given list of indices (indices)"); }
 
-    /// The title of the new window.
-    pub title : String,
+    // Populate
+    vk::PresentInfoKHR {
+        // Set the standard stuff
+        s_type : vk::StructureType::PRESENT_INFO_KHR,
+        p_next : ptr::null(),
 
-    /// The desired width of the window.
-    pub width  : u32,
-    /// The desired height of the window.
-    pub height : u32,
+        // Set the swapchains and associated images to present to
+        swapchain_count : swapchains.len() as u32,
+        p_swapchains    : vec_as_ptr!(swapchains),
+        p_image_indices : vec_as_ptr!(indices),
 
-    /// The number of images we would like as minimum for the swapchain.
-    pub image_count : u32,
+        // Set the semaphores to wait for
+        wait_semaphore_count : wait_semaphores.len() as u32,
+        p_wait_semaphores    : vec_as_ptr!(wait_semaphores),
+
+        // We don't want per-swapchain results
+        p_results : ptr::null::<vk::Result>() as *mut vk::Result,
+    }
 }
 
 
 
+
+
+/***** WINDOW *****/
 /// Manages a single Window and associated resources.
 /// 
 /// Note that this Window is modular, as in, the pipeline backend may be defined customly.
@@ -62,7 +81,7 @@ pub struct Window {
     /// The WinitWindow that we wrap.
     window    : WWindow,
     /// The Vulkan Surface that we create from this Window.
-    surface   : Rc<Surface>,
+    _surface  : Rc<Surface>,
     /// The Vulkan swapchain that we create from this Window.
     swapchain : Rc<Swapchain>,
     /// The list of Vulkan swapchain images that we create from this Window.
@@ -75,6 +94,87 @@ pub struct Window {
 }
 
 impl Window {
+    /// Constructor for the Window.
+    /// 
+    /// This initializes a new Window as a RenderTarget.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device to bind the Swapchain etc to.
+    /// - `event_loop`: The EventLoop to register Window events on.
+    /// - `title`: The title of the Window.
+    /// - `width`: The width of the Window, in pixels.
+    /// - `height`: The height of the Window, in pixels.
+    /// - `image_count`: The suggested number of images in the swapchain. May be bound by hardware limitations.
+    /// 
+    /// # Returns
+    /// A new Window on success.
+    /// 
+    /// # Errors
+    /// This function errors if the Window or any subsequent resource (like Surfaces or Swapchains) failed to be created. Will always be in the form of an Error.
+    pub fn new(device: Rc<Device>, event_loop: &EventLoop<()>, title: &str, width: u32, height: u32, image_count: u32) -> Result<Self, Error> {
+        // Build the new Winit window
+        let wwindow = match WindowBuilder::new()
+            .with_title(title)
+            .with_inner_size(Size::Physical(PhysicalSize{ width, height }))
+            .build(event_loop)
+        {
+            Ok(wwindow) => wwindow,
+            Err(err)    => { return Err(Error::WinitCreateError{ err }); }
+        };
+
+        // Build the surface around the window
+        let surface = match Surface::new(device.instance().clone(), &wwindow) {
+            Ok(surface) => surface,
+            Err(err)    => { return Err(Error::SurfaceCreateError{ err }); }
+        };
+
+        // Build the swapchain around the GPU and surface
+        let swapchain = match Swapchain::new(device.clone(), surface.clone(), width, height, image_count) {
+            Ok(swapchain) => swapchain,
+            Err(err)      => { return Err(Error::SwapchainCreateError{ err }); }
+        };
+
+        // Build the image views around the swapchain images
+        debug!("Initializing image views...");
+        let mut views: Vec<Rc<image::View>> = Vec::with_capacity(swapchain.images().len());
+        for swapchain_image in swapchain.images() {
+            // Create the view around it
+            let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
+                kind    : ImageViewKind::TwoD,
+                format  : swapchain.format().into(),
+                swizzle : Default::default(),
+
+                aspect     : ImageAspect::Colour,
+                base_level : 0,
+                mip_levels : 1,
+            }) {
+                Ok(view) => view,
+                Err(err) => { return Err(Error::ImagesCreateError{ err }); }
+            };
+
+            // Store it in the list
+            views.push(view);
+        }
+
+
+
+        // Done! Return the window
+        debug!("Initialized new window '{}'", title);
+        Ok(Self {
+            device : device,
+
+            window   : wwindow,
+            _surface : surface,
+            swapchain,
+            views,
+
+            title : title.to_string(),
+            size  : (width, height),
+        })
+    }
+
+
+
     /// Updates the title in the internal window.
     /// 
     /// # Arguments
@@ -113,6 +213,12 @@ impl Window {
 
 
 
+    /// Returns the parent device of this Window.
+    #[inline]
+    pub fn device(&self) -> &Rc<Device> { &self.device }
+
+
+
     /// Returns the identifier of this window if it is a Window, or None otherwise.
     #[inline]
     pub fn id(&self) -> WindowId { self.window.id() }
@@ -133,111 +239,57 @@ impl Window {
 
 }
 
-impl<'a> RenderTargetBuilder<'a> for Window {
-    type CreateInfo = CreateInfo<'a>;
+impl RenderTarget for Window {
+    /// Returns a list of all image views in the RenderTarget.
+    #[inline]
+    fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
 
-
-    /// Constructor for the Window.
+    /// Returns the index of a renderable target, i.e., an image::View to render to.
     /// 
-    /// This initializes a new Window as a RenderTarget.
+    /// For non-Swapchain targets, this function will be very simple.
     /// 
     /// # Arguments
-    /// - `device`: The Device to bind the Swapchain etc to.
-    /// - `create_info`: Additional parameters for the Window itself.
+    /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
     /// 
     /// # Returns
-    /// A new Window on success.
-    /// 
-    /// # Errors
-    /// This function errors if the Window or any subsequent resource (like Surfaces or Swapchains) failed to be created. Will always be in the form of an Error.
-    fn new(device: Rc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
-        // Build the new Winit window
-        let wwindow = match WindowBuilder::new()
-            .with_title(&create_info.title)
-            .with_inner_size(Size::Physical(PhysicalSize{ width: create_info.width, height: create_info.height }))
-            .build(create_info.event_loop)
-        {
-            Ok(wwindow) => wwindow,
-            Err(err)    => { return Err(Box::new(Error::WinitCreateError{ err })); }
-        };
-
-        // Build the surface around the window
-        let surface = match Surface::new(device.instance().clone(), &wwindow) {
-            Ok(surface) => surface,
-            Err(err)    => { return Err(Box::new(Error::SurfaceCreateError{ err })); }
-        };
-
-        // Build the swapchain around the GPU and surface
-        let swapchain = match Swapchain::new(device.clone(), surface.clone(), create_info.width, create_info.height, create_info.image_count) {
-            Ok(swapchain) => swapchain,
-            Err(err)      => { return Err(Box::new(Error::SwapchainCreateError{ err })); }
-        };
-
-        // Build the image views around the swapchain images
-        debug!("Initializing image views...");
-        let mut views: Vec<Rc<image::View>> = Vec::with_capacity(swapchain.images().len());
-        for swapchain_image in swapchain.images() {
-            // Create the view around it
-            let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
-                kind    : ImageViewKind::TwoD,
-                format  : swapchain.format().into(),
-                swizzle : Default::default(),
-
-                aspect     : ImageAspect::Colour,
-                base_level : 0,
-                mip_levels : 1,
-            }) {
-                Ok(view) => view,
-                Err(err) => { return Err(Box::new(Error::ImagesCreateError{ err })); }
-            };
-
-            // Store it in the list
-            views.push(view);
-        }
-
-
-
-        // Done! Return the window
-        debug!("Initialized new window '{}'", &create_info.title);
-        Ok(Self {
-            device : device,
-
-            window : wwindow,
-            surface,
-            swapchain,
-            views,
-
-            title : create_info.title,
-            size  : (create_info.width, create_info.height),
-        })
-    }
-}
-
-impl RenderTarget for Window {
-    /// Returns a renderable target, i.e., an image::View to render to.
-    /// 
-    /// # Returns
-    /// A new image::View on success.
+    /// A new ImageView on success.
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_view(&mut self) -> Result<Rc<image::View>, Box<dyn std::error::Error>> {
+    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<usize, Box<dyn error::Error>> {
         // Try to get an image from the swapchain
-        let index = match self.swapchain.next_image(None, None, None) {
+        let index = match self.swapchain.next_image(done_semaphore, None, None) {
             Ok(Some(index)) => index,
             Ok(None)        => { panic!("Swapchain resize is not yet implemented"); }
             Err(err)        => { return Err(Box::new(Error::SwapchainNextImageError{ err })); }
         };
 
-        // Return the view in that index
-        Ok(self.views[index].clone())
+        // Return that index
+        Ok(index)
+    }
+
+    /// Presents this RenderTarget in the way it likes.
+    /// 
+    /// # Arguments
+    /// - `index`: The index of the internal image to present.
+    /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
+    /// 
+    /// # Errors
+    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), Box<dyn error::Error>> {
+        // Cast the semaphores
+        let vk_wait_semaphores: Vec<vk::Semaphore> = wait_semaphores.iter().map(|sem| sem.vk()).collect();
+
+        // Populate the present info struct.
+        let vk_swapchains: [vk::SwapchainKHR; 1] = [self.swapchain.vk()];
+        let vk_indices: [u32; 1] = [index as u32];
+        let present_info = populate_present_info(&vk_swapchains, &vk_indices, &vk_wait_semaphores);
+
+        // Present
+        
     }
 
 
-
-    /// Returns a list of all image views in the RenderTarget.
-    #[inline]
-    fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
 
     /// Returns the ImageFormat of this RenderTarget.
     #[inline]

@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   05 May 2022, 13:03:07
+ *   05 May 2022, 21:40:35
  * Auto updated?
  *   Yes
  *
@@ -14,11 +14,12 @@
 **/
 
 use std::error;
+use std::ptr;
 use std::rc::Rc;
 
-use log::warn;
+use ash::vk;
 
-use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageLayout, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SubpassDescription, VertexInputState, ViewportState};
+use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageLayout, Offset2D, PipelineStage, RasterizerState, Rect2D, SampleCount, ShaderStage, SubpassDescription, VertexInputState, ViewportState};
 use game_vk::device::Device;
 use game_vk::shader::Shader;
 use game_vk::layout::PipelineLayout;
@@ -27,35 +28,67 @@ use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBui
 use game_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 use game_vk::image;
 use game_vk::framebuffer::Framebuffer;
+use game_vk::sync::{Fence, Semaphore};
 
 pub use crate::pipelines::errors::TriangleError as Error;
 use crate::pipelines::triangle::Shaders;
-use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderTarget};
+use crate::spec::{RenderPipeline, RenderTarget};
+
+
+/***** SUBMIT INFO *****/
+/// Populates a VkSubmitInfo struct.
+/// 
+/// # Arguments:
+/// - `command_buffer`: The CommandBuffers to submit.
+/// - `wait_semaphores`: The Semaphores to wait for before rendering.
+/// - `wait_stage_mask`: A list of PipelineStages where each semaphore waiting should occur.
+/// - `done_semaphores`: The Semaphores to signal when done with rendering.
+fn populate_submit_info(command_buffers: &[vk::CommandBuffer], wait_semaphores: &[vk::Semaphore], wait_stages: &[vk::PipelineStageFlags], done_semaphores: &[vk::Semaphore]) -> vk::SubmitInfo {
+    // Do a few sanity checks
+    if wait_semaphores.len() != wait_stages.len() { panic!("The length of the Semaphores (wait_semaphores) and associated waiting stages (wait_stages) should be the same"); }
+
+    // Populate hte struct
+    vk::SubmitInfo {
+        // Do the standard stuff
+        s_type : vk::StructureType::SUBMIT_INFO,
+        p_next : ptr::null(),
+
+        // Set the command buffers to submit
+        command_buffer_count : command_buffers.len() as u32,
+        p_command_buffers    : command_buffers.as_ptr(),
+
+        // Set the semaphores to wait for
+        wait_semaphore_count  : wait_semaphores.len() as u32,
+        p_wait_semaphores     : wait_semaphores.as_ptr(),
+        p_wait_dst_stage_mask : wait_stages.as_ptr(),
+        
+        // Set the semaphores to signal
+        signal_semaphore_count : done_semaphores.len() as u32,
+        p_signal_semaphores    : done_semaphores.as_ptr(),
+    }
+}
+
+
+
 
 
 /***** LIBRARY *****/
 /// The Triangle Pipeline, which implements a simple pipeline that only renders a hardcoded triangle to the screen.
 pub struct Pipeline {
     /// The Device where the pipeline runs.
-    device       : Rc<Device>,
+    device        : Rc<Device>,
     /// The CommandPool from which we may allocate buffers.
-    command_pool : Rc<CommandPool>,
+    _command_pool : Rc<CommandPool>,
 
-    /// The VkPipeline we wrap
-    pipeline        : Rc<VkPipeline>,
-    /// The framebuffers for this pipeline
-    framebuffers    : Vec<Rc<Framebuffer>>,
-    /// The command buffers for this pipeline
+    /// The VkPipeline we wrap.
+    _pipeline       : Rc<VkPipeline>,
+    /// The framebuffers for this pipeline.
+    _framebuffers   : Vec<Rc<Framebuffer>>,
+    /// The command buffers for this pipeline.
     command_buffers : Vec<Rc<CommandBuffer>>,
-
-    
 }
 
-impl RenderPipelineBuilder<'static> for Pipeline {
-    /// Defines the arguments that will be passed as a single struct to the constructor.
-    type CreateInfo = ();
-
-
+impl Pipeline {
     /// Constructor for the RenderPipeline.
     /// 
     /// This initializes a new RenderPipeline. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
@@ -64,21 +97,20 @@ impl RenderPipelineBuilder<'static> for Pipeline {
     /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
     /// - `target`: The RenderTarget where this pipeline will render to.
     /// - `command_pool`: The RenderSystem's CommandPool struct that may be used to allocate command buffers (also later during rendering).
-    /// - `create_info`: The CreateInfo struct specific to the backend RenderPipeline, which we use to pass target-specific arguments.
     /// 
     /// # Returns
     /// A new instance of the backend RenderPipeline.
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(device: Rc<Device>, target: &dyn RenderTarget, command_pool: Rc<CommandPool>, _create_info: Self::CreateInfo) -> Result<Self, Box<dyn error::Error>> {
+    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, command_pool: Rc<CommandPool>) -> Result<Self, Error> {
         // Make the command pool muteable
         let mut command_pool = command_pool;
 
         // Build the pipeline layout
         let layout = match PipelineLayout::new(device.clone(), &[]) {
             Ok(layout) => layout,
-            Err(err)   => { return Err(Box::new(Error::PipelineLayoutCreateError{ err })); }
+            Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
         };
 
         // Build the render pass
@@ -110,7 +142,7 @@ impl RenderPipelineBuilder<'static> for Pipeline {
             .build(device.clone())
         {
             Ok(render_pass) => render_pass,
-            Err(err)        => { return Err(Box::new(Error::RenderPassCreateError{ err })); }
+            Err(err)        => { return Err(Error::RenderPassCreateError{ err }); }
         };
 
         // Now, prepare the static part of the Pipeline
@@ -145,7 +177,7 @@ impl RenderPipelineBuilder<'static> for Pipeline {
             .build(device.clone(), layout, render_pass.clone())
         {
             Ok(pipeline) => pipeline,
-            Err(err)     => { return Err(Box::new(Error::VkPipelineCreateError{ err })); }
+            Err(err)     => { return Err(Error::VkPipelineCreateError{ err }); }
         };
 
         // Create the framebuffers for this target
@@ -155,7 +187,7 @@ impl RenderPipelineBuilder<'static> for Pipeline {
             // Add the newly created buffer (if successful)
             framebuffers.push(match Framebuffer::new(device.clone(), render_pass.clone(), vec![ view.clone() ], target.extent().clone()) {
                 Ok(framebuffer) => framebuffer,
-                Err(err)        => { return Err(Box::new(Error::FramebufferCreateError{ err })); }
+                Err(err)        => { return Err(Error::FramebufferCreateError{ err }); }
             });
         }
 
@@ -165,10 +197,10 @@ impl RenderPipelineBuilder<'static> for Pipeline {
             // Start recording the command buffer
             let cmd: Rc<CommandBuffer> = match Rc::get_mut(&mut command_pool).expect("Could not get muteable command pool").allocate(device.families().graphics, CommandBufferFlags::EMPTY, CommandBufferLevel::Primary) {
                 Ok(cmd)  => cmd,
-                Err(err) => { return Err(Box::new(Error::CommandBufferAllocateError{ err })); }
+                Err(err) => { return Err(Error::CommandBufferAllocateError{ err }); }
             };
             if let Err(err) = cmd.begin(CommandBufferUsageFlags::SIMULTANEOUS_USE) {
-                return Err(Box::new(Error::CommandBufferRecordError{ err }));
+                return Err(Error::CommandBufferRecordError{ err });
             };
 
             // Record the render pass with a single draw
@@ -179,7 +211,7 @@ impl RenderPipelineBuilder<'static> for Pipeline {
 
             // Finish recording
             if let Err(err) = cmd.end() {
-                return Err(Box::new(Error::CommandBufferRecordError{ err }));
+                return Err(Error::CommandBufferRecordError{ err });
             }
 
             // Add the buffer
@@ -189,10 +221,10 @@ impl RenderPipelineBuilder<'static> for Pipeline {
         // Done, store the pipeline
         Ok(Self {
             device,
-            command_pool,
+            _command_pool : command_pool,
 
-            pipeline,
-            framebuffers,
+            _pipeline     : pipeline,
+            _framebuffers : framebuffers,
             command_buffers,
         })
     }
@@ -205,12 +237,31 @@ impl RenderPipeline for Pipeline {
     /// 
     /// You can assume that the synchronization with e.g. swapchains is already been done.
     /// 
+    /// # Arguments
+    /// - `index`: The index of the target image to render to.
+    /// - `wait_semaphores`: One or more Semaphores to wait for before we can start rendering.
+    /// - `done_semaphores`: One or more Semaphores to signal when we're done rendering.
+    /// - `done_fence`: Fence to signal when rendering is done.
+    /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), Box<dyn error::Error>> {
-        
+    fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn error::Error>> {
+        // Cast the semaphores and generate a list of wait stages
+        let vk_wait_semaphores: Vec<vk::Semaphore>      = wait_semaphores.iter().map(|sem| sem.vk()).collect();
+        let vk_wait_stages: Vec<vk::PipelineStageFlags> = (0..wait_semaphores.len()).map(|_| PipelineStage::COLOUR_ATTACHMENT_OUTPUT.into()).collect();
+        let vk_done_semaphores: Vec<vk::Semaphore>      = done_semaphores.iter().map(|sem| sem.vk()).collect();
 
-        // Done
-        Ok(())
+        // Prepare the SubmitInfo
+        let vk_command_buffers: [vk::CommandBuffer; 1] = [self.command_buffers[index].vk()];
+        let submit_info = populate_submit_info(&vk_command_buffers, &vk_wait_semaphores, &vk_wait_stages, &vk_done_semaphores);
+
+        // Submit!
+        if let Err(err) = done_fence.reset() { return Err(Box::new(Error::FenceResetError{ err })); }
+        unsafe {
+            match self.device.queue_submit(self.device.queues().graphics, &[submit_info], done_fence.vk()) {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Box::new(Error::SubmitError{ err })),
+            }
+        }
     }
 }

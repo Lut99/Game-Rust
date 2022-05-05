@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   05 May 2022, 12:27:35
+ *   05 May 2022, 21:49:56
  * Auto updated?
  *   Yes
  *
@@ -28,6 +28,7 @@ use crate::instance::Instance;
 
 /***** MACROS *****/
 /// Exports the pointer of a vector or NULL if that vector is empty.
+#[macro_export]
 macro_rules! vec_as_ptr {
     ($vec:ident) => {
         (if $vec.is_empty() { ptr::null() } else { $vec.as_ptr() })

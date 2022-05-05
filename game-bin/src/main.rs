@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   05 May 2022, 12:20:41
+ *   05 May 2022, 20:34:44
  * Auto updated?
  *   Yes
  *
@@ -54,7 +54,14 @@ fn main() {
     let mut ecs = Ecs::default();
 
     // Initialize the render system
-    let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), config.gpu, config.verbosity >= LevelFilter::Debug) {
+    let mut render_system = match RenderSystem::new(
+        &mut ecs,
+        "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)),
+        "Game-Rust-Engine", Version::new(0, 1, 0),
+        config.gpu,
+        2,
+        config.verbosity >= LevelFilter::Debug
+    ) {
         Ok(system) => system,
         Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
     };

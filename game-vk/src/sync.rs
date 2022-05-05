@@ -4,7 +4,7 @@
  * Created:
  *   01 May 2022, 17:26:00
  * Last edited:
- *   05 May 2022, 12:11:17
+ *   05 May 2022, 21:02:54
  * Auto updated?
  *   Yes
  *
@@ -101,6 +101,12 @@ impl Semaphore {
     pub fn vk(&self) -> vk::Semaphore { self.semaphore }
 }
 
+impl Drop for Semaphore {
+    fn drop(&mut self) {
+        unsafe { self.device.destroy_semaphore(self.semaphore, None); }
+    }
+}
+
 
 
 /// Implements a Fence, i.e., something that the CPU manually has to set to continue.
@@ -144,6 +150,62 @@ impl Fence {
 
 
 
+    /// Blocks the current (CPU) thread until the Fence is signalled.
+    /// 
+    /// # Arguments
+    /// - `timeout`: An optional timeout to wait for this Fence. A timeout of 0 is equal to polling, and a timeout of `u64::MAX` is equal to an indefinite poll.
+    /// 
+    /// # Errors
+    /// This function errors if the underlying Vulkan backend does or if a timeout has been reached.
+    pub fn wait(&self, timeout: Option<u64>) -> Result<(), Error> {
+        // Unpack the timeout
+        let timeout = timeout.unwrap_or(u64::MAX);
+
+        // Use the device function to wait
+        unsafe {
+            match self.device.wait_for_fences(&[self.fence], true, timeout) {
+                Ok(_)                         => Ok(()),
+                Err(ash::vk::Result::TIMEOUT) => Err(Error::FenceTimeout{ timeout }),
+                Err(err)                      => Err(Error::FenceWaitError{ err }),
+            }
+        }
+    }
+
+    /// Polls the Fence if it's ready or not.
+    /// 
+    /// # Returns
+    /// Whether or not the Fence is signalled (true) or not (false).
+    /// 
+    /// # Errors
+    /// This function errors if the underlying Vulkan backend does.
+    #[inline]
+    pub fn poll(&self) -> Result<bool, Error> {
+        // Use the device function to poll (timeout of 0)
+        unsafe {
+            match self.device.wait_for_fences(&[self.fence], true, 0) {
+                Ok(_)                         => Ok(true),
+                Err(ash::vk::Result::TIMEOUT) => Ok(false),
+                Err(err)                      => Err(Error::FenceWaitError{ err }),
+            }
+        }
+    }
+
+    /// Resets the Fence from a signalled state to a non-signalled state.
+    /// 
+    /// # Errors
+    /// This function errors if the underlying Vulkan backend could not reset the Fence.
+    #[inline]
+    pub fn reset(&self) -> Result<(), Error> {
+        unsafe {
+            match self.device.reset_fences(&[self.fence]) {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Error::FenceResetError{ err }),
+            }
+        }
+    }
+
+
+
     /// Returns the device where this Semaphore lives.
     #[inline]
     pub fn device(&self) -> &Rc<Device> { &self.device }
@@ -151,4 +213,10 @@ impl Fence {
     /// Returns the internal VkFence.
     #[inline]
     pub fn vk(&self) -> vk::Fence { self.fence }
+}
+
+impl Drop for Fence {
+    fn drop(&mut self) {
+        unsafe { self.device.destroy_fence(self.fence, None); }
+    }
 }

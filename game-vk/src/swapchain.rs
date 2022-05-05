@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   01 May 2022, 18:00:56
+ *   05 May 2022, 21:19:14
  * Auto updated?
  *   Yes
  *
@@ -253,7 +253,7 @@ impl Swapchain {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend failed to get the next image (for any other reason than a Swapchain that needs resizing).
-    pub fn next_image(&self, semaphore: Option<&Semaphore>, fence: Option<&Fence>, timeout: Option<u64>) -> Result<Option<usize>, Error> {
+    pub fn next_image(&self, semaphore: Option<&Rc<Semaphore>>, fence: Option<&Rc<Fence>>, timeout: Option<u64>) -> Result<Option<usize>, Error> {
         // Resolve the semaphores, fences and timeouts
         let vk_semaphore: vk::Semaphore = match semaphore {
             Some(semaphore) => semaphore.vk(),

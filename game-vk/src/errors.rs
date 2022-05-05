@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   03 May 2022, 18:23:10
+ *   05 May 2022, 21:01:45
  * Auto updated?
  *   Yes
  *
@@ -439,6 +439,14 @@ pub enum SyncError {
     SemaphoreCreateError{ err: ash::vk::Result },
     /// Could not create a new Fence
     FenceCreateError{ err: ash::vk::Result },
+
+    /// The given Fence has timed-out.
+    FenceTimeout{ timeout: u64 },
+    /// Could not wait for a Fence.
+    FenceWaitError{ err: ash::vk::Result },
+
+    /// Could not reset a Fence.
+    FenceResetError{ err: ash::vk::Result },
 }
 
 impl Display for SyncError {
@@ -448,6 +456,11 @@ impl Display for SyncError {
         match self {
             SemaphoreCreateError{ err } => write!(f, "Could not create Sempahore: {}", err),
             FenceCreateError{ err }     => write!(f, "Could not create Fence: {}", err),
+            
+            FenceTimeout{ timeout } => write!(f, "Fence timed-out after {} milliseconds", timeout),
+            FenceWaitError{ err }   => write!(f, "Could not wait for Fence: {}", err),
+            
+            FenceResetError{ err } => write!(f, "Could not reset Fence: {}", err),
         }
     }
 }
