@@ -22,7 +22,7 @@ use game_gfx::RenderSystem;
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 struct Arguments {
-    /// Whether or not to search for GPUs with extra debug capabilities
+    /// Whether or not to seRch for GPUs with extra debug capabilities
     #[clap(short, long, help = "If given, requires that supported GPUs also support extra debug capabilities.")]
     pub debug : bool,
 }

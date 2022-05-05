@@ -14,7 +14,7 @@
 
 use std::ops::Deref;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::{Entry as VkEntry, Instance as VkInstance};
 use ash::extensions::khr;
@@ -225,7 +225,7 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
 /// Implements a Surface, which can be build from a given Window object.
 pub struct Surface {
     /// The Instance that this Surface is build on.
-    instance : Arc<Instance>,
+    instance : Rc<Instance>,
 
     /// The load for the surface which we wrap.
     loader  : khr::Surface,
@@ -247,7 +247,7 @@ impl Surface {
     /// # Errors
     /// 
     /// This function errors whenever the backend Vulkan errors.
-    pub fn new(instance: Arc<Instance>, wwindow: &WWindow) -> Result<Arc<Self>, Error> {
+    pub fn new(instance: Rc<Instance>, wwindow: &WWindow) -> Result<Rc<Self>, Error> {
         // Create the surface KHR
         debug!("Initializing surface...");
         let surface = unsafe { create_surface(instance.ash(), instance.vk(), wwindow) }?;
@@ -256,7 +256,7 @@ impl Surface {
         let loader = khr::Surface::new(instance.ash(), instance.vk());
 
         // Store them internally, done
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             instance,
 
             loader,
@@ -268,7 +268,7 @@ impl Surface {
 
     /// Returns the instance of the Surface.
     #[inline]
-    pub fn instance(&self) -> &Arc<Instance> { &self.instance }
+    pub fn instance(&self) -> &Rc<Instance> { &self.instance }
 
     /// Returns the internal Surface (loader) object.
     #[inline]

@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 17:57:08
  * Last edited:
- *   01 May 2022, 17:03:04
+ *   05 May 2022, 10:42:25
  * Auto updated?
  *   Yes
  *
@@ -13,7 +13,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use log::{debug, info};
@@ -177,7 +177,7 @@ impl RenderPassBuilder {
     /// 
     /// # Errors
     /// Whenever the creation of the new VkRenderPass failed, or when an error occurred during any of the other functions during the build process.
-    pub fn build(self, device: Arc<Device>) -> Result<Arc<RenderPass>, Error> {
+    pub fn build(self, device: Rc<Device>) -> Result<Rc<RenderPass>, Error> {
         // If any errors, then return those
         if let Some(err) = self.error { return Err(err); }
 
@@ -219,8 +219,8 @@ impl RenderPassBuilder {
         };
 
         // Done! Wrap in the new struct and return
-        info!("Successfully built RenderPass");
-        Ok(Arc::new(RenderPass {
+        debug!("Successfully built RenderPass");
+        Ok(Rc::new(RenderPass {
             device,
             render_pass,
         }))
@@ -232,7 +232,7 @@ impl RenderPassBuilder {
 /// Defines a render pass, i.e., a single run through a/the pipeline.
 pub struct RenderPass {
     /// The device where the RenderPass will live.
-    device : Arc<Device>,
+    device : Rc<Device>,
 
     /// The Vulkan RenderPass which we wrap.
     render_pass : vk::RenderPass,
@@ -241,7 +241,7 @@ pub struct RenderPass {
 impl RenderPass {
     /// Returns the internal device in the RenderPass.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
     
     /// Returns the internal VkRenderPass in the RenderPass.
     #[inline]

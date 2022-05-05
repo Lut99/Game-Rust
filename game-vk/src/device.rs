@@ -16,7 +16,7 @@
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use log::debug;
@@ -36,7 +36,7 @@ use crate::surface::Surface;
 /// 
 /// This function returns errors if the given device does not support all of the required extensions, layers and features.
 fn supports(
-    instance: &Arc<Instance>,
+    instance: &Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     physical_device_index: usize,
     physical_device_name: &str,
@@ -132,7 +132,7 @@ fn populate_queue_info(family_index: u32, queue_priorities: &[f32]) -> vk::Devic
 /// 
 /// Error only occur when the given device does not support all of the given extensions / layers / features.
 fn populate_device_info(
-    instance: &Arc<Instance>,
+    instance: &Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     physical_device_index: usize,
     physical_device_name: &str,
@@ -176,7 +176,7 @@ fn populate_device_info(
 /// The Device struct provides logic to work with both Vulkan's PhysicalDevices and Devices.
 pub struct Device {
     /// The instance used to initialize the device
-    instance        : Arc<Instance>,
+    instance        : Rc<Instance>,
     /// The PhysicalDevice around which we wrap.
     physical_device : vk::PhysicalDevice,
     /// The logical Device around which we wrap.
@@ -200,7 +200,7 @@ impl Device {
     /// The Device class is meant to provide access to both a PhysicalDevice and Vulkan's abstraction over it.
     /// 
     /// # Arguments
-    /// - `instance`: An Arc of the global instance that we may use to initialize the device.
+    /// - `instance`: An Rc of the global instance that we may use to initialize the device.
     /// - `physical_device_index`: The index of the physical device we want to wrap around. Can be obtained by using Device::auto_select().
     /// - `device_extensions`: A slice of Device extensions to enable on the Device.
     /// - `device_layers`: A slice of Device layers to enable on the Device.
@@ -208,7 +208,7 @@ impl Device {
     /// 
     /// # Returns
     /// Returns a new Device instance on success, or else an Error describing what went wrong if the Device creation failed.
-    pub fn new(instance: Arc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Arc<Self>, Error> {
+    pub fn new(instance: Rc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Rc<Self>, Error> {
         // We enumerate through all the physical devices to find the appropriate one
         let physical_devices = match unsafe { instance.enumerate_physical_devices() } {
             Ok(devices) => devices,
@@ -290,7 +290,7 @@ impl Device {
 
 
         // Done! Return the new GPU
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             instance,
             physical_device,
             device,
@@ -310,14 +310,14 @@ impl Device {
     /// Iterates through all the GPUs that can be found in the given instance, and then tries to select the most appropriate one for the Game.
     /// 
     /// # Arguments
-    /// - `instance`: The Instance object to search for GPUs in.
+    /// - `instance`: The Instance object to seRch for GPUs in.
     /// - `device_extensions`: A slice of extensions that the GPU should support.
     /// - `device_layers`: A slice of layers that the GPU should support.
     /// - `device_features`: A struct of features that the GPU should support.
     /// 
     /// # Returns
     /// The index of the chosen GPU if we could find one, or, either if we did not find one or we failed otherwise, an Error detailing what went wrong.
-    pub fn auto_select(instance: Arc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<usize, Error> {
+    pub fn auto_select(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<usize, Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -360,14 +360,14 @@ impl Device {
     /// Lists all GPUs that Vulkan can find and that support the given extensions to stdout.
     /// 
     /// # Arguments
-    /// - `instance`: The Instance object to search for GPUs in.
+    /// - `instance`: The Instance object to seRch for GPUs in.
     /// - `device_extensions`: A slice of extensions that the GPU should support to be marked as 'supported'.
     /// - `device_layers`: A slice of layers that the GPU should support to be marked as 'supported'.
     /// - `device_features`: A struct of features that the GPU should support to be marked as 'supported'.
     /// 
     /// # Returns
     /// Two vectors of (index, name, kind) tuples describing each GPU on success (0 = supported, 1 = unsupported), or else an Error describing the failure on a failure.
-    pub fn list(instance: Arc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
+    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -416,7 +416,7 @@ impl Device {
     /// 
     /// # Errors
     /// This function may error when the device could not be queried for its support or the surface is not supported at all.
-    pub fn get_swapchain_support(&self, surface: &Arc<Surface>) -> Result<SwapchainSupport, Error> {
+    pub fn get_swapchain_support(&self, surface: &Rc<Surface>) -> Result<SwapchainSupport, Error> {
         // Check if the chosen graphics queue can present to the given chain
         if !match unsafe {
             surface.get_physical_device_surface_support(self.physical_device, self.families.graphics, surface.vk())
@@ -468,7 +468,7 @@ impl Device {
 
     /// Returns the instance around which this Device is wrapped
     #[inline]
-    pub fn instance(&self) -> &Arc<Instance> { &self.instance }    
+    pub fn instance(&self) -> &Rc<Instance> { &self.instance }    
 
     /// Returns the internal device.
     #[inline]

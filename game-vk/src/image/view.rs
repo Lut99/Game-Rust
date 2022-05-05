@@ -13,7 +13,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -51,9 +51,9 @@ pub struct CreateInfo {
 /// The ImageView class, which wraps around an Image or a VkImage to define how it should be accessed.
 pub struct View {
     /// The parent device for the parent image, who's lifetime we are tied  to
-    device : Arc<Device>,
+    device : Rc<Device>,
     /// The parent image for this view
-    image  : Arc<Image>,
+    image  : Rc<Image>,
 
     /// The image view object itself.
     view  : vk::ImageView,
@@ -74,7 +74,7 @@ impl View {
     /// 
     /// # Errors
     /// This function errors if we failed to allocate the new ImageView for some reason.
-    pub fn new(device: Arc<Device>, image: Arc<Image>, create_info: CreateInfo) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, image: Rc<Image>, create_info: CreateInfo) -> Result<Rc<Self>, Error> {
         // Define the Vulkan create info
         let image_info = vk::ImageViewCreateInfo {
             // Do the default stuff
@@ -111,7 +111,7 @@ impl View {
         };
 
         // Return the new instance
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             image,
 
@@ -128,7 +128,7 @@ impl View {
     // /// 
     // /// # Returns
     // /// The new View instance on success, or else an Error.
-    // pub fn from_vk(device: Arc<Device>, image: vk::Image, create_info: CreateInfo) -> Result<Self, Error> {
+    // pub fn from_vk(device: Rc<Device>, image: vk::Image, create_info: CreateInfo) -> Result<Self, Error> {
     //     // Define the create info
     //     let image_info = vk::ImageViewCreateInfo {
     //         // Do the default stuff
@@ -176,11 +176,11 @@ impl View {
 
     /// Returns a reference to the parent GPU
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns a reference to the parent image
     #[inline]
-    pub fn image(&self) -> &Arc<Image> { &self.image }
+    pub fn image(&self) -> &Rc<Image> { &self.image }
 
 
 

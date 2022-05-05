@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   01 May 2022, 17:59:50
+ *   05 May 2022, 11:55:48
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,8 @@ pub enum RenderSystemError {
     InstanceCreateError{ err: game_vk::errors::InstanceError },
     /// Could not instantiate the Gpu
     DeviceCreateError{ err: game_vk::errors::DeviceError },
+    /// Could not create the CommandPool
+    CommandPoolCreateError{ err: game_vk::pools::errors::CommandPoolError },
 
     /// Could not initialize a new render system.
     RenderTargetCreateError{ type_name: &'static str, err: String },
@@ -44,8 +46,9 @@ impl Display for RenderSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use RenderSystemError::*;
         match self {
-            InstanceCreateError{ err } => write!(f, "Could not initialize graphics Instance: {}", err),
-            DeviceCreateError{ err }   => write!(f, "Could not initialize Device: {}", err),
+            InstanceCreateError{ err }    => write!(f, "Could not initialize graphics Instance: {}", err),
+            DeviceCreateError{ err }      => write!(f, "Could not initialize Device: {}", err),
+            CommandPoolCreateError{ err } => write!(f, "Could not initialize CommandPool: {}", err),
 
             RenderTargetCreateError{ type_name, err } => write!(f, "Could not initialize render target of type '{}': {}", type_name, err),
             

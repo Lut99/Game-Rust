@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   01 May 2022, 12:31:22
+ *   05 May 2022, 12:19:25
  * Auto updated?
  *   Yes
  *
@@ -14,7 +14,7 @@
 
 use std::any::type_name;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use log::debug;
@@ -24,6 +24,7 @@ use game_ecs::Ecs;
 use game_vk::auxillary::DeviceKind;
 use game_vk::instance::Instance;
 use game_vk::device::Device;
+use game_vk::pools::command::Pool as CommandPool;
 
 pub use crate::errors::RenderSystemError as Error;
 use crate::spec::{RenderPipeline, RenderPipelineBuilder, RenderPipelineId, RenderTarget, RenderTargetBuilder, RenderTargetId};
@@ -56,13 +57,14 @@ lazy_static!{
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
     /// The Instance on which this RenderSystem is based.
-    instance : Arc<Instance>,
+    instance     : Rc<Instance>,
     /// The Device we'll use for rendering.
-    device   : Arc<Device>,
+    device       : Rc<Device>,
     // /// The MemoryPool we use to allocate CPU-accessible buffers.
     // /// The MemoryPool we use to allocate GPU-local buffers.
     // /// The DescriptorPool from which we allocate descriptors.
-    // /// The CommandPool from which we allocate commands.
+    /// The CommandPool from which we allocate commands.
+    command_pool : Rc<CommandPool>,
 
     /// The last-used RenderTargetId
     last_target_id   : RenderTargetId,
@@ -122,11 +124,18 @@ impl RenderSystem {
             Err(err)   => { return Err(Error::DeviceCreateError{ err }); }  
         };
 
+        // Allocate the pools on the GPU
+        let command_pool = match CommandPool::new(device.clone()) {
+            Ok(pool) => pool,
+            Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
+        };
+
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            instance : instance,
-            device   : device,
+            instance,
+            device,
+            command_pool,
 
             last_target_id   : RenderTargetId::new(),
             last_pipeline_id : RenderPipelineId::new(),
@@ -196,7 +205,7 @@ impl RenderSystem {
         let id = self.last_pipeline_id.increment();
 
         // Call the constructor
-        let pipeline = match R::new(self.device.clone(), target, create_info) {
+        let pipeline = match R::new(self.device.clone(), target, self.command_pool.clone(), create_info) {
             Ok(pipeline) => pipeline,
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
         };
@@ -222,7 +231,7 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function errors if the given Pipeline errors.
-    pub fn render(target: RenderTargetId, pipeline: RenderPipelineId) -> Result<(), Error> {
+    pub fn render(&mut self, target: RenderTargetId, pipeline: RenderPipelineId) -> Result<(), Error> {
         Ok(())
     }
 

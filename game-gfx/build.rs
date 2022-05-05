@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:52:26
  * Last edited:
- *   30 Apr 2022, 18:20:49
+ *   05 May 2022, 10:41:18
  * Auto updated?
  *   Yes
  *
@@ -92,6 +92,7 @@ fn main() {
     check_glslc();
 
     // Otherwise, build the triangle shaders
+    println!("Compiling Triangle pipeline shaders...");
     glslc!("-o", "./src/pipelines/triangle/shaders/spir-v/vertex.spv", "./src/pipelines/triangle/shaders/shader.vert");
     glslc!("-o", "./src/pipelines/triangle/shaders/spir-v/fragment.spv", "./src/pipelines/triangle/shaders/shader.frag");
 }

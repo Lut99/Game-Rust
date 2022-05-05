@@ -4,7 +4,7 @@
  * Created:
  *   01 May 2022, 17:26:00
  * Last edited:
- *   01 May 2022, 17:38:11
+ *   05 May 2022, 12:11:17
  * Auto updated?
  *   Yes
  *
@@ -13,7 +13,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -55,7 +55,7 @@ fn populate_fence_info(flags: vk::FenceCreateFlags) -> vk::FenceCreateInfo {
 /// Implements a Semaphore, i.e., something that gets signalled when something else is ready.
 pub struct Semaphore {
     /// The device where the Semaphore lives
-    device    : Arc<Device>,
+    device    : Rc<Device>,
     /// The Semaphore itself
     semaphore : vk::Semaphore,
 }
@@ -71,7 +71,7 @@ impl Semaphore {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend could not create the Semaphore.
-    pub fn new(device: Arc<Device>) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>) -> Result<Rc<Self>, Error> {
         // Create the create info
         let semaphore_info = populate_semaphore_info();
 
@@ -84,7 +84,7 @@ impl Semaphore {
         };
 
         // Done, wrap in an instance and return
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             semaphore,
         }))
@@ -94,7 +94,7 @@ impl Semaphore {
 
     /// Returns the device where this Semaphore lives.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the internal VkSemaphore.
     #[inline]
@@ -106,7 +106,7 @@ impl Semaphore {
 /// Implements a Fence, i.e., something that the CPU manually has to set to continue.
 pub struct Fence {
     /// The device where the Fence lives
-    device : Arc<Device>,
+    device : Rc<Device>,
     /// The Fence itself
     fence  : vk::Fence,
 }
@@ -123,7 +123,7 @@ impl Fence {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend could not create the Fence.
-    pub fn new(device: Arc<Device>, signalled: bool) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, signalled: bool) -> Result<Rc<Self>, Error> {
         // Create the create info with the proper signalled state
         let fence_info = populate_fence_info(if signalled { vk::FenceCreateFlags::SIGNALED } else { vk::FenceCreateFlags::empty() });
 
@@ -136,7 +136,7 @@ impl Fence {
         };
 
         // Done, wrap in an instance and return
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             fence,
         }))
@@ -146,7 +146,7 @@ impl Fence {
 
     /// Returns the device where this Semaphore lives.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the internal VkFence.
     #[inline]

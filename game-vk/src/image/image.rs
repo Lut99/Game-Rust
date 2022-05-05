@@ -12,7 +12,7 @@
  *   Defines a wrapper around Vulkan's Image buffer.
 **/
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -28,8 +28,8 @@ pub struct Image {
 
 impl Image {
     /// Constructor for the Image, which takes an already existing VkImage and wraps around it.
-    pub(crate) fn from_vk(image: vk::Image) -> Result<Arc<Self>, Error> {
-        Ok(Arc::new(Self {
+    pub(crate) fn from_vk(image: vk::Image) -> Result<Rc<Self>, Error> {
+        Ok(Rc::new(Self {
             image,
         }))
     }

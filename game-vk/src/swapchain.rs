@@ -14,7 +14,7 @@
 
 use std::ops::Deref;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use ash::extensions::khr;
@@ -94,7 +94,7 @@ fn choose_image_count(swapchain_support: &SwapchainSupport, image_count: u32) ->
 }
 
 /// Chooses an appropriate sharing mode for the swapchain.
-fn choose_sharing_mode(_device: &Arc<Device>) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
+fn choose_sharing_mode(_device: &Rc<Device>) -> Result<(vk::SharingMode, u32, Vec<u32>), Error> {
     // Because we present with the same queue as we render, we only need exclusive
     Ok((vk::SharingMode::EXCLUSIVE, 0, vec![]))
 }
@@ -107,16 +107,16 @@ fn choose_sharing_mode(_device: &Arc<Device>) -> Result<(vk::SharingMode, u32, V
 /// The Swapchain struct is used to render to and provide the RenderTarget's images.
 pub struct Swapchain {
     /// The device where the Swapchain lives.
-    device  : Arc<Device>,
+    device  : Rc<Device>,
     /// The surface around which the Swapchain wraps.
-    surface : Arc<Surface>,
+    surface : Rc<Surface>,
 
     /// The loader for the swapchain
     loader    : khr::Swapchain,
     /// The Swapchain itself
     swapchain : vk::SwapchainKHR,
     /// The images of the swapchain
-    images    : Vec<Arc<Image>>,
+    images    : Vec<Rc<Image>>,
     
     /// The chosen format of the swapchain
     format : ImageFormat,
@@ -138,7 +138,7 @@ impl Swapchain {
     /// 
     /// # Returns
     /// A new Swapchain instance on success, or else an Error explaining what went wrong.
-    pub fn new(device: Arc<Device>, surface: Arc<Surface>, width: u32, height: u32, image_count: u32) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, surface: Rc<Surface>, width: u32, height: u32, image_count: u32) -> Result<Rc<Self>, Error> {
         // First, query the Gpu's support for this surface
         let swapchain_support = match device.get_swapchain_support(&surface) {
             Ok(support) => support,
@@ -213,7 +213,7 @@ impl Swapchain {
         };
 
         // Wrap them in our own struct
-        let mut images: Vec<Arc<Image>> = Vec::with_capacity(vk_images.len());
+        let mut images: Vec<Rc<Image>> = Vec::with_capacity(vk_images.len());
         for image in vk_images {
             // Wrap the image
             let image = match Image::from_vk(image) {
@@ -226,7 +226,7 @@ impl Swapchain {
         }
 
         // Store everything in a new Swapchain instance and return
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             surface,
 
@@ -280,11 +280,11 @@ impl Swapchain {
 
     /// Returns the device on which this swapchain is built.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the surface around which this swapchain is built.
     #[inline]
-    pub fn surface(&self) -> &Arc<Surface> { &self.surface }
+    pub fn surface(&self) -> &Rc<Surface> { &self.surface }
 
 
 
@@ -298,7 +298,7 @@ impl Swapchain {
 
     /// Returns the images for the swapchain.
     #[inline]
-    pub fn images(&self) -> &Vec<Arc<Image>> { &self.images }
+    pub fn images(&self) -> &Vec<Rc<Image>> { &self.images }
     
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   01 May 2022, 18:06:51
+ *   05 May 2022, 12:07:07
  * Auto updated?
  *   Yes
  *
@@ -14,11 +14,12 @@
 
 use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use game_utl::traits::AsAny;
 use game_vk::auxillary::{Extent2D, ImageFormat};
 use game_vk::device::Device;
+use game_vk::pools::command::Pool as CommandPool;
 use game_vk::image;
 
 
@@ -79,12 +80,12 @@ pub trait RenderTarget: 'static + AsAny {
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_view(&mut self) -> Result<Arc<image::View>, Box<dyn Error>>;
+    fn get_view(&mut self) -> Result<Rc<image::View>, Box<dyn Error>>;
 
 
 
     /// Returns a list of all image views in the RenderTarget.
-    fn views(&self) -> &Vec<Arc<image::View>>;
+    fn views(&self) -> &Vec<Rc<image::View>>;
 
     /// Returns the ImageFormat of this RenderTarget.
     fn format(&self) -> ImageFormat;
@@ -114,7 +115,7 @@ pub trait RenderTargetBuilder<'a>: RenderTarget {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(device: Rc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }
 
@@ -149,6 +150,7 @@ pub trait RenderPipelineBuilder<'a>: RenderPipeline {
     /// # Arguments
     /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
     /// - `target`: The RenderTarget where this pipeline will render to.
+    /// - `command_pool`: The RenderSystem's CommandPool struct that may be used to allocate command buffers (also later during rendering).
     /// - `create_info`: The CreateInfo struct specific to the backend RenderPipeline, which we use to pass target-specific arguments.
     /// 
     /// # Returns
@@ -156,6 +158,6 @@ pub trait RenderPipelineBuilder<'a>: RenderPipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(device: Arc<Device>, target: &dyn RenderTarget, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
+    fn new(device: Rc<Device>, target: &dyn RenderTarget, command_pool: Rc<CommandPool>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
         where Self: Sized;
 }

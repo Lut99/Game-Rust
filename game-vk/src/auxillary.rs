@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   01 May 2022, 17:20:57
+ *   05 May 2022, 12:27:35
  * Auto updated?
  *   Yes
  *
@@ -18,7 +18,7 @@ use std::fmt::{Display, Formatter, Result as FResult};
 use std::ops::{BitOr, BitOrAssign, Range};
 use std::ptr;
 use std::slice;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -383,7 +383,7 @@ impl QueueFamilyInfo {
     /// 
     /// # Returns
     /// The new QueueFamilyInfo struct on success, or else a QueueError::OperationNotSupported error if the given device does not support all required queue family types.
-    pub(crate) fn new(instance: &Arc<Instance>, physical_device: vk::PhysicalDevice, physical_device_index: usize, physical_device_name: &str) -> Result<Self, QueueError> {
+    pub(crate) fn new(instance: &Rc<Instance>, physical_device: vk::PhysicalDevice, physical_device_index: usize, physical_device_name: &str) -> Result<Self, QueueError> {
         // Prepare placeholders for the different queues
         let mut graphics : Option<(u32, usize)> = None;
         let mut memory : Option<(u32, usize)>   = None;
@@ -3184,6 +3184,164 @@ impl From<DynamicState> for vk::DynamicState {
             DynamicState::StencilReference   => vk::DynamicState::STENCIL_REFERENCE,
             DynamicState::BlendConstants     => vk::DynamicState::BLEND_CONSTANTS,
         }
+    }
+}
+
+
+
+
+
+/***** POOLS *****/
+/// Flags for the CommandPool construction.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct CommandBufferFlags(u8);
+
+impl CommandBufferFlags {
+    /// Defines no flags
+    pub const EMPTY: Self = Self(0x00);
+    /// Defines all flags
+    pub const ALL: Self = Self(0xFF);
+
+    /// The buffers coming from this CommandPool will be short-lived.
+    pub const TRANSIENT: Self = Self(0x01);
+    /// The buffers coming from this CommandPool may be individually reset instead of only all at once by resetting the pool.
+    pub const ALLOW_RESET: Self = Self(0x02);
+
+
+    /// Checks if this DependencyFlags is a superset of the given one. For example, if this is `FRAMEBUFFER_LOCAL | VIEW_LOCAL` and the given one is `VIEW_LOCAL`, returns true.
+    #[inline]
+    pub fn check(&self, other: CommandBufferFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for CommandBufferFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for CommandBufferFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<vk::CommandPoolCreateFlags> for CommandBufferFlags {
+    fn from(value: vk::CommandPoolCreateFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::EMPTY;
+        if (value & vk::CommandPoolCreateFlags::TRANSIENT).as_raw() != 0 { result |= CommandBufferFlags::TRANSIENT; }
+        if (value & vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER).as_raw() != 0 { result |= CommandBufferFlags::ALLOW_RESET; }
+        result
+    }
+}
+
+impl From<CommandBufferFlags> for vk::CommandPoolCreateFlags {
+    fn from(value: CommandBufferFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::empty();
+        if value.check(CommandBufferFlags::TRANSIENT) { result |= vk::CommandPoolCreateFlags::TRANSIENT; }
+        if value.check(CommandBufferFlags::ALLOW_RESET) { result |= vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER; }
+        result
+    }
+}
+
+
+
+/// Possible levels for a CommandBuffer.
+#[derive(Clone, Copy, Debug)]
+pub enum CommandBufferLevel {
+    /// The command buffer is primary, i.e., only able to be submitted to a queue.
+    Primary,
+    /// The command buffer is secondary, i.e., only able to be called from another (primary) command buffer.
+    Secondary,
+}
+
+impl From<vk::CommandBufferLevel> for CommandBufferLevel {
+    #[inline]
+    fn from(value: vk::CommandBufferLevel) -> Self {
+        match value {
+            vk::CommandBufferLevel::PRIMARY   => CommandBufferLevel::Primary,
+            vk::CommandBufferLevel::SECONDARY => CommandBufferLevel::Secondary,
+
+            value => { panic!("Encountered illegal VkCommandBufferLevel value '{}'", value.as_raw()); }
+        }
+    }
+}
+
+impl From<CommandBufferLevel> for vk::CommandBufferLevel {
+    #[inline]
+    fn from(value: CommandBufferLevel) -> Self {
+        match value {
+            CommandBufferLevel::Primary   => vk::CommandBufferLevel::PRIMARY,
+            CommandBufferLevel::Secondary => vk::CommandBufferLevel::SECONDARY,
+        }
+    }
+}
+
+
+
+/// Flags to set options when beginning a command buffer.
+#[derive(Clone, Copy, Debug)]
+pub struct CommandBufferUsageFlags(u8);
+
+impl CommandBufferUsageFlags {
+    /// Defines no flags
+    pub const EMPTY: Self = Self(0x00);
+    /// Defines all flags
+    pub const ALL: Self = Self(0xFF);
+
+    /// Tells the Vulkan driver that this command buffer will only be submitted once, and reset or destroyed afterwards.
+    pub const ONE_TIME_SUBMIT: Self = Self(0x01);
+    /// If the CommandBuffer is secondary, then this bit indicates that it lives entirely within the RenderPass.
+    pub const RENDER_PASS_ONLY: Self = Self(0x02);
+    /// The buffer can be resubmitted while it is pending and recorded into multiple primary command buffers.
+    pub const SIMULTANEOUS_USE: Self = Self(0x04);
+
+
+    /// Checks if this DependencyFlags is a superset of the given one. For example, if this is `FRAMEBUFFER_LOCAL | VIEW_LOCAL` and the given one is `VIEW_LOCAL`, returns true.
+    #[inline]
+    pub fn check(&self, other: CommandBufferUsageFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for CommandBufferUsageFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for CommandBufferUsageFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<vk::CommandBufferUsageFlags> for CommandBufferUsageFlags {
+    fn from(value: vk::CommandBufferUsageFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::EMPTY;
+        if (value & vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT).as_raw() != 0 { result |= CommandBufferUsageFlags::ONE_TIME_SUBMIT; }
+        if (value & vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE).as_raw() != 0 { result |= CommandBufferUsageFlags::RENDER_PASS_ONLY; }
+        if (value & vk::CommandBufferUsageFlags::SIMULTANEOUS_USE).as_raw() != 0 { result |= CommandBufferUsageFlags::SIMULTANEOUS_USE; }
+        result
+    }
+}
+
+impl From<CommandBufferUsageFlags> for vk::CommandBufferUsageFlags {
+    fn from(value: CommandBufferUsageFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::empty();
+        if value.check(CommandBufferUsageFlags::ONE_TIME_SUBMIT) { result |= vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT; }
+        if value.check(CommandBufferUsageFlags::RENDER_PASS_ONLY) { result |= vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE; }
+        if value.check(CommandBufferUsageFlags::SIMULTANEOUS_USE) { result |= vk::CommandBufferUsageFlags::SIMULTANEOUS_USE; }
+        result
     }
 }
 

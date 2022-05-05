@@ -13,7 +13,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -56,7 +56,7 @@ fn populate_layout_info(layouts: &[vk::DescriptorSetLayout]) -> vk::PipelineLayo
 /// Defines a wrapper around a VkPipelineLayout struct.
 pub struct PipelineLayout {
     /// Reference to the parent device of this layout
-    device : Arc<Device>,
+    device : Rc<Device>,
     /// The PipelineLayout we wrap
     layout : vk::PipelineLayout,
 }
@@ -74,7 +74,7 @@ impl PipelineLayout {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend could not create the new layout.
-    pub fn new(device: Arc<Device>, layouts: &[DescriptorSetLayout]) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, layouts: &[DescriptorSetLayout]) -> Result<Rc<Self>, Error> {
         // Cast the layouts to their Vulkan counterparts
         let layouts: Vec<vk::DescriptorSetLayout> = layouts.iter().map(|layout| layout.vk()).collect();
 
@@ -90,7 +90,7 @@ impl PipelineLayout {
         };
 
         // Wrap it in this struct and done
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             layout,
         }))
@@ -100,7 +100,7 @@ impl PipelineLayout {
 
     /// Returns the parent device of this layout
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the internal VkPipelineLayout struct.
     #[inline]

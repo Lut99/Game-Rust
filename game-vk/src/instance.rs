@@ -15,7 +15,7 @@
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use log::{debug, error, info, warn};
@@ -308,7 +308,7 @@ impl Instance {
     /// 
     /// # Returns
     /// The new Instance instance on success, or else an Error describing why we failed to create it.
-    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Arc<Self>, Error> {
+    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Rc<Self>, Error> {
         // Convert the str-like into &str
         let name: &str   = name.as_ref();
         let engine: &str = engine.as_ref();
@@ -402,7 +402,7 @@ impl Instance {
 
 
         // Finally, create the struct!
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             entry,
 
             instance,

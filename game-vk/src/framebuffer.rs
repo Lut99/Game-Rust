@@ -14,7 +14,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -63,11 +63,11 @@ fn populate_framebuffer_info(render_pass: vk::RenderPass, attachments: &Vec<vk::
 /// The Framebuffer defines a wrapper around one or more image views to represent a single renderable target.
 pub struct Framebuffer {
     /// The device where the Framebuffer lives.
-    device      : Arc<Device>,
+    device      : Rc<Device>,
     /// The RenderPass where the Framebuffer is attached to.
-    render_pass : Arc<RenderPass>,
+    render_pass : Rc<RenderPass>,
     /// The ImageViews that live in this Framebuffer.
-    attachments : Vec<Arc<image::View>>,
+    attachments : Vec<Rc<image::View>>,
 
     /// The VkFramebuffer we wrap.
     framebuffer : vk::Framebuffer,
@@ -89,7 +89,7 @@ impl Framebuffer {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend does.
-    pub fn new(device: Arc<Device>, render_pass: Arc<RenderPass>, attachments: Vec<Arc<image::View>>, extent: Extent2D<u32>) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, render_pass: Rc<RenderPass>, attachments: Vec<Rc<image::View>>, extent: Extent2D<u32>) -> Result<Rc<Self>, Error> {
         // Cast the attachments to their Vulkan counterparts
         let vk_attachments: Vec<vk::ImageView> = attachments.iter().map(|att| att.vk()).collect();
 
@@ -105,7 +105,7 @@ impl Framebuffer {
         };
 
         // Store it and relevant dependencies into the struct and done
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             render_pass,
             attachments,
@@ -119,15 +119,15 @@ impl Framebuffer {
 
     /// Returns the parent device.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the render pass where this Framebuffer is bound.
     #[inline]
-    pub fn render_pass(&self) -> &Arc<RenderPass> { &self.render_pass }
+    pub fn render_pass(&self) -> &Rc<RenderPass> { &self.render_pass }
 
     /// Returns the ImageViews bound to this Framebuffer.
     #[inline]
-    pub fn attachments(&self) -> &[Arc<image::View>] { &self.attachments }
+    pub fn attachments(&self) -> &[Rc<image::View>] { &self.attachments }
 
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   01 May 2022, 18:06:42
+ *   05 May 2022, 12:07:07
  * Auto updated?
  *   Yes
  *
@@ -14,7 +14,7 @@
 **/
 
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
@@ -57,16 +57,16 @@ pub struct CreateInfo<'a> {
 /// Note that this Window is modular, as in, the pipeline backend may be defined customly.
 pub struct Window {
     /// The device that we used to build this Window in.
-    device : Arc<Device>,
+    device : Rc<Device>,
 
     /// The WinitWindow that we wrap.
     window    : WWindow,
     /// The Vulkan Surface that we create from this Window.
-    surface   : Arc<Surface>,
+    surface   : Rc<Surface>,
     /// The Vulkan swapchain that we create from this Window.
-    swapchain : Arc<Swapchain>,
+    swapchain : Rc<Swapchain>,
     /// The list of Vulkan swapchain images that we create from this Window.
-    views     : Vec<Arc<image::View>>,
+    views     : Vec<Rc<image::View>>,
     
     /// The title of this Window.
     title : String,
@@ -91,7 +91,7 @@ impl Window {
 
     // /// Returns the Device where the resources of this Window are bound to.
     // #[inline]
-    // pub fn device(&self) -> &Arc<Device> { &self.device }
+    // pub fn device(&self) -> &Rc<Device> { &self.device }
 
 
 
@@ -101,15 +101,15 @@ impl Window {
 
     // /// Returns the internal Vulkan Surface object.
     // #[inline]
-    // pub fn surface(&self) -> &Arc<Surface> { &self.surface }
+    // pub fn surface(&self) -> &Rc<Surface> { &self.surface }
 
     // /// Returns the internal Vulkan Swapchain object.
     // #[inline]
-    // pub fn swapchain(&self) -> &Arc<Swapchain> { &self.swapchain }
+    // pub fn swapchain(&self) -> &Rc<Swapchain> { &self.swapchain }
 
     // /// Returns the image views to the internal swapchain images.
     // #[inline]
-    // pub fn views(&self) -> &Vec<Arc<image::View>> { &self.views }
+    // pub fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
 
 
 
@@ -150,7 +150,7 @@ impl<'a> RenderTargetBuilder<'a> for Window {
     /// 
     /// # Errors
     /// This function errors if the Window or any subsequent resource (like Surfaces or Swapchains) failed to be created. Will always be in the form of an Error.
-    fn new(device: Arc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
+    fn new(device: Rc<Device>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn std::error::Error>> {
         // Build the new Winit window
         let wwindow = match WindowBuilder::new()
             .with_title(&create_info.title)
@@ -175,7 +175,7 @@ impl<'a> RenderTargetBuilder<'a> for Window {
 
         // Build the image views around the swapchain images
         debug!("Initializing image views...");
-        let mut views: Vec<Arc<image::View>> = Vec::with_capacity(swapchain.images().len());
+        let mut views: Vec<Rc<image::View>> = Vec::with_capacity(swapchain.images().len());
         for swapchain_image in swapchain.images() {
             // Create the view around it
             let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
@@ -221,7 +221,7 @@ impl RenderTarget for Window {
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_view(&mut self) -> Result<Arc<image::View>, Box<dyn std::error::Error>> {
+    fn get_view(&mut self) -> Result<Rc<image::View>, Box<dyn std::error::Error>> {
         // Try to get an image from the swapchain
         let index = match self.swapchain.next_image(None, None, None) {
             Ok(Some(index)) => index,
@@ -237,7 +237,7 @@ impl RenderTarget for Window {
 
     /// Returns a list of all image views in the RenderTarget.
     #[inline]
-    fn views(&self) -> &Vec<Arc<image::View>> { &self.views }
+    fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
 
     /// Returns the ImageFormat of this RenderTarget.
     #[inline]

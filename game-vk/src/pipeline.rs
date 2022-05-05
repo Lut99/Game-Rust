@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   01 May 2022, 12:27:46
+ *   05 May 2022, 10:42:16
  * Auto updated?
  *   Yes
  *
@@ -17,7 +17,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use log::{debug, warn};
@@ -141,7 +141,7 @@ fn populate_graphics_pipeline_info(
 /// May speed up pipeline construction by caching the results and re-using that when possible.
 pub struct PipelineCache {
     /// The parent Device of this PipelineCache.
-    device : Arc<Device>,
+    device : Rc<Device>,
     /// The path where the cache has to be written to when destroyed.
     path   : PathBuf,
     /// The underlying VkPipelineCache struct.
@@ -160,7 +160,7 @@ impl PipelineCache {
     /// 
     /// # Errors
     /// This function errors if the Vulkan backend could not create the new cache, or the given file existed but could not be read.
-    pub fn new<P: AsRef<Path>>(device: Arc<Device>, path: P) -> Result<Arc<Self>, Error> {
+    pub fn new<P: AsRef<Path>>(device: Rc<Device>, path: P) -> Result<Rc<Self>, Error> {
         // Convert Path-likes to Path
         let path: &Path = path.as_ref();
 
@@ -194,7 +194,7 @@ impl PipelineCache {
 
         // Done, wrap it in a struct and return
         debug!("Loaded pipeline cache from '{}'", path.display());
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             path : path.to_path_buf(),
             cache,
@@ -205,7 +205,7 @@ impl PipelineCache {
 
     /// Returns the parent Device.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the underlying VkPipelineCache struct.
     #[inline]
@@ -255,9 +255,9 @@ pub struct PipelineBuilder {
 
     // Caching stuff
     /// An optional PipelineCache to build from during pipeline creation.
-    cache         : Option<Arc<PipelineCache>>,
+    cache         : Option<Rc<PipelineCache>>,
     /// An optional base pipeline to start construction from.
-    base_pipeline : Option<Arc<Pipeline>>,
+    base_pipeline : Option<Rc<Pipeline>>,
     
     // Default stuff
     /// Describes how we treat the input vertices.
@@ -273,7 +273,7 @@ pub struct PipelineBuilder {
 
     // Non-default stuff
     /// Defines the different shaders used in this pipeline
-    shaders       : Vec<(ShaderStage, Arc<Shader>)>,
+    shaders       : Vec<(ShaderStage, Rc<Shader>)>,
     /// Describes how the input vertices look like.
     vertex_input  : Option<VertexInputState>,
     /// Describes the output images dimensions, cutoff and depth.
@@ -374,7 +374,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function doesn't error directly, but may pass any incoming errors to the `PipelineBuilder::build()` call.
-    pub fn set_cache(mut self, cache: Arc<PipelineCache>) -> Self {
+    pub fn set_cache(mut self, cache: Rc<PipelineCache>) -> Self {
         if self.error.is_some() { return self; }
         
         // Simply set the cache
@@ -395,7 +395,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function doesn't error directly, but may pass any incoming errors to the `PipelineBuilder::build()` call.
-    pub fn try_cache(mut self, cache: Result<Arc<PipelineCache>, Error>) -> Self {
+    pub fn try_cache(mut self, cache: Result<Rc<PipelineCache>, Error>) -> Self {
         if self.error.is_some() { return self; }
 
         // Unpack the cache
@@ -426,7 +426,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function doesn't error directly, but may pass any incoming errors to the `PipelineBuilder::build()` call.
-    pub fn set_pipeline(mut self, pipeline: Arc<Pipeline>) -> Self {
+    pub fn set_pipeline(mut self, pipeline: Rc<Pipeline>) -> Self {
         if self.error.is_some() { return self; }
         
         // Simply set the pipeline
@@ -452,7 +452,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function doesn't error directly, but may pass any incoming errors to the `PipelineBuilder::build()` call.
-    pub fn shader(mut self, stage: ShaderStage, shader: Arc<Shader>) -> Self {
+    pub fn shader(mut self, stage: ShaderStage, shader: Rc<Shader>) -> Self {
         if self.error.is_some() { return self; }
 
         // Add the shader internally
@@ -478,7 +478,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function doesn't error directly, but may pass any incoming errors to the `PipelineBuilder::build()` call.
-    pub fn try_shader(mut self, stage: ShaderStage, shader: Result<Arc<Shader>, ShaderError>) -> Self {
+    pub fn try_shader(mut self, stage: ShaderStage, shader: Result<Rc<Shader>, ShaderError>) -> Self {
         if self.error.is_some() { return self; }
 
         // Try to unpack the shader
@@ -701,7 +701,7 @@ impl PipelineBuilder {
     /// 
     /// # Errors
     /// This function returns an error if the backend Vulkan driver errors while creating the pipeline, or if an error occurred during any of the other functions.
-    pub fn build(&mut self, device: Arc<Device>, layout: Arc<PipelineLayout>, render_pass: Arc<RenderPass>) -> Result<Arc<Pipeline>, Error> {
+    pub fn build(&mut self, device: Rc<Device>, layout: Rc<PipelineLayout>, render_pass: Rc<RenderPass>) -> Result<Rc<Pipeline>, Error> {
         let Self { ref base_pipeline, ref shaders, ref vertex_input, ref vertex_assembly, ref viewport, ref rasterization, ref multisampling, ref depth_testing, ref colour_blending, .. } = self;
 
         // First, cast the stages and shaders to VkShaderStageFlags and VkShaderModules
@@ -751,7 +751,7 @@ impl PipelineBuilder {
         };
 
         // Wrap it in a Pipeline struct, set it as the base for subsequent calls and return it
-        let pipeline = Arc::new(Pipeline {
+        let pipeline = Rc::new(Pipeline {
             device,
             layout,
             render_pass,
@@ -759,6 +759,7 @@ impl PipelineBuilder {
             pipeline,
         });
         self.base_pipeline = Some(pipeline.clone());
+        debug!("Successfully built Pipeline");
         Ok(pipeline)
     }
 }
@@ -768,11 +769,11 @@ impl PipelineBuilder {
 /// Wraps around a Vulkan Pipeline, which describes the process of rendering some vertices to an image.
 pub struct Pipeline {
     /// The parent device of this pipeline.
-    device      : Arc<Device>,
+    device      : Rc<Device>,
     /// The layout for this Pipeline.
-    layout      : Arc<PipelineLayout>,
+    layout      : Rc<PipelineLayout>,
     /// The render pass for this Pipeline.
-    render_pass : Arc<RenderPass>,
+    render_pass : Rc<RenderPass>,
 
     /// The VkPipeline that we wrap around.
     pipeline : vk::Pipeline,
@@ -781,15 +782,15 @@ pub struct Pipeline {
 impl Pipeline {
     /// Returns the parent device of this pipeline.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the layout of this pipeline.
     #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout> { &self.layout }
+    pub fn layout(&self) -> &Rc<PipelineLayout> { &self.layout }
 
     /// Returns the render pass of this pipeline.
     #[inline]
-    pub fn render_pass(&self) -> &Arc<RenderPass> { &self.render_pass }
+    pub fn render_pass(&self) -> &Rc<RenderPass> { &self.render_pass }
 
 
 

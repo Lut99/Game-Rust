@@ -14,7 +14,7 @@
 **/
 
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 
@@ -53,7 +53,7 @@ fn populate_layout_info(bindings: &[vk::DescriptorSetLayoutBinding]) -> vk::Desc
 /// Defines the DescriptorSetLayout, which describes one type of resource in the pipeline.
 pub struct DescriptorSetLayout {
     /// The parent device for this layout.
-    device : Arc<Device>,
+    device : Rc<Device>,
     /// The VkDescriptorSetLayout itself.
     layout : vk::DescriptorSetLayout,
 }
@@ -70,7 +70,7 @@ impl DescriptorSetLayout {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend failed to create a new DescriptorSetLayout.
-    pub fn new(device: Arc<Device>, bindings: &[DescriptorBinding]) -> Result<Arc<Self>, Error> {
+    pub fn new(device: Rc<Device>, bindings: &[DescriptorBinding]) -> Result<Rc<Self>, Error> {
         // Cast the bindings to their Vulkan counterparts.
         let bindings: Vec<vk::DescriptorSetLayoutBinding> = bindings.iter().map(|binding| binding.into()).collect();
 
@@ -86,7 +86,7 @@ impl DescriptorSetLayout {
         };
 
         // Return it wrapped in the struct
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             layout,
         }))
@@ -96,7 +96,7 @@ impl DescriptorSetLayout {
 
     /// Returns the parent device of this DescriptorSetLayout.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the underlying VkDescriptorSetLayout struct.
     #[inline]

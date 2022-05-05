@@ -17,7 +17,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
 use std::ptr;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ash::vk;
 use rust_embed::EmbeddedFile;
@@ -30,7 +30,7 @@ use crate::device::Device;
 /// The Shader struct, which represents a single piece of Shader code in the render system.
 pub struct Shader {
     /// The parent Device where the Shader is compiled for/allocated
-    device : Arc<Device>,
+    device : Rc<Device>,
 
     /// The Shader module around which we wrap.
     module : vk::ShaderModule,
@@ -51,7 +51,7 @@ impl Shader {
     /// 
     /// # Errors
     /// This function errors if the bytecode is invalid or if the shader module could not be allocated.
-    pub fn from_bytes<B: AsRef<[u8]>>(device: Arc<Device>, code: B) -> Result<Arc<Shader>, Error> {
+    pub fn from_bytes<B: AsRef<[u8]>>(device: Rc<Device>, code: B) -> Result<Rc<Shader>, Error> {
         // Convert the slice-like into a slice
         let code: &[u8] = code.as_ref();
 
@@ -76,7 +76,7 @@ impl Shader {
         };
 
         // Create a new instance and return that
-        Ok(Arc::new(Self {
+        Ok(Rc::new(Self {
             device,
             
             module,
@@ -97,7 +97,7 @@ impl Shader {
     /// 
     /// # Errors
     /// This function errors if the file could not be read, the bytecode is invalid or if the shader module could not be allocated.
-    pub fn from_path<P: AsRef<Path>>(device: Arc<Device>, path: P) -> Result<Arc<Shader>, Error> {
+    pub fn from_path<P: AsRef<Path>>(device: Rc<Device>, path: P) -> Result<Rc<Shader>, Error> {
         // Convert the Path-like into a Path
         let path: &Path = path.as_ref();
 
@@ -135,7 +135,7 @@ impl Shader {
     /// 
     /// # Errors
     /// This function errors if the bytecode is invalid or if the shader module could not be created in the Vulkan backend.
-    pub fn from_embedded(device: Arc<Device>, data: EmbeddedFile) -> Result<Arc<Shader>, Error> {
+    pub fn from_embedded(device: Rc<Device>, data: EmbeddedFile) -> Result<Rc<Shader>, Error> {
         // Get the data
         let data: &[u8] = data.data.as_ref();
 
@@ -156,7 +156,7 @@ impl Shader {
     /// 
     /// # Errors
     /// This function errors if the given result is a failure, the bytecode is invalid or if the shader module could not be created in the Vulkan backend.
-    pub fn try_embedded(device: Arc<Device>, result: Option<EmbeddedFile>) -> Result<Arc<Shader>, Error> {
+    pub fn try_embedded(device: Rc<Device>, result: Option<EmbeddedFile>) -> Result<Rc<Shader>, Error> {
         // Unpack the data
         let data = match result {
             Some(data) => data,
@@ -171,7 +171,7 @@ impl Shader {
 
     /// Returns the device where the Shader lives.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> { &self.device }
+    pub fn device(&self) -> &Rc<Device> { &self.device }
     
     /// Returns the Vulkan VkShaderModule around which this struct wraps.
     #[inline]
