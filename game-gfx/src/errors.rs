@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   05 May 2022, 21:34:10
+ *   06 May 2022, 17:37:36
  * Auto updated?
  *   Yes
  *
@@ -90,6 +90,8 @@ pub enum WindowError {
 
     /// Could not get the new swapchain image
     SwapchainNextImageError{ err: game_vk::swapchain::Error },
+    /// Could not present the given swapchain image
+    SwapchainPresentError{ err: game_vk::swapchain::Error },
 }
 
 impl Display for WindowError {
@@ -103,6 +105,7 @@ impl Display for WindowError {
             PipelineCreateError{ type_name, err } => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
 
             SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
+            SwapchainPresentError{ err }   => write!(f, "Could not present Swapchain image: {}", err),
         }
     }
 }

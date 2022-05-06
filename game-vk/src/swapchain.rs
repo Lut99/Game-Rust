@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   05 May 2022, 21:19:14
+ *   06 May 2022, 17:37:25
  * Auto updated?
  *   Yes
  *
@@ -21,11 +21,47 @@ use ash::extensions::khr;
 use log::{debug, warn};
 
 pub use crate::errors::SwapchainError as Error;
+use crate::vec_as_ptr;
 use crate::auxillary::{Extent2D, ImageFormat, SwapchainSupport};
 use crate::device::Device;
 use crate::surface::Surface;
 use crate::image::Image;
 use crate::sync::{Fence, Semaphore};
+
+
+/***** POPULATE FUNCTIONS *****/
+/// Populates a VkPresentInfoKHR struct.
+/// 
+/// # Arguments
+/// - `swapchains`: The list of Swapchains to present to.
+/// - `indices`: The list of image indices in each Swapchain to present to.
+/// - `wait_semaphores`: The list of Semaphores to wait to before presentation.
+fn populate_present_info(swapchains: &[vk::SwapchainKHR], indices: &[u32], wait_semaphores: &[vk::Semaphore]) -> vk::PresentInfoKHR {
+    // Do a few sanity checks
+    if swapchains.len() != indices.len() { panic!("Given list of Swapchains (swapchains) is not the same length as the given list of indices (indices)"); }
+
+    // Populate
+    vk::PresentInfoKHR {
+        // Set the standard stuff
+        s_type : vk::StructureType::PRESENT_INFO_KHR,
+        p_next : ptr::null(),
+
+        // Set the swapchains and associated images to present to
+        swapchain_count : swapchains.len() as u32,
+        p_swapchains    : vec_as_ptr!(swapchains),
+        p_image_indices : vec_as_ptr!(indices),
+
+        // Set the semaphores to wait for
+        wait_semaphore_count : wait_semaphores.len() as u32,
+        p_wait_semaphores    : vec_as_ptr!(wait_semaphores),
+
+        // We don't want per-swapchain results
+        p_results : ptr::null::<vk::Result>() as *mut vk::Result,
+    }
+}
+
+
+
 
 
 /***** HELPER FUNCTIONS *****/
@@ -274,6 +310,32 @@ impl Swapchain {
 
         // Success; return it
         Ok(Some(index as usize))
+    }
+
+    /// Presents the image with the given index.
+    /// 
+    /// # Arguments
+    /// - `index`: The index of the internal image to present.
+    /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
+    /// 
+    /// # Errors
+    /// This function errors if we could not present the Swapchain somehow.
+    pub fn present(&self, index: u32, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), Error> {
+        // Cast the semaphores
+        let vk_wait_semaphores: Vec<vk::Semaphore> = wait_semaphores.iter().map(|sem| sem.vk()).collect();
+
+        // Populate the present info struct.
+        let vk_swapchains: [vk::SwapchainKHR; 1] = [self.swapchain];
+        let vk_indices: [u32; 1] = [index];
+        let present_info = populate_present_info(&vk_swapchains, &vk_indices, &vk_wait_semaphores);
+
+        // Present
+        unsafe {
+            match self.loader.queue_present(self.device.queues().present, &present_info) {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Error::SwapchainPresentError{ index, err }),
+            }
+        }
     }
 
 

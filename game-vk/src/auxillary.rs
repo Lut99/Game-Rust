@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   05 May 2022, 21:49:56
+ *   06 May 2022, 18:23:00
  * Auto updated?
  *   Yes
  *
@@ -364,11 +364,13 @@ impl From<DeviceKind> for vk::PhysicalDeviceType {
 /// Contains information about the queue families for an instantiated GPU.
 #[derive(Debug)]
 pub struct QueueFamilyInfo {
-    /// The index of the queue we're going to use for graphics operations
+    /// The index of the queue we're going to use for graphics operations.
     pub graphics : u32,
-    /// The index of the queue we're going to use for memory operations
+    /// The index of the queue we're going to use for memory operations.
     pub memory   : u32,
-    /// The index of the queue we're going to use for compute operations
+    /// The index of the queue we're going to use for present operations. Always the same as `graphics`.
+    pub present  : u32,
+    /// The index of the queue we're going to use for compute operations.
     pub compute  : u32,
 }
 
@@ -387,8 +389,8 @@ impl QueueFamilyInfo {
     pub(crate) fn new(instance: &Rc<Instance>, physical_device: vk::PhysicalDevice, physical_device_index: usize, physical_device_name: &str) -> Result<Self, QueueError> {
         // Prepare placeholders for the different queues
         let mut graphics : Option<(u32, usize)> = None;
-        let mut memory : Option<(u32, usize)>   = None;
-        let mut compute : Option<(u32, usize)>  = None;
+        let mut memory   : Option<(u32, usize)> = None;
+        let mut compute  : Option<(u32, usize)> = None;
 
         // Iterate over the queue families
         let families = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
@@ -401,7 +403,7 @@ impl QueueFamilyInfo {
             let supports_graphics = if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) { n_operations += 1; true } else { false };
             let supports_memory   = if family.queue_flags.contains(vk::QueueFlags::TRANSFER) { n_operations += 1; true } else { false };
             let supports_compute  = if family.queue_flags.contains(vk::QueueFlags::COMPUTE) { n_operations += 1; true } else { false };
-            
+
             // Note the queue on every slot it supports, except we already have a more specialized one
             if supports_graphics && (graphics.is_none() || n_operations < graphics.as_ref().unwrap().1) {
                 graphics = Some((i as u32, n_operations));
@@ -415,21 +417,25 @@ impl QueueFamilyInfo {
         }
 
         // If we didn't find one of the queues, error
-        if graphics.is_none() {
-            return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::GRAPHICS });
-        }
-        if memory.is_none() {
-            return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::TRANSFER });
-        }
-        if compute.is_none() {
-            return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::COMPUTE });
-        }
+        let graphics = match graphics {
+            Some(graphics) => graphics.0,
+            None           => { return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::GRAPHICS }); }
+        };
+        let memory = match memory {
+            Some(memory) => memory.0,
+            None         => { return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::TRANSFER }); }
+        };
+        let compute = match compute {
+            Some(compute) => compute.0,
+            None          => { return Err(QueueError::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::COMPUTE }); }
+        };
 
         // Otherwise, we can populate ourselves!
         Ok(QueueFamilyInfo {
-            graphics : graphics.unwrap().0,
-            memory   : memory.unwrap().0,
-            compute  : compute.unwrap().0,
+            graphics : graphics,
+            memory   : memory,
+            present  : graphics,
+            compute  : compute,
         })
     }
 
@@ -520,6 +526,8 @@ pub struct Queues {
     pub graphics : vk::Queue,
     /// The memory queue
     pub memory   : vk::Queue,
+    /// The present queue
+    pub present  : vk::Queue,
     /// The compute queue
     pub compute  : vk::Queue,
 }
@@ -533,6 +541,7 @@ impl Queues {
         Self {
             graphics : unsafe { device.get_device_queue(family_info.graphics, 0) },
             memory   : unsafe { device.get_device_queue(family_info.memory, 0) },
+            present  : unsafe { device.get_device_queue(family_info.present, 0) },
             compute  : unsafe { device.get_device_queue(family_info.compute, 0) },
         }
     }

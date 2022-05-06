@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   05 May 2022, 21:52:56
+ *   06 May 2022, 18:23:20
  * Auto updated?
  *   Yes
  *
@@ -14,16 +14,13 @@
 **/
 
 use std::error;
-use std::ptr;
 use std::rc::Rc;
 
-use ash::vk;
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
-use game_vk::vec_as_ptr;
 use game_vk::auxillary::{Extent2D, ImageAspect, ImageFormat, ImageViewKind};
 use game_vk::device::Device;
 use game_vk::surface::Surface;
@@ -33,41 +30,6 @@ use game_vk::sync::Semaphore;
 
 pub use crate::errors::WindowError as Error;
 use crate::spec::RenderTarget;
-
-
-/***** POPULATE FUNCTIONS *****/
-/// Populates a VkPresentInfoKHR struct.
-/// 
-/// # Arguments
-/// - `swapchains`: The list of Swapchains to present to.
-/// - `indices`: The list of image indices in each Swapchain to present to.
-/// - `wait_semaphores`: The list of Semaphores to wait to before presentation.
-fn populate_present_info(swapchains: &[vk::SwapchainKHR], indices: &[u32], wait_semaphores: &[vk::Semaphore]) -> vk::PresentInfoKHR {
-    // Do a few sanity checks
-    if swapchains.len() != indices.len() { panic!("Given list of Swapchains (swapchains) is not the same length as the given list of indices (indices)"); }
-
-    // Populate
-    vk::PresentInfoKHR {
-        // Set the standard stuff
-        s_type : vk::StructureType::PRESENT_INFO_KHR,
-        p_next : ptr::null(),
-
-        // Set the swapchains and associated images to present to
-        swapchain_count : swapchains.len() as u32,
-        p_swapchains    : vec_as_ptr!(swapchains),
-        p_image_indices : vec_as_ptr!(indices),
-
-        // Set the semaphores to wait for
-        wait_semaphore_count : wait_semaphores.len() as u32,
-        p_wait_semaphores    : vec_as_ptr!(wait_semaphores),
-
-        // We don't want per-swapchain results
-        p_results : ptr::null::<vk::Result>() as *mut vk::Result,
-    }
-}
-
-
-
 
 
 /***** WINDOW *****/
@@ -276,17 +238,13 @@ impl RenderTarget for Window {
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    #[inline]
     fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), Box<dyn error::Error>> {
-        // Cast the semaphores
-        let vk_wait_semaphores: Vec<vk::Semaphore> = wait_semaphores.iter().map(|sem| sem.vk()).collect();
-
-        // Populate the present info struct.
-        let vk_swapchains: [vk::SwapchainKHR; 1] = [self.swapchain.vk()];
-        let vk_indices: [u32; 1] = [index as u32];
-        let present_info = populate_present_info(&vk_swapchains, &vk_indices, &vk_wait_semaphores);
-
-        // Present
-        
+        // Call with the swapchain's function
+        match self.swapchain.present(index as u32, wait_semaphores) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Box::new(Error::SwapchainPresentError{ err })),
+        }
     }
 
 

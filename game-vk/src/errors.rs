@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   05 May 2022, 21:01:45
+ *   06 May 2022, 17:37:12
  * Auto updated?
  *   Yes
  *
@@ -220,6 +220,9 @@ pub enum SwapchainError {
 
     /// Could not get the next available image in the swapchain
     SwapchainNextImageError{ err: ash::vk::Result },
+
+    /// Could not present a given image in the swapchain.
+    SwapchainPresentError{ index: u32, err: ash::vk::Result },
 }
 
 impl Display for SwapchainError {
@@ -233,6 +236,8 @@ impl Display for SwapchainError {
             ImageError{ err }                             => write!(f, "Could not create Image from swapchain image: {}", err),
 
             SwapchainNextImageError{ err } => write!(f, "Could not get next swapchain image: {}", err),
+
+            SwapchainPresentError{ index, err } => write!(f, "Could not present swapchain image {}: {}", index, err),
         }
     }
 }
