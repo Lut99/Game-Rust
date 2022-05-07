@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   06 May 2022, 18:23:00
+ *   07 May 2022, 18:16:55
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,8 @@ use ash::vk;
 
 pub use crate::errors::{AttributeLayoutError, QueueError};
 use crate::instance::Instance;
+use crate::device::Device;
+use crate::queue::Queue;
 
 
 /***** MACROS *****/
@@ -520,16 +522,15 @@ impl<'a> Iterator for QueueFamilyInfoUniqueIterator<'a> {
 
 
 /// Central place where we store the queues of the created logical device.
-#[derive(Debug)]
 pub struct Queues {
     /// The graphics queue
-    pub graphics : vk::Queue,
+    pub graphics : Queue,
     /// The memory queue
-    pub memory   : vk::Queue,
+    pub memory   : Queue,
     /// The present queue
-    pub present  : vk::Queue,
+    pub present  : Queue,
     /// The compute queue
-    pub compute  : vk::Queue,
+    pub compute  : Queue,
 }
 
 impl Queues {
@@ -537,12 +538,12 @@ impl Queues {
     /// 
     /// Requests the three queues from the queue families in the given QueueFamilyInfo on the given vk::Device.
     #[inline]
-    pub(crate) fn new(device: &ash::Device, family_info: &QueueFamilyInfo) -> Self {
+    pub(crate) fn new(device: &Rc<Device>, family_info: &QueueFamilyInfo) -> Self {
         Self {
-            graphics : unsafe { device.get_device_queue(family_info.graphics, 0) },
-            memory   : unsafe { device.get_device_queue(family_info.memory, 0) },
-            present  : unsafe { device.get_device_queue(family_info.present, 0) },
-            compute  : unsafe { device.get_device_queue(family_info.compute, 0) },
+            graphics : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.graphics, 0) } },
+            memory   : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.memory, 0) } },
+            present  : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.present, 0) } },
+            compute  : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.compute, 0) } },
         }
     }
 }

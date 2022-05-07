@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   03 May 2022, 18:23:44
+ *   07 May 2022, 18:10:09
  * Auto updated?
  *   Yes
  *
@@ -22,6 +22,8 @@ pub mod auxillary;
 pub mod instance;
 /// The module for the device
 pub mod device;
+/// The module that contains the Device queue
+pub mod queue;
 /// The module for the surface
 pub mod surface;
 /// The module for the swapchain

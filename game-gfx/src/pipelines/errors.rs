@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:35:56
  * Last edited:
- *   05 May 2022, 21:35:40
+ *   07 May 2022, 18:12:22
  * Auto updated?
  *   Yes
  *
@@ -15,32 +15,26 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
-use game_vk::layout::Error as PipelineLayoutError;
-use game_vk::render_pass::Error as RenderPassError;
-use game_vk::pipeline::Error as VkPipelineError;
-
 
 /***** ERRORS *****/
 /// Defines the errors for this pipeline.
 #[derive(Debug)]
 pub enum TriangleError {
     /// Failed to create the PipelineLayout
-    PipelineLayoutCreateError{ err: PipelineLayoutError },
+    PipelineLayoutCreateError{ err: game_vk::layout::Error },
     /// Failed to create the RenderPass
-    RenderPassCreateError{ err: RenderPassError },
+    RenderPassCreateError{ err: game_vk::render_pass::Error },
     /// Failed to create a Vulkan pipeline
-    VkPipelineCreateError{ err: VkPipelineError },
+    VkPipelineCreateError{ err: game_vk::pipeline::Error },
     /// Failed to create a Framebuffer
     FramebufferCreateError{ err: game_vk::framebuffer::Error },
     /// Could not allocate a new CommandBuffer
     CommandBufferAllocateError{ err: game_vk::pools::command::Error },
     /// Could not end a command buffer (because something else went wrong).
     CommandBufferRecordError{ err: game_vk::pools::command::Error },
-    
-    /// Could not reset a fence
-    FenceResetError{ err: game_vk::sync::Error },
+
     /// COuld not submit the command buffer for rendering
-    SubmitError{ err: ash::vk::Result },
+    SubmitError{ err: game_vk::queue::Error },
 }
 
 impl Display for TriangleError {
@@ -54,7 +48,6 @@ impl Display for TriangleError {
             CommandBufferAllocateError{ err } => write!(f, "Could not allocate a new CommandBuffer for the Triangle pipeline: {}", err),
             CommandBufferRecordError{ err }   => write!(f, "Could not record a new CommandBuffer for the Triangle pipeline: {}", err),
             
-            FenceResetError{ err } => write!(f, "Could not reset Fence: {}", err),
             SubmitError{ err }     => write!(f, "Could not submit command buffer: {}", err),
         }
     }

@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   06 May 2022, 17:37:25
+ *   07 May 2022, 18:17:05
  * Auto updated?
  *   Yes
  *
@@ -331,7 +331,7 @@ impl Swapchain {
 
         // Present
         unsafe {
-            match self.loader.queue_present(self.device.queues().present, &present_info) {
+            match self.loader.queue_present(self.device.queues().present.vk(), &present_info) {
                 Ok(_)    => Ok(()),
                 Err(err) => Err(Error::SwapchainPresentError{ index, err }),
             }

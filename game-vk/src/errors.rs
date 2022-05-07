@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   06 May 2022, 17:37:12
+ *   07 May 2022, 18:12:34
  * Auto updated?
  *   Yes
  *
@@ -21,27 +21,7 @@ use ash::vk;
 
 
 /***** ERRORS *****/
-/// Defines errors relating to Queue properties and management.
-#[derive(Clone, Debug)]
-pub enum QueueError {
-    /// One of the operations we want for the queue families is unsupported
-    OperationUnsupported{ index: usize, name: String, operation: ash::vk::QueueFlags },
-}
-
-impl Display for QueueError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use QueueError::*;
-        match self {
-            OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
-        }
-    }
-}
-
-impl Error for QueueError {}
-
-
-
-/// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
+// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
 #[derive(Clone, Debug)]
 pub enum AttributeLayoutError {
     /// Given vk::Format value was a valid vk::Format, but not a valid AttributeLayout
@@ -169,6 +149,34 @@ impl Display for DeviceError {
 }
 
 impl Error for DeviceError {}
+
+
+
+/// Defines errors relating to Queue properties and management.
+#[derive(Clone, Debug)]
+pub enum QueueError {
+    /// One of the operations we want for the queue families is unsupported
+    OperationUnsupported{ index: usize, name: String, operation: ash::vk::QueueFlags },
+
+    /// Could not reset a fence
+    FenceResetError{ err: SyncError },
+    /// Could not submit the command buffer for rendering
+    SubmitError{ err: ash::vk::Result },
+}
+
+impl Display for QueueError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use QueueError::*;
+        match self {
+            OperationUnsupported{ index, name, operation } => write!(f, "Physical device {} ({}) does not have queues that support '{:?}'; choose another device", index, name, operation),
+
+            FenceResetError{ err } => write!(f, "Could not reset Fence: {}", err),
+            SubmitError{ err }     => write!(f, "Could not submit command buffer: {}", err),
+        }
+    }
+}
+
+impl Error for QueueError {}
 
 
 
