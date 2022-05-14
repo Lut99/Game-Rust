@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   07 May 2022, 18:16:45
+ *   14 May 2022, 12:37:35
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use semver::Version;
 use game_utl::to_cstring;
 
 pub use crate::errors::InstanceError as Error;
+use crate::log_destroy;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -425,14 +426,14 @@ impl Drop for Instance {
     fn drop(&mut self) {
         // If present, destroy the debugger
         if let Some((debug_loader, debug_messenger)) = &self.debug_utils {
-            debug!("Destroying Debugger...");
+            log_destroy!(debug_loader, ash::extensions::ext::DebugUtils);
             unsafe {
                 debug_loader.destroy_debug_utils_messenger(*debug_messenger, None);
             }
         }
 
         // Destroy the instance
-        debug!("Destroying Instance...");
+        log_destroy!(self, Instance);
         unsafe { self.instance.destroy_instance(None); }
     }
 }

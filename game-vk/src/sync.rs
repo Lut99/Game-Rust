@@ -4,7 +4,7 @@
  * Created:
  *   01 May 2022, 17:26:00
  * Last edited:
- *   05 May 2022, 21:02:54
+ *   14 May 2022, 12:42:33
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,7 @@ use std::rc::Rc;
 use ash::vk;
 
 pub use crate::errors::SyncError as Error;
+use crate::log_destroy;
 use crate::device::Device;
 
 
@@ -103,6 +104,7 @@ impl Semaphore {
 
 impl Drop for Semaphore {
     fn drop(&mut self) {
+        log_destroy!(self, Semaphore);
         unsafe { self.device.destroy_semaphore(self.semaphore, None); }
     }
 }
@@ -217,6 +219,7 @@ impl Fence {
 
 impl Drop for Fence {
     fn drop(&mut self) {
+        log_destroy!(self, Fence);
         unsafe { self.device.destroy_fence(self.fence, None); }
     }
 }

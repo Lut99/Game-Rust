@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   06 May 2022, 17:37:36
+ *   14 May 2022, 14:33:12
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,8 @@
 
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
+
+use crate::spec::{RenderPipelineId, RenderTargetId};
 
 
 /***** ERRORS *****/
@@ -39,8 +41,17 @@ pub enum RenderSystemError {
     FencePollError{ err: game_vk::sync::Error },
     /// Could not get the next index of the image to render to.
     TargetGetIndexError{ err: Box<dyn Error> },
+    /// Could not rebuild RenderTarget
+    TargetRebuildError{ id: RenderTargetId, err: Box<dyn Error> },
+    /// Could not rebuild RenderPipeline
+    PipelineRebuildError{ id: RenderPipelineId, err: Box<dyn Error> },
     /// Could not render one of the Pipelines
     RenderError{ err: Box<dyn Error> },
+    /// COuld not present to one of the render targets
+    PresentError{ err: Box<dyn Error> },
+
+    /// Could not wait for the Device to become idle
+    IdleError{ err: game_vk::device::Error },
 
     /// Could not auto-select a GPU
     DeviceAutoSelectError{ err: game_vk::errors::DeviceError },
@@ -60,9 +71,14 @@ impl Display for RenderSystemError {
             SemaphoreCreateError{ err }            => write!(f, "Failed to create Semaphore: {}", err),
             FenceCreateError{ err }                => write!(f, "Failed to create Fence: {}", err),
 
-            FencePollError{ err }      => write!(f, "Could not poll Fence: {}", err),
-            TargetGetIndexError{ err } => write!(f, "Could not get next image index: {}", err),
-            RenderError{ err }         => write!(f, "Could not render to RenderTarget: {}", err),
+            FencePollError{ err }           => write!(f, "Could not poll Fence: {}", err),
+            TargetGetIndexError{ err }      => write!(f, "Could not get next image index: {}", err),
+            TargetRebuildError{ id, err }   => write!(f, "Could not rebuild Target {}: {}", id, err),
+            PipelineRebuildError{ id, err } => write!(f, "Could not rebuild Pipeline {}: {}", id, err),
+            RenderError{ err }              => write!(f, "Could not render to RenderTarget: {}", err),
+            PresentError{ err }             => write!(f, "Could not present to RenderTarget: {}", err),
+
+            IdleError{ err } => write!(f, "{}", err),
 
             DeviceAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
             DeviceListError{ err }       => write!(f, "Could not list GPUs: {}", err),
@@ -92,6 +108,13 @@ pub enum WindowError {
     SwapchainNextImageError{ err: game_vk::swapchain::Error },
     /// Could not present the given swapchain image
     SwapchainPresentError{ err: game_vk::swapchain::Error },
+
+    /// Could not wait for the Device to become idle
+    IdleError{ err: game_vk::device::Error },
+    /// Could not rebuild the swapchain
+    SwapchainRebuildError{ err: game_vk::swapchain::Error },
+    /// Could not rebuild some swapchain ImageView
+    ViewRebuildError{ err: game_vk::image::view::Error },
 }
 
 impl Display for WindowError {
@@ -106,6 +129,10 @@ impl Display for WindowError {
 
             SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
             SwapchainPresentError{ err }   => write!(f, "Could not present Swapchain image: {}", err),
+
+            IdleError{ err }             => write!(f, "{}", err),
+            SwapchainRebuildError{ err } => write!(f, "Could not rebuild Swapchain: {}", err),
+            ViewRebuildError{ err }      => write!(f, "Could not rebuild ImageView: {}", err),
         }
     }
 }

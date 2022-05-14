@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   07 May 2022, 18:16:55
+ *   14 May 2022, 14:38:34
  * Auto updated?
  *   Yes
  *
@@ -24,8 +24,6 @@ use ash::vk;
 
 pub use crate::errors::{AttributeLayoutError, QueueError};
 use crate::instance::Instance;
-use crate::device::Device;
-use crate::queue::Queue;
 
 
 /***** MACROS *****/
@@ -35,6 +33,18 @@ macro_rules! vec_as_ptr {
     ($vec:ident) => {
         (if $vec.is_empty() { ptr::null() } else { $vec.as_ptr() })
     };
+}
+
+/// Prints a default destroy message for 'self'
+#[macro_export]
+macro_rules! log_destroy {
+    ($self:ident,$type:path) => {
+        log::debug!(concat!("Destroying ", stringify!($type), " {:?}..."), $self as *const $type)
+    };
+
+    ($self:ident,$type:path,$name:expr) => {
+        log::debug!(concat!("Destroying ", stringify!($type), " '{}' ({:?})..."), $name, $self as *const $type)
+    }
 }
 
 
@@ -74,6 +84,15 @@ impl<T> Offset2D<T> {
     }
 }
 
+impl<T> Display for Offset2D<T>
+where
+    T: Display
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
 impl<T> From<vk::Offset2D> for Offset2D<T>
 where
     T: From<i32>
@@ -97,6 +116,23 @@ where
             x : value.x.into(),
             y : value.y.into(),
         }
+    }
+}
+
+impl<T> From<(T, T)> for Offset2D<T> {
+    #[inline]
+    fn from(value: (T, T)) -> Self {
+        Self {
+            x : value.0,
+            y : value.1,
+        }
+    }
+}
+
+impl<T> From<Offset2D<T>> for (T, T) {
+    #[inline]
+    fn from(value: Offset2D<T>) -> Self {
+        (value.x, value.y)
     }
 }
 
@@ -134,6 +170,15 @@ impl<T> Extent2D<T> {
     }
 }
 
+impl<T> Display for Extent2D<T>
+where
+    T: Display
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "({}, {})", self.w, self.h)
+    }
+}
+
 impl<T> From<vk::Extent2D> for Extent2D<T>
 where
     T: From<u32>
@@ -157,6 +202,23 @@ where
             width  : value.w.into(),
             height : value.h.into(),
         }
+    }
+}
+
+impl<T> From<(T, T)> for Extent2D<T> {
+    #[inline]
+    fn from(value: (T, T)) -> Self {
+        Self {
+            w : value.0,
+            h : value.1,
+        }
+    }
+}
+
+impl<T> From<Extent2D<T>> for (T, T) {
+    #[inline]
+    fn from(value: Extent2D<T>) -> Self {
+        (value.w, value.h)
     }
 }
 
@@ -363,6 +425,21 @@ impl From<DeviceKind> for vk::PhysicalDeviceType {
 
 
 /***** QUEUES *****/
+/// Enum that defines the types of queues that the Game has.
+#[derive(Clone, Copy, Debug)]
+pub enum QueueKind {
+    /// The queue that is used for graphics operations (rendering & (technically) presenting)
+    Graphics,
+    /// The queue that is used for memory operations (transferring)
+    Memory,
+    /// The queue that is used for present operations (& technically rendering)
+    Present,
+    /// The queue that is used for compute operations
+    Compute,
+}
+
+
+
 /// Contains information about the queue families for an instantiated GPU.
 #[derive(Debug)]
 pub struct QueueFamilyInfo {
@@ -459,6 +536,19 @@ impl QueueFamilyInfo {
             1
         }
     }
+
+
+
+    /// Returns the queue index of the given QueueKind.
+    #[inline]
+    pub fn get_index(&self, kind: QueueKind) -> u32 {
+        match kind {
+            QueueKind::Graphics => self.graphics,
+            QueueKind::Memory   => self.memory,
+            QueueKind::Present  => self.present,
+            QueueKind::Compute  => self.compute,
+        }
+    }
 }
 
 
@@ -515,35 +605,6 @@ impl<'a> Iterator for QueueFamilyInfoUniqueIterator<'a> {
                 }
             }
             _ => None,
-        }
-    }
-}
-
-
-
-/// Central place where we store the queues of the created logical device.
-pub struct Queues {
-    /// The graphics queue
-    pub graphics : Queue,
-    /// The memory queue
-    pub memory   : Queue,
-    /// The present queue
-    pub present  : Queue,
-    /// The compute queue
-    pub compute  : Queue,
-}
-
-impl Queues {
-    /// Constructor for the Queues.
-    /// 
-    /// Requests the three queues from the queue families in the given QueueFamilyInfo on the given vk::Device.
-    #[inline]
-    pub(crate) fn new(device: &Rc<Device>, family_info: &QueueFamilyInfo) -> Self {
-        Self {
-            graphics : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.graphics, 0) } },
-            memory   : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.memory, 0) } },
-            present  : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.present, 0) } },
-            compute  : unsafe { Queue{ device: device.clone(), queue: device.get_device_queue(family_info.compute, 0) } },
         }
     }
 }

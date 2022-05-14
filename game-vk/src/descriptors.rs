@@ -4,7 +4,7 @@
  * Created:
  *   27 Apr 2022, 11:57:55
  * Last edited:
- *   27 Apr 2022, 12:35:56
+ *   14 May 2022, 12:32:41
  * Auto updated?
  *   Yes
  *
@@ -19,6 +19,7 @@ use std::rc::Rc;
 use ash::vk;
 
 pub use crate::errors::DescriptorError as Error;
+use crate::log_destroy;
 use crate::auxillary::DescriptorBinding;
 use crate::device::Device;
 
@@ -105,6 +106,7 @@ impl DescriptorSetLayout {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
+        log_destroy!(self, DescriptorSetLayout);
         unsafe { self.device.destroy_descriptor_set_layout(self.layout, None); }
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   05 May 2022, 10:42:16
+ *   14 May 2022, 12:43:38
  * Auto updated?
  *   Yes
  *
@@ -23,11 +23,12 @@ use ash::vk;
 use log::{debug, warn};
 
 pub use crate::errors::PipelineError as Error;
-pub use crate::auxillary::{AttachmentBlendState, BlendFactor, BlendOp, ColourBlendState, ColourMask, CompareOp, DepthTestingState, DynamicState, LogicOp, MultisampleState, RasterizerState, ShaderStage, StencilOp, StencilOpState, VertexAssemblyState, VertexInputState, VertexTopology, ViewportState};
-pub use crate::device::Device;
-pub use crate::shader::{Error as ShaderError, Shader};
-pub use crate::layout::{Error as PipelineLayoutError, PipelineLayout};
-pub use crate::render_pass::{Error as RenderPassError, RenderPass};
+use crate::log_destroy;
+use crate::auxillary::{AttachmentBlendState, BlendFactor, BlendOp, ColourBlendState, ColourMask, CompareOp, DepthTestingState, DynamicState, LogicOp, MultisampleState, RasterizerState, ShaderStage, StencilOp, StencilOpState, VertexAssemblyState, VertexInputState, VertexTopology, ViewportState};
+use crate::device::Device;
+use crate::shader::{Error as ShaderError, Shader};
+use crate::layout::PipelineLayout;
+use crate::render_pass::RenderPass;
 
 
 /***** POPULATE FUNCTIONS ******/
@@ -215,6 +216,7 @@ impl PipelineCache {
 impl Drop for PipelineCache {
     fn drop(&mut self) {
         // Try to save the cache to a file
+        log_destroy!(self, PipelineCache);
         match unsafe { self.device.get_pipeline_cache_data(self.cache) } {
             Ok(data) => {
                 // Try to open the file
@@ -801,6 +803,7 @@ impl Pipeline {
 
 impl Drop for Pipeline {
     fn drop(&mut self) {
+        log_destroy!(self, Pipeline);
         unsafe { self.device.destroy_pipeline(self.pipeline, None); }
     }
 }

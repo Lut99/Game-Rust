@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   05 May 2022, 21:37:59
+ *   14 May 2022, 14:45:08
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 use std::any::type_name;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use log::debug;
@@ -63,12 +64,12 @@ pub struct RenderSystem {
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
     /// The Device we'll use for rendering.
-    _device       : Rc<Device>,
+    device       : Rc<Device>,
     // /// The MemoryPool we use to allocate CPU-accessible buffers.
     // /// The MemoryPool we use to allocate GPU-local buffers.
     // /// The DescriptorPool from which we allocate descriptors.
     /// The CommandPool from which we allocate commands.
-    _command_pool : Rc<CommandPool>,
+    _command_pool : Arc<RwLock<CommandPool>>,
 
     /// The map of render targets to which we render.
     targets   : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
@@ -112,7 +113,7 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
-    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, event_loop: &EventLoop<()>, gpu: usize, targets_in_flight: usize, debug: bool) -> Result<Self, Error> {
+    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(_ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, event_loop: &EventLoop<()>, gpu: usize, targets_in_flight: usize, debug: bool) -> Result<Self, Error> {
         // Register components
         /* TBD */
 
@@ -189,7 +190,7 @@ impl RenderSystem {
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
             _instance     : instance,
-            _device       : device,
+            device,
             _command_pool : command_pool,
 
             targets,
@@ -289,7 +290,7 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function errors if the given Pipeline errors.
-    pub fn render(&mut self, pipeline: RenderPipelineId, target: RenderTargetId) -> Result<(), Error> {
+    pub fn render(&mut self, pipeline_id: RenderPipelineId, target_id: RenderTargetId) -> Result<(), Error> {
         // If the next fence is not yet available, early quit
         match self.in_flight[self.current_frame].poll() {
             Ok(res)  => if !res { return Ok(()); },
@@ -297,13 +298,27 @@ impl RenderSystem {
         };
 
         // Fetch the RenderTarget and the RenderPipeline for this render call
-        let target: &dyn RenderTarget         = self.targets.get(&target).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target)).as_ref();
-        let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline)).as_mut();
+        let target: &mut dyn RenderTarget     = self.targets.get_mut(&target_id).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target_id)).as_mut();
+        let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline_id).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline_id)).as_mut();
 
         // Get the next image index from the render target
         let frame_index: usize = match target.get_index(Some(&self.image_ready[self.current_frame])) {
-            Ok(index) => index,
-            Err(err)  => { return Err(Error::TargetGetIndexError{ err }); }
+            Ok(Some(index)) => index,
+            Ok(None)        => {
+                // Get the new size from the target
+                let new_size = target.real_extent();
+                // If it's zero, then skip and wait until the window has a valid size again
+                if new_size.w == 0 && new_size.h == 0 { return Ok(()); }
+
+                // Rebuild the target and then the window
+                debug!("Resizing {} and {} to: {}", target_id, pipeline_id, new_size);
+                if let Err(err) = target.rebuild(&new_size) { return Err(Error::TargetRebuildError{ id: target_id, err }); }
+                if let Err(err) = pipeline.rebuild(target) { return Err(Error::PipelineRebuildError{ id: pipeline_id, err }); }
+
+                // Simply go through it again to do the proper render call
+                return self.render(pipeline_id, target_id);
+            },
+            Err(err) => { return Err(Error::TargetGetIndexError{ err }); },
         };
 
         // Tell the pipeline to render
@@ -312,12 +327,22 @@ impl RenderSystem {
         }
 
         // Even though the frame is not being rendered and such, schedule its presentation
-        if let Err(err) = target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
-            
+        match target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::PresentError{ err }),
         }
-
-        Ok(())
     }
+
+    /// Blocks the current thread until the Device is idle
+    #[inline]
+    pub fn wait_for_idle(&self) -> Result<(), Error> {
+        match self.device.drain(None) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::IdleError{ err }),
+        }
+    }
+
+
 
     /// Automatically selects the best GPU.
     /// 

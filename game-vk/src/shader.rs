@@ -4,7 +4,7 @@
  * Created:
  *   19 Apr 2022, 21:21:27
  * Last edited:
- *   01 May 2022, 12:07:27
+ *   14 May 2022, 12:40:54
  * Auto updated?
  *   Yes
  *
@@ -23,6 +23,7 @@ use ash::vk;
 use rust_embed::EmbeddedFile;
 
 pub use crate::errors::ShaderError as Error;
+use crate::log_destroy;
 use crate::device::Device;
 
 
@@ -180,6 +181,7 @@ impl Shader {
 
 impl Drop for Shader {
     fn drop(&mut self) {
+        log_destroy!(self, Shader);
         unsafe { self.device.destroy_shader_module(self.module, None); }
     }
 }

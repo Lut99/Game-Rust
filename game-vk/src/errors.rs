@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   07 May 2022, 18:12:34
+ *   14 May 2022, 13:41:23
  * Auto updated?
  *   Yes
  *
@@ -106,6 +106,11 @@ pub enum DeviceError {
     /// Could not create the new logical device
     DeviceCreateError{ err: ash::vk::Result },
 
+    /// Could not wait for a Queue to be idle
+    QueueIdleError{ err: QueueError },
+    /// Could not wait for the Device to be idle
+    DeviceIdleError{ err: ash::vk::Result },
+
     /// None of the found devices support this application
     NoSupportedPhysicalDevices,
 
@@ -137,6 +142,9 @@ impl Display for DeviceError {
             QueueFamilyError{ index, err }        => write!(f, "Could not get the queue family info of device {}: {}", index, err),
             DeviceCreateError{ err }              => write!(f, "Could not create logical device: {}", err),
 
+            QueueIdleError{ err }  => write!(f, "Could not wait for queue to be idle: {}", err),
+            DeviceIdleError{ err } => write!(f, "Could not wait for device to be idle: {}", err),
+
             NoSupportedPhysicalDevices => write!(f, "No device found that supports this application"),
 
             SurfaceSupportError{ err }      => write!(f, "Could not query swapchain support for surface: {}", err),
@@ -162,6 +170,9 @@ pub enum QueueError {
     FenceResetError{ err: SyncError },
     /// Could not submit the command buffer for rendering
     SubmitError{ err: ash::vk::Result },
+
+    /// Could not wait for the queue to be idle
+    IdleError{ err: ash::vk::Result },
 }
 
 impl Display for QueueError {
@@ -172,6 +183,8 @@ impl Display for QueueError {
 
             FenceResetError{ err } => write!(f, "Could not reset Fence: {}", err),
             SubmitError{ err }     => write!(f, "Could not submit command buffer: {}", err),
+
+            IdleError{ err } => write!(f, "Could not wait for queue to become idle: {}", err),
         }
     }
 }
@@ -219,6 +232,8 @@ pub enum SwapchainError {
     DeviceSurfaceSupportError{ index: usize, name: String, err: DeviceError },
     /// Could not find an appropriate format for this GPU / surface combo.
     NoFormatFound,
+    /// Could not deduce any of the Swapchain properties.
+    SwapchainDeduceError{ err: Box<Self> },
     /// Could not create a new swapchain
     SwapchainCreateError{ err: ash::vk::Result },
     /// Could not get the images from the swapchain
@@ -231,6 +246,9 @@ pub enum SwapchainError {
 
     /// Could not present a given image in the swapchain.
     SwapchainPresentError{ index: u32, err: ash::vk::Result },
+
+    /// Could not wait for the device to become idle.
+    DeviceIdleError{ err: DeviceError },
 }
 
 impl Display for SwapchainError {
@@ -239,6 +257,7 @@ impl Display for SwapchainError {
         match self {
             DeviceSurfaceSupportError{ index, name, err } => write!(f, "Device {} ('{}') does not support given Surface: {}", index, name, err),
             NoFormatFound                                 => write!(f, "No suitable formats found for swapchain; try choosing another device."),
+            SwapchainDeduceError{ err }                   => write!(f, "Could not deduce Swapchain properties: {}", err),
             SwapchainCreateError{ err }                   => write!(f, "Could not create Swapchain: {}", err),
             SwapchainImagesError{ err }                   => write!(f, "Could not get Swapchain images: {}", err),
             ImageError{ err }                             => write!(f, "Could not create Image from swapchain image: {}", err),
@@ -246,6 +265,8 @@ impl Display for SwapchainError {
             SwapchainNextImageError{ err } => write!(f, "Could not get next swapchain image: {}", err),
 
             SwapchainPresentError{ index, err } => write!(f, "Could not present swapchain image {}: {}", index, err),
+
+            DeviceIdleError{ err } => write!(f, "{}", err),
         }
     }
 }

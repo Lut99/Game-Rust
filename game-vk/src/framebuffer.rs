@@ -4,7 +4,7 @@
  * Created:
  *   03 May 2022, 18:20:39
  * Last edited:
- *   03 May 2022, 18:50:20
+ *   14 May 2022, 12:36:20
  * Auto updated?
  *   Yes
  *
@@ -19,6 +19,7 @@ use std::rc::Rc;
 use ash::vk;
 
 pub use crate::errors::FramebufferError as Error;
+use crate::log_destroy;
 use crate::auxillary::Extent2D;
 use crate::device::Device;
 use crate::render_pass::RenderPass;
@@ -142,6 +143,7 @@ impl Framebuffer {
 
 impl Drop for Framebuffer {
     fn drop(&mut self) {
+        log_destroy!(self, Framebuffer);
         unsafe { self.device.destroy_framebuffer(self.framebuffer, None); }
     }
 }

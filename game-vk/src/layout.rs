@@ -4,7 +4,7 @@
  * Created:
  *   27 Apr 2022, 11:41:07
  * Last edited:
- *   30 Apr 2022, 17:04:12
+ *   14 May 2022, 12:38:46
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,7 @@ use std::rc::Rc;
 use ash::vk;
 
 pub use crate::errors::PipelineLayoutError as Error;
+use crate::log_destroy;
 use crate::device::Device;
 use crate::descriptors::DescriptorSetLayout;
 
@@ -109,6 +110,7 @@ impl PipelineLayout {
 
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
+        log_destroy!(self, PipelineLayout);
         unsafe { self.device.destroy_pipeline_layout(self.layout, None); }
     }
 }

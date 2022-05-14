@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   07 May 2022, 18:16:49
+ *   14 May 2022, 13:08:26
  * Auto updated?
  *   Yes
  *
@@ -24,9 +24,11 @@ use log::debug;
 use game_utl::to_cstring;
 
 pub use crate::errors::DeviceError as Error;
-use crate::auxillary::{DeviceKind, QueueFamilyInfo, Queues, SwapchainSupport};
+use crate::log_destroy;
+use crate::auxillary::{DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
+use crate::queue::Queues;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -42,7 +44,7 @@ fn supports(
     physical_device_name: &str,
     p_device_extensions: &[*const i8],
     p_device_layers: &[*const i8],
-    features: &vk::PhysicalDeviceFeatures,
+    _features: &vk::PhysicalDeviceFeatures,
 ) -> Result<(), Error> {
     // Test if all of the given extensions are supported on this device
     let avail_extensions = match unsafe { instance.enumerate_device_extension_properties(physical_device) } {
@@ -91,7 +93,7 @@ fn supports(
     }
 
     // Finally, test if features are supported
-    let avail_features: vk::PhysicalDeviceFeatures = unsafe { instance.get_physical_device_features(physical_device) };
+    let _avail_features: vk::PhysicalDeviceFeatures = unsafe { instance.get_physical_device_features(physical_device) };
     /* TODO */
 
     // We support it
@@ -180,7 +182,7 @@ pub struct Device {
     /// The PhysicalDevice around which we wrap.
     physical_device : vk::PhysicalDevice,
     /// The logical Device around which we wrap.
-    device          : ash::Device,
+    device          : Rc<ash::Device>,
     /// The queues for the internal device.
     queues          : Queues,
 
@@ -285,6 +287,7 @@ impl Device {
         };
 
         // Get the queues
+        let device = Rc::new(device);
         let queues = Queues::new(&device, &family_info);
 
 
@@ -301,6 +304,29 @@ impl Device {
             kind     : device_type,
             families : family_info,
         }))
+    }
+
+
+
+    /// Wait until the device is idle.
+    /// 
+    /// # Arguments
+    /// - `queue`: If given, waits until the given queue is idle in the Device instead of all queues.
+    #[inline]
+    pub fn drain(&self, queue: Option<QueueKind>) -> Result<(), Error> {
+        match queue {
+            // In all Some-cases, just wait for that queue
+            Some(QueueKind::Graphics) => self.queues.graphics.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Memory)   => self.queues.memory.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Present)  => self.queues.present.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Compute)  => self.queues.compute.drain().map_err(|err| Error::QueueIdleError{ err }),
+
+            // Otherwise, wait for the device
+            None => match unsafe { self.device.device_wait_idle() } {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Error::DeviceIdleError{ err }),
+            }
+        }
     }
 
 
@@ -504,7 +530,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         // Destroy the internal device
-        debug!("Destroying Device...");
+        log_destroy!(self, Device);
         unsafe { self.device.destroy_device(None); };
     }
 }

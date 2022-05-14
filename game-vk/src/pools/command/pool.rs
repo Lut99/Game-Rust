@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:56
  * Last edited:
- *   05 May 2022, 13:01:11
+ *   14 May 2022, 13:00:24
  * Auto updated?
  *   Yes
  *
@@ -15,10 +15,12 @@
 use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 
 pub use crate::pools::errors::CommandPoolError as Error;
+use crate::log_destroy;
 use crate::auxillary::{CommandBufferFlags, CommandBufferLevel, QueueFamilyInfo};
 use crate::device::Device;
 use crate::pools::command::buffers::CommandBuffer;
@@ -91,7 +93,7 @@ impl CommandPool {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend could not allocate the pool for some reason.
-    pub fn new(device: Rc<Device>) -> Result<Rc<Self>, Error> {
+    pub fn new(device: Rc<Device>) -> Result<Arc<RwLock<Self>>, Error> {
         // Get the family info
         let family_info: &QueueFamilyInfo = device.families();
 
@@ -102,10 +104,10 @@ impl CommandPool {
         }        
 
         // Done, wrap that and the device in the struct
-        Ok(Rc::new(Self {
+        Ok(Arc::new(RwLock::new(Self {
             device,
             pools,
-        }))
+        })))
     }
 
 
@@ -126,49 +128,62 @@ impl CommandPool {
     /// If the underlying pool has no more space, then this function throws an error.
     /// 
     /// It will panic if the given queue family index is not in the user queue families when this pool was created.
-    pub fn allocate(&mut self, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Rc<CommandBuffer>, Error> {
-        // Insert a pool with these specs if it does not yet exist
-        let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = self.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
-        let pool: vk::CommandPool = match pools.get(&flags) {
-            Some(pool) => *pool,
-            None       => {
-                // Populate the create info
-                let pool_info = populate_pool_info(index, flags.into());
+    pub fn allocate(this_pool: &Arc<RwLock<Self>>, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Rc<CommandBuffer>, Error> {
+        // Acquire a write lock
+        let pool: vk::CommandPool;
+        {
+            let mut this = this_pool.write().expect("Could not get CommandPool write lock");
 
-                // Allocate the pool
-                let pool = unsafe {
-                    match self.device.create_command_pool(&pool_info, None) {
-                        Ok(pool) => pool,
-                        Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
-                    }  
-                };
+            // Insert a pool with these specs if it does not yet exist
+            let device = this.device.ash().clone();
+            let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = this.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
+            pool = match pools.get(&flags) {
+                Some(pool) => *pool,
+                None       => {
+                    // Populate the create info
+                    let pool_info = populate_pool_info(index, flags.into());
 
-                // Store it in the pools
-                pools.insert(flags, pool);
+                    // Allocate the pool
+                    let pool = unsafe {
+                        match device.create_command_pool(&pool_info, None) {
+                            Ok(pool) => pool,
+                            Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
+                        }  
+                    };
 
-                // Done, return
-                pool
-            },
-        };
+                    // Store it in the pools
+                    pools.insert(flags, pool);
 
-        // Prepare the allocate info
-        let buffer_info = populate_buffer_info(pool, 1, level.into());
+                    // Done, return
+                    pool
+                },
+            };
+        }
 
-        // ALlocate a new buffer in this pool
-        let buffer = unsafe {
-            match self.device.allocate_command_buffers(&buffer_info) {
-                Ok(buffers) => buffers[0],
-                Err(err)    => { return Err(Error::CommandBufferAllocateError{ n: 1, err }); }
-            }
-        };
+        // Acquire a read lock
+        {
+            let this = this_pool.read().expect("Could not get CommandPool read lock");
 
-        // Wrap it in the CommandBuffer struct and return.
-        Ok(Rc::new(CommandBuffer {
-            device : self.device.clone(),
-            pool,
-
-            buffer,
-        }))
+            // Prepare the allocate info
+            let buffer_info = populate_buffer_info(pool, 1, level.into());
+    
+            // ALlocate a new buffer in this pool
+            let buffer = unsafe {
+                match this.device.allocate_command_buffers(&buffer_info) {
+                    Ok(buffers) => buffers[0],
+                    Err(err)    => { return Err(Error::CommandBufferAllocateError{ n: 1, err }); }
+                }
+            };
+    
+            // Wrap it in the CommandBuffer struct and return.
+            Ok(Rc::new(CommandBuffer {
+                device  : this.device.clone(),
+                pool    : this_pool.clone(),
+                vk_pool : pool,
+    
+                buffer,
+            }))
+        }
     }
 
     /// Allocates N new command buffers in the pool with the same properties.
@@ -186,49 +201,62 @@ impl CommandPool {
     /// If the underlying pool has no more space, then this function throws an error.
     /// 
     /// It will panic if the given queue family index is not in the user queue families when this pool was created.
-    pub fn n_allocate(&mut self, count: u32, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<Rc<CommandBuffer>>, Error> {
-        // Insert a pool with these specs if it does not yet exist
-        let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = self.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
-        let pool: vk::CommandPool = match pools.get(&flags) {
-            Some(pool) => *pool,
-            None       => {
-                // Populate the create info
-                let pool_info = populate_pool_info(index, flags.into());
+    pub fn n_allocate(this_pool: &Arc<RwLock<Self>>, count: u32, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<Rc<CommandBuffer>>, Error> {
+        // Acquire a write lock
+        let pool: vk::CommandPool;
+        {
+            let mut this = this_pool.write().expect("Could not get CommandPool write lock");
 
-                // Allocate the pool
-                let pool = unsafe {
-                    match self.device.create_command_pool(&pool_info, None) {
-                        Ok(pool) => pool,
-                        Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
-                    }  
-                };
+            // Insert a pool with these specs if it does not yet exist
+            let device = this.device.ash().clone();
+            let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = this.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
+            pool = match pools.get(&flags) {
+                Some(pool) => *pool,
+                None       => {
+                    // Populate the create info
+                    let pool_info = populate_pool_info(index, flags.into());
 
-                // Store it in the pools
-                pools.insert(flags, pool);
+                    // Allocate the pool
+                    let pool = unsafe {
+                        match device.create_command_pool(&pool_info, None) {
+                            Ok(pool) => pool,
+                            Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
+                        }  
+                    };
 
-                // Done, return
-                pool
-            },
-        };
+                    // Store it in the pools
+                    pools.insert(flags, pool);
 
-        // Prepare the allocate info
-        let buffer_info = populate_buffer_info(pool, count, level.into());
+                    // Done, return
+                    pool
+                },
+            };
+        }
 
-        // ALlocate a new buffer in this pool
-        let buffers = unsafe {
-            match self.device.allocate_command_buffers(&buffer_info) {
-                Ok(buffers) => buffers,
-                Err(err)    => { return Err(Error::CommandBufferAllocateError{ n: 1, err }); }
-            }
-        };
+        // Acquire a read lock
+        {
+            let this = this_pool.read().expect("Could not get CommandPool read lock");
 
-        // Wrap it in the CommandBuffer struct and return.
-        Ok((0..count).map(|i| Rc::new(CommandBuffer {
-            device : self.device.clone(),
-            pool,
+            // Prepare the allocate info
+            let buffer_info = populate_buffer_info(pool, count, level.into());
 
-            buffer : buffers[i as usize],
-        })).collect())
+            // ALlocate a new buffer in this pool
+            let buffers = unsafe {
+                match this.device.allocate_command_buffers(&buffer_info) {
+                    Ok(buffers) => buffers,
+                    Err(err)    => { return Err(Error::CommandBufferAllocateError{ n: 1, err }); }
+                }
+            };
+
+            // Wrap it in the CommandBuffer struct and return.
+            Ok((0..count).map(|i| Rc::new(CommandBuffer {
+                device  : this.device.clone(),
+                pool    : this_pool.clone(),
+                vk_pool : pool,
+
+                buffer : buffers[i as usize],
+            })).collect())
+        }
     }
 
     /// Frees a command buffer again.
@@ -293,6 +321,7 @@ impl CommandPool {
 impl Drop for CommandPool {
     fn drop(&mut self) {
         // Destroy all the pools
+        log_destroy!(self, CommandPool);
         for pools in self.pools.values() {
             for pool in pools.values() {
                 unsafe { self.device.destroy_command_pool(*pool, None); }

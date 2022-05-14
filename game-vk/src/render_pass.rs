@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 17:57:08
  * Last edited:
- *   05 May 2022, 10:42:25
+ *   14 May 2022, 12:40:29
  * Auto updated?
  *   Yes
  *
@@ -16,9 +16,10 @@ use std::ptr;
 use std::rc::Rc;
 
 use ash::vk;
-use log::{debug, info};
+use log::debug;
 
 pub use crate::errors::RenderPassError as Error;
+use crate::log_destroy;
 use crate::auxillary::{AttachmentDescription, SubpassDependency, SubpassDescription};
 use crate::device::Device;
 
@@ -250,6 +251,7 @@ impl RenderPass {
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
+        log_destroy!(self, RenderPass);
         unsafe { self.device.destroy_render_pass(self.render_pass, None); }
     }
 }

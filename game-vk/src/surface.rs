@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   19 Apr 2022, 18:17:48
+ *   14 May 2022, 12:41:14
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use log::debug;
 use winit::window::Window as WWindow;
 
 pub use crate::errors::SurfaceError as Error;
+use crate::log_destroy;
 use crate::instance::Instance;
 
 
@@ -282,7 +283,7 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // Destroy the surface using the loader
-        debug!("Destroying Surface...");
+        log_destroy!(self, Surface);
         unsafe { self.loader.destroy_surface(self.surface, None); }
     }
 }

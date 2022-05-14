@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   06 May 2022, 18:23:20
+ *   14 May 2022, 14:42:47
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 
 use std::error;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
@@ -32,6 +33,49 @@ pub use crate::errors::WindowError as Error;
 use crate::spec::RenderTarget;
 
 
+/***** HELPER FUNCTIONS *****/
+/// Given a Swapchain, generates new ImageViews around its images.
+/// 
+/// # Arguments
+/// - `device`: The Device where the Swapchain lives.
+/// - `swapchain`: The Swapchain to create ImageViews for.
+/// 
+/// # Errors
+/// This function errors if we could not create the new views.
+fn create_views(device: &Rc<Device>, swapchain: &Arc<RwLock<Swapchain>>) -> Result<Vec<Rc<image::View>>, Error> {
+    // Get a read lock for the rest
+    let sc = swapchain.read().expect("Could not get read lock on Swapchain");
+
+    // Rebuild all of the image views
+    debug!("Generating image views...");
+    let mut views: Vec<Rc<image::View>> = Vec::with_capacity(sc.images().len());
+    for swapchain_image in sc.images() {
+        // Create the view around it
+        let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
+            kind    : ImageViewKind::TwoD,
+            format  : sc.format().into(),
+            swizzle : Default::default(),
+
+            aspect     : ImageAspect::Colour,
+            base_level : 0,
+            mip_levels : 1,
+        }) {
+            Ok(view) => view,
+            Err(err) => { return Err(Error::ImagesCreateError{ err }); }
+        };
+
+        // Store it in the list
+        views.push(view);
+    }
+
+    // Done, return
+    Ok(views)
+}
+
+
+
+
+
 /***** WINDOW *****/
 /// Manages a single Window and associated resources.
 /// 
@@ -45,14 +89,14 @@ pub struct Window {
     /// The Vulkan Surface that we create from this Window.
     _surface  : Rc<Surface>,
     /// The Vulkan swapchain that we create from this Window.
-    swapchain : Rc<Swapchain>,
+    swapchain : Arc<RwLock<Swapchain>>,
     /// The list of Vulkan swapchain images that we create from this Window.
     views     : Vec<Rc<image::View>>,
     
     /// The title of this Window.
-    title : String,
-    /// The size of the window (as width, height)
-    size  : (u32, u32),
+    title  : String,
+    /// The size of the window (as an extent)
+    extent : Extent2D<u32>,
 }
 
 impl Window {
@@ -96,29 +140,8 @@ impl Window {
             Err(err)      => { return Err(Error::SwapchainCreateError{ err }); }
         };
 
-        // Build the image views around the swapchain images
-        debug!("Initializing image views...");
-        let mut views: Vec<Rc<image::View>> = Vec::with_capacity(swapchain.images().len());
-        for swapchain_image in swapchain.images() {
-            // Create the view around it
-            let view = match image::View::new(device.clone(), swapchain_image.clone(), image::ViewInfo {
-                kind    : ImageViewKind::TwoD,
-                format  : swapchain.format().into(),
-                swizzle : Default::default(),
-
-                aspect     : ImageAspect::Colour,
-                base_level : 0,
-                mip_levels : 1,
-            }) {
-                Ok(view) => view,
-                Err(err) => { return Err(Error::ImagesCreateError{ err }); }
-            };
-
-            // Store it in the list
-            views.push(view);
-        }
-
-
+        // Generate the views
+        let views: Vec<Rc<image::View>> = create_views(&device, &swapchain)?;
 
         // Done! Return the window
         debug!("Initialized new window '{}'", title);
@@ -130,8 +153,8 @@ impl Window {
             swapchain,
             views,
 
-            title : title.to_string(),
-            size  : (width, height),
+            title  : title.to_string(),
+            extent : Extent2D::new(width, height),
         })
     }
 
@@ -194,18 +217,9 @@ impl Window {
     /// Returns the title of the window.
     #[inline]
     pub fn title(&self) -> &str { &self.title }
-
-    // Returns the size of the window, as (width, height).
-    #[inline]
-    pub fn size(&self) -> &(u32, u32) { &self.size }
-
 }
 
 impl RenderTarget for Window {
-    /// Returns a list of all image views in the RenderTarget.
-    #[inline]
-    fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
-
     /// Returns the index of a renderable target, i.e., an image::View to render to.
     /// 
     /// For non-Swapchain targets, this function will be very simple.
@@ -214,20 +228,20 @@ impl RenderTarget for Window {
     /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
     /// 
     /// # Returns
-    /// A new ImageView on success.
+    /// A new ImageView on success. It could be that stuff like Swapchains are outdated or invalid, in which case 'None' is returned.
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<usize, Box<dyn error::Error>> {
-        // Try to get an image from the swapchain
-        let index = match self.swapchain.next_image(done_semaphore, None, None) {
-            Ok(Some(index)) => index,
-            Ok(None)        => { panic!("Swapchain resize is not yet implemented"); }
-            Err(err)        => { return Err(Box::new(Error::SwapchainNextImageError{ err })); }
-        };
+    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Box<dyn error::Error>> {
+        // Get a lock around the swapchain
+        let sc = self.swapchain.read().expect("Could not get freshly created Swapchain lock");
 
-        // Return that index
-        Ok(index)
+        // Try to get an image from the swapchain
+        match sc.next_image(done_semaphore, None, None) {
+            Ok(Some(index)) => Ok(Some(index)),
+            Ok(None)        => Ok(None),
+            Err(err)        => Err(Box::new(Error::SwapchainNextImageError{ err })),
+        }
     }
 
     /// Presents this RenderTarget in the way it likes.
@@ -238,22 +252,58 @@ impl RenderTarget for Window {
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    #[inline]
-    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), Box<dyn error::Error>> {
+    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Box<dyn error::Error>> {
+        // Get a lock around the swapchain
+        let sc = self.swapchain.read().expect("Could not get freshly created Swapchain lock");
+
         // Call with the swapchain's function
-        match self.swapchain.present(index as u32, wait_semaphores) {
-            Ok(_)    => Ok(()),
+        match sc.present(index as u32, wait_semaphores) {
+            Ok(redo) => Ok(redo),
             Err(err) => Err(Box::new(Error::SwapchainPresentError{ err })),
         }
     }
 
 
 
+    /// Resizes the RenderTarget to the new size.
+    /// 
+    /// # Arguments
+    /// - `new_size`: The new Extent2D of the RenderTarget.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Box<dyn error::Error>> {
+        debug!("Rebuilding Window...");
+
+        // Get a write lock on the swapchain
+        {
+            let mut sc = self.swapchain.write().expect("Could not get write lock on Swapchain");
+
+            // Rebuild the swapchain (this will also make sure the device is idle, but with some nice busy time overlap)
+            if let Err(err) = sc.rebuild(new_size.w, new_size.h) { return Err(Box::new(Error::SwapchainRebuildError{ err })); }
+        }
+
+        // Generate the views & store them
+        self.views = create_views(&self.device, &self.swapchain)?;
+
+        // Done; the Window has been resized
+        Ok(())
+    }
+
+
+
+    /// Returns a list of all image views in the RenderTarget.
+    #[inline]
+    fn views(&self) -> &Vec<Rc<image::View>> { &self.views }
+
     /// Returns the ImageFormat of this RenderTarget.
     #[inline]
-    fn format(&self) -> ImageFormat { self.swapchain.format() }
+    fn format(&self) -> ImageFormat { self.swapchain.read().expect("Could not get read lock on Swapchain").format() }
 
-    /// Returns the extent of this RenderTarget.
+    /// Returns the extent of this RenderTarget (cached but cheap).
     #[inline]
-    fn extent(&self) -> &Extent2D<u32> { self.swapchain.extent() }
+    fn extent(&self) -> &Extent2D<u32> { &self.extent }
+
+    /// Returns the _actual_ extent of this RenderTarget (more expensive but accurate).
+    fn real_extent(&self) -> Extent2D<u32> { Extent2D::new(self.window.inner_size().width, self.window.inner_size().height) }
 }

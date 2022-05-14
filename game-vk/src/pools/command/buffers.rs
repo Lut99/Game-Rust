@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:36
  * Last edited:
- *   05 May 2022, 12:59:59
+ *   14 May 2022, 12:50:35
  * Auto updated?
  *   Yes
  *
@@ -14,15 +14,18 @@
 
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 
 pub use crate::pools::errors::CommandPoolError as Error;
+use crate::log_destroy;
 use crate::auxillary::{BindPoint, CommandBufferUsageFlags, Rect2D};
 use crate::device::Device;
 use crate::pipeline::Pipeline;
 use crate::render_pass::RenderPass;
 use crate::framebuffer::Framebuffer;
+use crate::pools::command::Pool as CommandPool;
 
 
 /***** POPULATE FUNCTIONS *****/
@@ -81,9 +84,11 @@ fn populate_render_pass_begin_info(render_pass: vk::RenderPass, framebuffer: vk:
 /// The CommandBuffer is used to record various GPU commands in.
 pub struct CommandBuffer {
     /// The parent CommandPool where this buffer was allocated from.
-    pub(crate) device : Rc<Device>,
+    pub(crate) device  : Rc<Device>,
+    /// The parent CommandPool where this buffer was allocated from.
+    pub(crate) pool    : Arc<RwLock<CommandPool>>,
     /// The parent VkCommandPool where this buffer was allocated from.
-    pub(crate) pool   : vk::CommandPool,
+    pub(crate) vk_pool : vk::CommandPool,
 
     /// The VkCommandBuffer around which we wrap.
     pub(crate) buffer : vk::CommandBuffer,
@@ -196,9 +201,13 @@ impl CommandBuffer {
 
 
 
-    /// Returns the parent Pool where this buffer lives.
+    /// Returns the parent Device where this buffer lives.
     #[inline]
     pub fn device(&self) -> &Rc<Device> { &self.device }
+
+    /// Returns the parent Pool where this buffer lives.
+    #[inline]
+    pub fn pool(&self) -> &Arc<RwLock<CommandPool>> { &self.pool }
 
     /// Returns the internal buffer.
     #[inline]
@@ -208,6 +217,7 @@ impl CommandBuffer {
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
         // Call free on the parent pool
-        unsafe { self.device.free_command_buffers(self.pool, &[self.buffer]); }
+        log_destroy!(self, CommandBuffer);
+        unsafe { self.device.free_command_buffers(self.vk_pool, &[self.buffer]); }
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   05 May 2022, 21:42:15
+ *   14 May 2022, 14:43:04
  * Auto updated?
  *   Yes
  *
@@ -66,9 +66,6 @@ impl Display for RenderPipelineId {
 /***** RENDER TARGET TRAIT *****/
 /// Defines a target that the RenderSystem may render to (like a Window or an Image).
 pub trait RenderTarget: 'static + AsAny {
-    /// Returns a list of all image views in the RenderTarget.
-    fn views(&self) -> &Vec<Rc<image::View>>;
-
     /// Returns the index of a renderable target, i.e., an image::View to render to.
     /// 
     /// For non-Swapchain targets, this function will be very simple.
@@ -77,11 +74,11 @@ pub trait RenderTarget: 'static + AsAny {
     /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
     /// 
     /// # Returns
-    /// A new ImageView on success.
+    /// A new ImageView on success. It could be that stuff like Swapchains are outdated or invalid, in which case 'None' is returned.
     /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<usize, Box<dyn Error>>;
+    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Box<dyn Error>>;
 
     /// Presents this RenderTarget in the way it likes.
     /// 
@@ -89,17 +86,37 @@ pub trait RenderTarget: 'static + AsAny {
     /// - `index`: The index of the internal image to present.
     /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
     /// 
+    /// # Returns
+    /// Whether or not the Target needs to be rebuild.
+    /// 
     /// # Errors
     /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), Box<dyn Error>>;
+    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Box<dyn Error>>;
 
 
+
+    /// Resize the RenderTarget to the new size.
+    /// 
+    /// # Arguments
+    /// - `new_size`: The new Extent2D of the RenderTarget.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
+
+
+
+    /// Returns a list of all image views in the RenderTarget.
+    fn views(&self) -> &Vec<Rc<image::View>>;
 
     /// Returns the ImageFormat of this RenderTarget.
     fn format(&self) -> ImageFormat;
 
-    /// Returns the extent of this RenderTarget.
+    /// Returns the extent of this RenderTarget (cached but cheap).
     fn extent(&self) -> &Extent2D<u32>;
+
+    /// Returns the _actual_ extent of this RenderTarget (more expensive but accurate).
+    fn real_extent(&self) -> Extent2D<u32>;
 }
 
 
@@ -124,4 +141,15 @@ pub trait RenderPipeline: 'static + AsAny {
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
     fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn Error>>;
+
+
+
+    /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
+    /// 
+    /// # Arguments
+    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn Error>>;
 }
