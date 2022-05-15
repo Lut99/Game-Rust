@@ -5,15 +5,15 @@ The main goal of this repository is to create some kind of dope game, possibly i
 
 
 ## Installation
-To install the project, download the appropriate installer binary (`game-setup`) that is associated with your OS and processor architecture.
+To install the project, download the appropriate installer binary (`game-setup-*`) that is associated with your OS and processor architecture from the [releases](https://github.com/Lut99/Game-Rust/releases/latest) page.
 
 Then, you may run the setup by opening a terminal and running:
 ```bash
 # Windows
-.\game-setup.exe install
+.\game-setup-win-x86_64.exe install
 
 # Unix (Linux, macOS)
-./game-setup install
+./game-setup-unix-x86_64 install
 ```
 You will then be taken through a simple terminal UI to guide you through the installation process.
 
