@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   18 Apr 2022, 12:08:13
+ *   14 May 2022, 14:43:04
  * Auto updated?
  *   Yes
  *
@@ -14,47 +14,47 @@
 
 use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
-use std::sync::Arc;
-
-use winit::event_loop::EventLoop;
-use winit::window::WindowId;
+use std::rc::Rc;
 
 use game_utl::traits::AsAny;
-use game_vk::instance::Instance;
-use game_vk::gpu::Gpu;
+use game_vk::auxillary::{Extent2D, ImageFormat};
+use game_vk::image;
+use game_vk::sync::{Fence, Semaphore};
 
 
-/***** RENDER TARGET STAGE *****/
-/// Defines the type of the RenderTarget. This is used to sort them efficiently for type-specific treatments.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RenderTargetKind {
-    /// A Window
-    Window,
+/***** AUXILLARY NEWTYPES *****/
+/// Defines an ID to reference specific render targets with.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum RenderTargetId {
+    /// The Window to which the TrianglePipeline renders.
+    TriangleWindow,
 }
 
-impl Display for RenderTargetKind {
+impl Display for RenderTargetId {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderTargetKind::*;
+        use RenderTargetId::*;
         match self {
-            Window => write!(f, "Window"),
+            TriangleWindow => write!(f, "TriangleWindow"),
         }
     }
 }
 
 
 
-/// Defines whenever RenderTargets may be called.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum RenderTargetStage {
-    /// The target will be called during the main render loop.
-    MainLoop,
+/// Defines an ID to reference specific render pipelines with.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum RenderPipelineId {
+    /// The Triangle pipeline, which just draws a hardcoded triangle.
+    Triangle,
 }
 
-impl Display for RenderTargetStage {
+impl Display for RenderPipelineId {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderTargetStage::*;
+        use RenderPipelineId::*;
         match self {
-            MainLoop => write!(f, "Main Render Loop"),
+            Triangle => write!(f, "Triangle"),
         }
     }
 }
@@ -66,56 +66,57 @@ impl Display for RenderTargetStage {
 /***** RENDER TARGET TRAIT *****/
 /// Defines a target that the RenderSystem may render to (like a Window or an Image).
 pub trait RenderTarget: 'static + AsAny {
-    /// Returns the type of this target.
-    fn kind(&self) -> RenderTargetKind;
-
-
-
-    /// Renders a single frame to the given RenderTarget.
+    /// Returns the index of a renderable target, i.e., an image::View to render to.
     /// 
-    /// This function performs the actual rendering, and may be called by the RenderSystem either during the main render loop or in some other instance.
+    /// For non-Swapchain targets, this function will be very simple.
     /// 
-    /// You can assume that the synchronization with e.g. swapchains is already been done.
+    /// # Arguments
+    /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
     /// 
-    /// # Errors
-    /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), Box<dyn Error>>;
-
-
-
-    /// Returns the identifier of this window if it is a Window, or None otherwise.
-    #[inline]
-    fn window_id(&self) -> Option<WindowId> { None }
-    
-    /// Requests a redraw on this window if this is a window. Does nothing otherwise.
-    #[inline]
-    fn window_request_redraw(&self) {}
-}
-
-
-
-/// Defines the interface to build a new RenderTarget.
-pub trait RenderTargetBuilder: RenderTarget {
-    /// Defines the arguments that will be passed as a single struct to the constructor.
-    type CreateInfo: Sized + Debug + Default + Clone;
-    
-
-    /// Constructor for the RenderTarget.
-    /// 
-    /// This initializes a new RenderTarget. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Returns
+    /// A new ImageView on success. It could be that stuff like Swapchains are outdated or invalid, in which case 'None' is returned.
     /// 
     /// # Errors
+    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Box<dyn Error>>;
+
+    /// Presents this RenderTarget in the way it likes.
     /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: Arc<Instance>, gpu: Arc<Gpu>, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
-        where Self: Sized;
+    /// # Arguments
+    /// - `index`: The index of the internal image to present.
+    /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
+    /// 
+    /// # Returns
+    /// Whether or not the Target needs to be rebuild.
+    /// 
+    /// # Errors
+    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
+    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Box<dyn Error>>;
+
+
+
+    /// Resize the RenderTarget to the new size.
+    /// 
+    /// # Arguments
+    /// - `new_size`: The new Extent2D of the RenderTarget.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
+
+
+
+    /// Returns a list of all image views in the RenderTarget.
+    fn views(&self) -> &Vec<Rc<image::View>>;
+
+    /// Returns the ImageFormat of this RenderTarget.
+    fn format(&self) -> ImageFormat;
+
+    /// Returns the extent of this RenderTarget (cached but cheap).
+    fn extent(&self) -> &Extent2D<u32>;
+
+    /// Returns the _actual_ extent of this RenderTarget (more expensive but accurate).
+    fn real_extent(&self) -> Extent2D<u32>;
 }
 
 
@@ -123,39 +124,32 @@ pub trait RenderTargetBuilder: RenderTarget {
 
 
 /***** RENDER PIPELINE TRAIT *****/
-/// Defines a customizeable backend for the graphics pipeline(s) for most of the RenderTargets.
-pub trait RenderPipeline {
+/// Defines a Render-capable pipeline.
+pub trait RenderPipeline: 'static + AsAny {
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.
     /// 
     /// You can assume that the synchronization with e.g. swapchains is already been done.
     /// 
-    /// # Errors
-    /// 
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), Box<dyn Error>>;
-}
-
-/// Defines a customizeable backend for the graphics pipeline(s) for most of the RenderTargets.
-pub trait RenderPipelineBuilder: RenderPipeline {
-    /// Defines the arguments that will be passed as a single struct to the constructor.
-    type CreateInfo: Sized + Debug + Default + Clone;
-
-
-    /// Constructor for the RenderTarget.
-    /// 
-    /// This initializes a new RenderTarget. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// // TBD
-    /// ```
+    /// # Arguments
+    /// - `index`: The index of the target image to render to.
+    /// - `wait_semaphores`: One or more Semaphores to wait for before we can start rendering.
+    /// - `done_semaphores`: One or more Semaphores to signal when we're done rendering.
+    /// - `done_fence`: Fence to signal when rendering is done.
     /// 
     /// # Errors
-    /// 
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn new(event_loop: &EventLoop<()>, instance: &Instance, create_info: Self::CreateInfo) -> Result<Self, Box<dyn Error>>
-        where Self: Sized;
+    fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn Error>>;
+
+
+
+    /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
+    /// 
+    /// # Arguments
+    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn Error>>;
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   03 Apr 2022, 15:27:22
+ *   14 May 2022, 12:37:35
  * Auto updated?
  *   Yes
  *
@@ -15,20 +15,16 @@
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::ptr;
+use std::rc::Rc;
 
 use ash::vk;
-#[cfg(all(windows))]
-use ash::extensions::khr::Win32Surface;
-#[cfg(target_is = "macos")]
-use ash::extensions::khr::MacOSSurface;
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-use ash::extensions::khr::XlibSurface;
 use log::{debug, error, info, warn};
 use semver::Version;
 
 use game_utl::to_cstring;
 
 pub use crate::errors::InstanceError as Error;
+use crate::log_destroy;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -39,6 +35,10 @@ pub use crate::errors::InstanceError as Error;
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(windows))]
 fn os_surface_extensions() -> Vec<CString> {
+    // Import the extension into the namespace
+    use ash::extensions::khr::Win32Surface;
+
+    // Return the name of the Windows surface extension
     vec![
         Win32Surface::name().to_owned()
     ]
@@ -51,6 +51,10 @@ fn os_surface_extensions() -> Vec<CString> {
 /// The list of required extensions, as a list of CStrings.
 #[cfg(target_os = "macos")]
 fn os_surface_extensions() -> Vec<CString> {
+    // Import the extension into the namespace
+    use ash::extensions::khr::MacOSSurface;
+
+    // Return the name of the macOS surface extension
     vec![
         MacOSSurface::name().to_owned()
     ]
@@ -63,8 +67,14 @@ fn os_surface_extensions() -> Vec<CString> {
 /// The list of required extensions, as a list of CStrings.
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 fn os_surface_extensions() -> Vec<CString> {
+    // Bring the extensions into the namespace
+    use ash::extensions::khr::XlibSurface;
+    use ash::extensions::khr::WaylandSurface;
+
+    // Enable both the X11 and the Wayland extension, as, at compile time, we have no idea which should be the one
     vec![
-        XlibSurface::name().to_owned()
+        XlibSurface::name().to_owned(),
+        WaylandSurface::name().to_owned(),
     ]
 }
 
@@ -283,32 +293,23 @@ pub struct Instance {
 impl Instance {
     /// Constructor for the Instance.
     /// 
-    /// This functions will use the given name and engine metadata to initialize a Vulkan instance.
+    /// Every Vulkan app needs its own Instance of the driver, which is what this class represents. There should thus be only one of these.
     /// 
-    /// The given lists of additional extensions and layers will be preprended with ones that are necessary in every case, as well as platform-dependent Surface extensions.
+    /// # Generic arguments
+    /// - `S1`: The &str-like type of the application's name.
+    /// - `S2`: The &str-like type of the application's engine's name.
     /// 
-    /// This function will also initialize a Vulkan debug messenger if the "VK_LAYER_KHRONOS_validation" layer is passed.
+    /// # Arguments
+    /// - `name`: The name of the application to register in the Vulkan driver.
+    /// - `version`: The version of the application to register in the Vulkan driver.
+    /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
+    /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
+    /// - `additional_extensions`: A slice of additional extensions to enable in the application-global instance.
+    /// - `additional_layers`: A slice of additional validation layers to enable in the application-global instance.
     /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use semver::Version;
-    /// use game_vk::instance::Instance;
-    /// 
-    /// let instance = Instance::new(
-    ///     "Hello World App",
-    ///     Version::new(0, 1, 0),
-    ///     "Hello World Engine",
-    ///     Version::new(0, 1, 0),
-    ///     vec![],
-    ///     vec!["VK_LAYER_KHRONOS_validation"],
-    /// ).unwrap_or_else(|err| panic!("Could not create Instance: {}", err));
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// This function will return an error whenever the Vulkan API would return an error, plus in some extra cases that relate to automatic conversion to raw types.
-    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Self, Error> {
+    /// # Returns
+    /// The new Instance instance on success, or else an Error describing why we failed to create it.
+    pub fn new<'a, 'b, S1: AsRef<str>, S2: AsRef<str>>(name: S1, version: Version, engine: S2, engine_version: Version, additional_extensions: &[&'a str], additional_layers: &[&'b str]) -> Result<Rc<Self>, Error> {
         // Convert the str-like into &str
         let name: &str   = name.as_ref();
         let engine: &str = engine.as_ref();
@@ -402,41 +403,37 @@ impl Instance {
 
 
         // Finally, create the struct!
-        Ok(Self {
+        Ok(Rc::new(Self {
             entry,
 
             instance,
             debug_utils,
-        })
+        }))
     }
 
 
 
     /// Returns the internal ash Entry.
     #[inline]
-    pub fn entry(&self) -> &ash::Entry { &self.entry }
+    pub fn ash(&self) -> &ash::Entry { &self.entry }
 
     /// Returns (an immuteable reference to) the internal Vulkan instance.
     #[inline]
-    pub fn instance(&self) -> &ash::Instance { &self.instance }
-    
-    // /// Returns (a muteable reference to) the internal Vulkan instance.
-    // #[inline]
-    // pub fn instance_mut(&mut self) -> &mut ash::Instance { &mut self.instance }
+    pub fn vk(&self) -> &ash::Instance { &self.instance }
 }
 
 impl Drop for Instance {
     fn drop(&mut self) {
         // If present, destroy the debugger
         if let Some((debug_loader, debug_messenger)) = &self.debug_utils {
-            debug!("Destroying Debugger...");
+            log_destroy!(debug_loader, ash::extensions::ext::DebugUtils);
             unsafe {
                 debug_loader.destroy_debug_utils_messenger(*debug_messenger, None);
             }
         }
 
         // Destroy the instance
-        debug!("Destroying Instance...");
+        log_destroy!(self, Instance);
         unsafe { self.instance.destroy_instance(None); }
     }
 }
@@ -445,7 +442,5 @@ impl Deref for Instance {
     type Target = ash::Instance;
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.instance
-    }
+    fn deref(&self) -> &Self::Target { &self.instance }
 }

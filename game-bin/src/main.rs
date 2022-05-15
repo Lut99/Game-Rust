@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   16 Apr 2022, 12:29:37
+ *   14 May 2022, 12:26:04
  * Auto updated?
  *   Yes
  *
@@ -18,12 +18,13 @@ use std::str::FromStr;
 use log::{error, info, LevelFilter};
 use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
+use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::Config;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
-use game_gfx::spec::RenderTargetStage;
+use game_gfx::spec::{RenderPipelineId, RenderTargetId};
 
 
 /***** ENTRYPOINT *****/
@@ -54,46 +55,65 @@ fn main() {
     let mut ecs = Ecs::default();
 
     // Initialize the render system
-    let mut render_system = match RenderSystem::new(&mut ecs, "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)), "Game-Rust-Engine", Version::new(0, 1, 0), config.gpu, config.verbosity >= LevelFilter::Debug) {
+    let mut render_system = match RenderSystem::new(
+        &mut ecs,
+        "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)),
+        "Game-Rust-Engine", Version::new(0, 1, 0),
+        &event_loop,
+        config.gpu,
+        2,
+        config.verbosity >= LevelFilter::Debug
+    ) {
         Ok(system) => system,
         Err(err)   => { error!("Could not initialize render system: {}", err); std::process::exit(1); }
     };
-
-    // Initialize a new Window RenderTarget with the Triangle pipeline
-    let window_info = game_gfx::window::CreateInfo {
-        title : format!("Game-Rust v{} (Triangle Pipeline)", env!("CARGO_PKG_VERSION")),
-
-        width  : 800,
-        height : 600,
-
-        image_count : 3,
-
-        pipeline_info : triangle::CreateInfo::default(),
-    };
-    if let Err(err) = render_system.register::<
-        game_gfx::window::Window<triangle::Pipeline>,
-        game_gfx::window::CreateInfo<triangle::CreateInfo>,
-    >(
-        &event_loop,
-        0,
-        RenderTargetStage::MainLoop,
-        window_info,
-    ) {
-        error!("Could not initialize render subsystem: {}", err);
-        std::process::exit(1);
-    }
 
 
 
     // Enter the main loop
     info!("Initialization complete; entering game loop...");
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = match render_system.handle_events(&event, control_flow) {
-            Ok(flow) => flow,
-            Err(err) => {
-                error!("{}", err);
-                ControlFlow::Exit
-            }
-        };
+        // Switch on the event type
+        match event {
+            | Event::WindowEvent{ window_id: _window_id, event } => {
+                // Match the event again
+                match event {
+                    | WindowEvent::CloseRequested => {
+                        // For now, we close on _any_ window close, but this should obviously be marginally more clever
+                        *control_flow = ControlFlow::Exit;
+                    },
+
+                    // Ignore the others
+                    _ => {}
+                }
+            },
+
+            | Event::MainEventsCleared => {
+                // Request a redraw of all internal windows
+                render_system.get_target_as::<game_gfx::targets::window::Window>(RenderTargetId::TriangleWindow).request_redraw();
+            },
+
+            | Event::RedrawRequested(window_id) => {
+                // Check if this concerns our Window
+                let window_obj = render_system.get_target_as_mut::<game_gfx::targets::window::Window>(RenderTargetId::TriangleWindow);
+                if window_id == window_obj.id() {
+                    // Render the necessary pipelines
+                    if let Err(err) = render_system.render(RenderPipelineId::Triangle, RenderTargetId::TriangleWindow) {
+                        error!("Rendering Triangle Pipeline failed: {}", err);
+                        if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                }
+            },
+
+            // We do nothing for all other events
+            _ => {}
+        }
+
+        // If we're about to exit, wait until the device is idle
+        if *control_flow == ControlFlow::Exit {
+            if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
+        }
     });
 }

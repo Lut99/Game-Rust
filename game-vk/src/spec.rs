@@ -2,13 +2,14 @@
  *   by Lut99
  *
  * Created:
- *   26 Mar 2022, 14:09:51
+ *   29 Apr 2022, 18:16:49
  * Last edited:
- *   26 Mar 2022, 14:09:51
+ *   29 Apr 2022, 18:18:20
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Contains interfaces and other structs for the crate.
+ *   Defines traits and other public interfaces in the Vulkan crate.
 **/
 
+// Nothing yet

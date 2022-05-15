@@ -1,30 +1,34 @@
-/* GPU.rs
+/* DEVICE.rs
  *   by Lut99
  *
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   17 Apr 2022, 17:36:50
+ *   14 May 2022, 13:08:26
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Implements the Gpu struct, which handles both physical and logical
+ *   Implements the Device struct, which handles both physical and logical
  *   devices in the Vulkan backend.
 **/
 
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::ptr;
+use std::rc::Rc;
 
 use ash::vk;
 use log::debug;
 
 use game_utl::to_cstring;
 
-pub use crate::errors::GpuError as Error;
+pub use crate::errors::DeviceError as Error;
+use crate::log_destroy;
+use crate::auxillary::{DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
+use crate::queue::Queues;
 
 
 /***** HELPER FUNCTIONS *****/
@@ -34,13 +38,13 @@ use crate::surface::Surface;
 /// 
 /// This function returns errors if the given device does not support all of the required extensions, layers and features.
 fn supports(
-    instance: &Instance,
+    instance: &Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     physical_device_index: usize,
     physical_device_name: &str,
     p_device_extensions: &[*const i8],
     p_device_layers: &[*const i8],
-    features: &vk::PhysicalDeviceFeatures,
+    _features: &vk::PhysicalDeviceFeatures,
 ) -> Result<(), Error> {
     // Test if all of the given extensions are supported on this device
     let avail_extensions = match unsafe { instance.enumerate_device_extension_properties(physical_device) } {
@@ -89,7 +93,7 @@ fn supports(
     }
 
     // Finally, test if features are supported
-    let avail_features: vk::PhysicalDeviceFeatures = unsafe { instance.get_physical_device_features(physical_device) };
+    let _avail_features: vk::PhysicalDeviceFeatures = unsafe { instance.get_physical_device_features(physical_device) };
     /* TODO */
 
     // We support it
@@ -130,7 +134,7 @@ fn populate_queue_info(family_index: u32, queue_priorities: &[f32]) -> vk::Devic
 /// 
 /// Error only occur when the given device does not support all of the given extensions / layers / features.
 fn populate_device_info(
-    instance: &Instance,
+    instance: &Rc<Instance>,
     physical_device: vk::PhysicalDevice,
     physical_device_index: usize,
     physical_device_name: &str,
@@ -170,255 +174,43 @@ fn populate_device_info(
 
 
 
-/***** AUXILLARY STRUCTS *****/
-/// Contains information about the queue families for an instantiated GPU.
-pub struct QueueFamilyInfo {
-    /// The index of the queue we're going to use for graphics operations
-    pub graphics : u32,
-    /// The index of the queue we're going to use for memory operations
-    pub memory   : u32,
-    /// The index of the queue we're going to use for compute operations
-    pub compute  : u32,
-}
-
-impl QueueFamilyInfo {
-    /// Constructor for the QueueFamilyInfo.
-    /// 
-    /// Maps the queue families of the given PhysicalDevice to their usage. Will try to use as many different queue families as possible.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// use ash::vk::PhysicalDevice;
-    /// 
-    /// use game_vk::gpu::QueueFamilyInfo;
-    /// 
-    /// // We assume the user gets some PhysicalDevice somehow
-    /// let physical_device: PhysicalDevice = ...;
-    /// 
-    /// // Construct the QueueFamilyInfo
-    /// let family_info = QueueFamilyInfo::new(physical_device)
-    ///     .expect("Given physical device does not support all the required queue operations.");
-    /// 
-    /// println!("Family to use for graphics operations: {}", family_info.graphics);
-    /// println!("Family to use for memory operations: {}", family_info.memory);
-    /// println!("Family to use for compute operations: {}", family_info.compute);
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// Throws an Error::OperationUnsupported for the given physical device if it does not support all kind of operations.
-    fn new(instance: &Instance, physical_device: vk::PhysicalDevice, physical_device_index: usize, physical_device_name: &str) -> Result<Self, Error> {
-        // Prepare placeholders for the different queues
-        let mut graphics : Option<(u32, usize)> = None;
-        let mut memory : Option<(u32, usize)>   = None;
-        let mut compute : Option<(u32, usize)>  = None;
-
-        // Iterate over the queue families
-        let families = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-        for (i, family) in families.iter().enumerate() {
-            // We need at least one queue in each family, obviously
-            if family.queue_count == 0 { continue; }
-
-            // Count the number of operations this queue can do
-            let mut n_operations = 0;
-            let supports_graphics = if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) { n_operations += 1; true } else { false };
-            let supports_memory   = if family.queue_flags.contains(vk::QueueFlags::TRANSFER) { n_operations += 1; true } else { false };
-            let supports_compute  = if family.queue_flags.contains(vk::QueueFlags::COMPUTE) { n_operations += 1; true } else { false };
-            
-            // Note the queue on every slot it supports, except we already have a more specialized one
-            if supports_graphics && (graphics.is_none() || n_operations < graphics.as_ref().unwrap().1) {
-                graphics = Some((i as u32, n_operations));
-            }
-            if supports_memory && (memory.is_none() || n_operations < memory.as_ref().unwrap().1) {
-                memory = Some((i as u32, n_operations));
-            }
-            if supports_compute && (compute.is_none() || n_operations < compute.as_ref().unwrap().1) {
-                compute = Some((i as u32, n_operations));
-            }
-        }
-
-        // If we didn't find one of the queues, error
-        if graphics.is_none() {
-            return Err(Error::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::GRAPHICS });
-        }
-        if memory.is_none() {
-            return Err(Error::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::TRANSFER });
-        }
-        if compute.is_none() {
-            return Err(Error::OperationUnsupported{ index: physical_device_index, name: physical_device_name.to_string(), operation: vk::QueueFlags::COMPUTE });
-        }
-
-        // Otherwise, we can populate ourselves!
-        Ok(QueueFamilyInfo {
-            graphics : graphics.unwrap().0,
-            memory   : memory.unwrap().0,
-            compute  : compute.unwrap().0,
-        })
-    }
-
-
-
-    /// Returns an iterator over the **different** families in the QueueFamilyInfo.
-    #[inline]
-    pub fn unique(&self) -> QueueFamilyInfoUniqueIterator {
-        QueueFamilyInfoUniqueIterator::new(self)
-    }
-
-    /// Returns the number of **different** families in the QueueFamilyInfo.
-    pub fn unique_len(&self) -> usize {
-        if self.graphics != self.memory && self.graphics != self.compute && self.memory != self.compute {
-            3
-        } else if self.graphics != self.memory || self.graphics != self.compute || self.memory != self.compute {
-            2
-        } else {
-            1
-        }
-    }
-}
-
-
-
-/// Implements an iterator over the unique family indices in the QueueFamilyInfo.
-pub struct QueueFamilyInfoUniqueIterator<'a> {
-    /// The QueueFamilyInfo over which we iterate
-    family_info : &'a QueueFamilyInfo,
-    /// The current 'position' in the family info
-    index       : usize,
-}
-
-impl<'a> QueueFamilyInfoUniqueIterator<'a> {
-    /// Constructor for the QueueFamilyInfoUniqueIterator.
-    /// 
-    /// Prepares a new iterator over the given QueueFamilyInfo.
-    /// 
-    /// Note that it's passed by reference, so it's probably not a good idea to modify queue families while iterating over them.
-    #[inline]
-    fn new(family_info: &'a QueueFamilyInfo) -> Self {
-        Self {
-            family_info,
-            index : 0,
-        }
-    }
-}
-
-impl<'a> Iterator for QueueFamilyInfoUniqueIterator<'a> {
-    type Item = u32;
-    
-    fn next(&mut self) -> Option<Self::Item> {
-        // Match based on the index
-        match self.index {
-            0 => { self.index += 1; Some(self.family_info.graphics) },
-            1 => {
-                // Only do this one if it's unique
-                self.index += 1;
-                if self.family_info.memory != self.family_info.graphics {
-                    Some(self.family_info.memory)
-                } else {
-                    // Skip to the next value
-                    self.next()
-                }
-            },
-            2 => {
-                // Only do this one if it's unique
-                self.index += 1;
-                if self.family_info.compute != self.family_info.graphics && self.family_info.compute != self.family_info.memory {
-                    Some(self.family_info.compute)
-                } else {
-                    // Skip to the next value
-                    self.next()
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-
-
-/// Central place where we store the queues of the created logical device.
-pub struct Queues {
-    /// The graphics queue
-    pub graphics : vk::Queue,
-    /// The memory queue
-    pub memory   : vk::Queue,
-    /// The compute queue
-    pub compute  : vk::Queue,
-}
-
-impl Queues {
-    /// Constructor for the Queues.
-    /// 
-    /// Requests the three queues from the queue families in the given QueueFamilyInfo on the given vk::Device.
-    #[inline]
-    fn new(device: &ash::Device, family_info: &QueueFamilyInfo) -> Self {
-        Self {
-            graphics : unsafe { device.get_device_queue(family_info.graphics, 0) },
-            memory   : unsafe { device.get_device_queue(family_info.memory, 0) },
-            compute  : unsafe { device.get_device_queue(family_info.compute, 0) },
-        }
-    }
-}
-
-
-
-/// Collects information about the SwapchainSupport for this device.
-pub struct SwapchainSupport {
-    /// Lists the capabilities of the chosen device/surface combo.
-    pub capabilities  : vk::SurfaceCapabilitiesKHR,
-    /// Lists the formats supported by the chosen device/surface combo.
-    pub formats       : Vec<vk::SurfaceFormatKHR>,
-    /// Lists the present modes supported by the chosen device/surface combo.
-    pub present_modes : Vec<vk::PresentModeKHR>,
-}
-
-
-
-
-
 /***** LIBRARY *****/
-/// The Gpu struct provides logic to work with both Vulkan's PhysicalDevices and Devices.
-pub struct Gpu {
+/// The Device struct provides logic to work with both Vulkan's PhysicalDevices and Devices.
+pub struct Device {
+    /// The instance used to initialize the device
+    instance        : Rc<Instance>,
     /// The PhysicalDevice around which we wrap.
     physical_device : vk::PhysicalDevice,
     /// The logical Device around which we wrap.
-    device          : ash::Device,
+    device          : Rc<ash::Device>,
     /// The queues for the internal device.
     queues          : Queues,
-    
+
     /// The index of the device
-    index          : usize,
+    index    : usize,
     /// The name of the device
-    name           : String,
+    name     : String,
     /// The type of the device (as a String as well)
-    kind           : String,
+    kind     : DeviceKind,
     /// The QueueFamilyInfo that describes the queue families for this device.
-    queue_families : QueueFamilyInfo,
+    families : QueueFamilyInfo,
 }
 
-impl Gpu {
-    /// Constructor for the Gpu.
+impl Device {
+    /// Constructor for the Device.
     /// 
-    /// This function tries to build a logical Device around the given physical Device, checking if it supports the given surface.
+    /// The Device class is meant to provide access to both a PhysicalDevice and Vulkan's abstraction over it.
     /// 
-    /// Also attempts to enable the given extensions and features on the device.
+    /// # Arguments
+    /// - `instance`: An Rc of the global instance that we may use to initialize the device.
+    /// - `physical_device_index`: The index of the physical device we want to wrap around. Can be obtained by using Device::auto_select().
+    /// - `device_extensions`: A slice of Device extensions to enable on the Device.
+    /// - `device_layers`: A slice of Device layers to enable on the Device.
+    /// - `device_features`: A PhysicalDeviceFeatures struct that describes the features to enable on the Device.
     /// 
-    /// # Examples 
-    /// 
-    /// ```
-    /// use game_vk::gpu::Gpu;
-    /// use game_vk::instance::Instance;
-    /// 
-    /// let instance = Instance::new(...);
-    /// 
-    /// let gpu = Gpu::new(&instance, 0, &vec![], &vec![], &Default::default())
-    ///     .unwrap_or_else(|err| panic!("Could not create new device: {}", err));
-    /// ```
-    /// 
-    /// # Errors
-    /// 
-    /// This function errors whenever the backend Vulkan errors.
-    pub fn new<'a, 'b>(instance: &Instance, physical_device_index: usize, device_extensions: &[&'a str], device_layers: &[&'b str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Self, Error> {
+    /// # Returns
+    /// Returns a new Device instance on success, or else an Error describing what went wrong if the Device creation failed.
+    pub fn new(instance: Rc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Rc<Self>, Error> {
         // We enumerate through all the physical devices to find the appropriate one
         let physical_devices = match unsafe { instance.enumerate_physical_devices() } {
             Ok(devices) => devices,
@@ -447,18 +239,15 @@ impl Gpu {
             Ok(name) => name.to_string(),
             Err(err) => { return Err(Error::PhysicalDeviceNameError{ index: physical_device_index, err }); }
         };
-        let device_type: String = match device_properties.device_type {
-            vk::PhysicalDeviceType::CPU            => "CPU",
-            vk::PhysicalDeviceType::VIRTUAL_GPU    => "Virtual GPU",
-            vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
-            vk::PhysicalDeviceType::DISCRETE_GPU   => "Discrete GPU",
-            _                                      => "Unknown type",
-        }.to_string();
+        let device_type: DeviceKind = device_properties.device_type.into();
 
 
 
         // Collect the queue families for this device
-        let family_info = QueueFamilyInfo::new(&instance, physical_device, physical_device_index, &device_name)?;
+        let family_info = match QueueFamilyInfo::new(&instance, physical_device, physical_device_index, &device_name) {
+            Ok(info) => info,
+            Err(err) => { return Err(Error::QueueFamilyError{ index: physical_device_index, err }); }
+        };
 
 
 
@@ -498,21 +287,46 @@ impl Gpu {
         };
 
         // Get the queues
+        let device = Rc::new(device);
         let queues = Queues::new(&device, &family_info);
 
 
 
         // Done! Return the new GPU
-        Ok(Self {
+        Ok(Rc::new(Self {
+            instance,
             physical_device,
             device,
             queues,
 
-            index          : physical_device_index,
-            name           : device_name,
-            kind           : device_type,
-            queue_families : family_info,
-        })
+            index    : physical_device_index,
+            name     : device_name,
+            kind     : device_type,
+            families : family_info,
+        }))
+    }
+
+
+
+    /// Wait until the device is idle.
+    /// 
+    /// # Arguments
+    /// - `queue`: If given, waits until the given queue is idle in the Device instead of all queues.
+    #[inline]
+    pub fn drain(&self, queue: Option<QueueKind>) -> Result<(), Error> {
+        match queue {
+            // In all Some-cases, just wait for that queue
+            Some(QueueKind::Graphics) => self.queues.graphics.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Memory)   => self.queues.memory.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Present)  => self.queues.present.drain().map_err(|err| Error::QueueIdleError{ err }),
+            Some(QueueKind::Compute)  => self.queues.compute.drain().map_err(|err| Error::QueueIdleError{ err }),
+
+            // Otherwise, wait for the device
+            None => match unsafe { self.device.device_wait_idle() } {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Error::DeviceIdleError{ err }),
+            }
+        }
     }
 
 
@@ -521,13 +335,15 @@ impl Gpu {
     /// 
     /// Iterates through all the GPUs that can be found in the given instance, and then tries to select the most appropriate one for the Game.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `instance`: The Instance object to seRch for GPUs in.
+    /// - `device_extensions`: A slice of extensions that the GPU should support.
+    /// - `device_layers`: A slice of layers that the GPU should support.
+    /// - `device_features`: A struct of features that the GPU should support.
     /// 
-    /// 
-    /// # Errors
-    /// 
-    /// This function errors when we could not enumerate the physical devices or if no GPU is found that can support this application.
-    pub fn auto_select<'a, 'b>(instance: &Instance, device_extensions: &[&'a str], device_layers: &[&'b str], device_features: &vk::PhysicalDeviceFeatures) -> Result<usize, Error> {
+    /// # Returns
+    /// The index of the chosen GPU if we could find one, or, either if we did not find one or we failed otherwise, an Error detailing what went wrong.
+    pub fn auto_select(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<usize, Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -551,23 +367,15 @@ impl Gpu {
             };
 
             // Check if this device is supported
-            if supports(instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_err() { continue; }
+            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_err() { continue; }
 
-            // It is; now base its ranking on its 'CPU disconnectedness'
-            let device_ranking: u32 = match device_properties.device_type {
-                vk::PhysicalDeviceType::CPU            => 1,
-                vk::PhysicalDeviceType::VIRTUAL_GPU    => 2,
-                vk::PhysicalDeviceType::INTEGRATED_GPU => 3,
-                vk::PhysicalDeviceType::DISCRETE_GPU   => 4,
-                _                                      => 0,
-            };
-
-            // Select it as best if first or higher ranking
+            // Select it as best if the first or has a better CPU disconnectedness score
+            let device_ranking = DeviceKind::from(device_properties.device_type).score();
             if best_device.is_none() || (device_ranking > best_device.as_ref().unwrap().1) {
                 best_device = Some((i, device_ranking));
             }
         }
-        
+
         // If there is none, error
         match best_device {
             Some((index, _)) => Ok(index),
@@ -577,10 +385,15 @@ impl Gpu {
 
     /// Lists all GPUs that Vulkan can find and that support the given extensions to stdout.
     /// 
-    /// # Errors
+    /// # Arguments
+    /// - `instance`: The Instance object to seRch for GPUs in.
+    /// - `device_extensions`: A slice of extensions that the GPU should support to be marked as 'supported'.
+    /// - `device_layers`: A slice of layers that the GPU should support to be marked as 'supported'.
+    /// - `device_features`: A struct of features that the GPU should support to be marked as 'supported'.
     /// 
-    /// This function errors when we could not enumerate the physical devices.
-    pub fn list<'a, 'b>(instance: &Instance, device_extensions: &[&'a str], device_layers: &[&'b str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(), Error> {
+    /// # Returns
+    /// Two vectors of (index, name, kind) tuples describing each GPU on success (0 = supported, 1 = unsupported), or else an Error describing the failure on a failure.
+    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -592,76 +405,47 @@ impl Gpu {
             Ok(devices) => devices,
             Err(err)    => { return Err(Error::PhysicalDeviceEnumerateError{ err }); }  
         };
-        let mut supported_devices: Vec<(usize, String, String)>   = Vec::with_capacity(physical_devices.len());
-        let mut unsupported_devices: Vec<(usize, String, String)> = Vec::with_capacity(physical_devices.len());
+        let mut supported_devices: Vec<(usize, String, DeviceKind)>   = Vec::with_capacity(physical_devices.len());
+        let mut unsupported_devices: Vec<(usize, String, DeviceKind)> = Vec::with_capacity(physical_devices.len());
         for (i, physical_device) in physical_devices.iter().enumerate() {
             // Get the properties of this device
             let device_properties = unsafe { instance.get_physical_device_properties(*physical_device) };
 
-            // Get a readable name and type
+            // Get a readable name and cast the type
             let device_name: String = match unsafe { CStr::from_ptr(device_properties.device_name.as_ptr()) }.to_str() {
                 Ok(name) => name.to_string(),
                 Err(err) => { return Err(Error::PhysicalDeviceNameError{ index: i, err }); }
             };
-            let device_type: String = match device_properties.device_type {
-                vk::PhysicalDeviceType::CPU            => "CPU",
-                vk::PhysicalDeviceType::VIRTUAL_GPU    => "Virtual GPU",
-                vk::PhysicalDeviceType::INTEGRATED_GPU => "Integrated GPU",
-                vk::PhysicalDeviceType::DISCRETE_GPU   => "Discrete GPU",
-                _                                      => "Unknown type",
-            }.to_string();
+            let device_type = DeviceKind::from(device_properties.device_type);
 
             // Determine to which list to add it
-            if supports(instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_ok() {
+            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_ok() {
                 supported_devices.push((i, device_name, device_type));
             } else {
                 unsupported_devices.push((i, device_name, device_type));
             }
         }
 
-        // Print everything neatly
-        println!();
-        println!("Supported devices:");
-        if !supported_devices.is_empty() {
-            for (index, name, kind) in supported_devices {
-                println!("  {}) {} ({})", index, name, kind);
-            }
-        } else {
-            println!("  <no devices>");
-        }
-        println!();
-        
-        println!("Unsupported devices:");
-        if !unsupported_devices.is_empty() {
-            for (index, name, kind) in unsupported_devices {
-                println!("  {}) {} ({})", index, name, kind);
-            }
-        } else {
-            println!("  <no devices>");
-        }
-        println!();
-
-        // Done!
-        Ok(())
+        // Done! Returns the lists
+        Ok((supported_devices, unsupported_devices))
     }
 
 
 
     /// Returns the list of supported features for the given Surface.
     /// 
-    /// # Examples
+    /// # Arguments
+    /// - `surface`: The Surface to check this device's support of.
     /// 
-    /// ```
-    /// // TODO
-    /// ```
+    /// # Returns
+    /// A SwapchainSupport struct detailing the supported capabilities, formats and present modes. If an error occurred, returns an Error instead.
     /// 
     /// # Errors
-    /// 
-    /// This function errors if the given Surface is not supported at all, or if we could not query the properties for some reason.
-    pub fn get_swapchain_support(&self, surface: &Surface) -> Result<SwapchainSupport, Error> {
+    /// This function may error when the device could not be queried for its support or the surface is not supported at all.
+    pub fn get_swapchain_support(&self, surface: &Rc<Surface>) -> Result<SwapchainSupport, Error> {
         // Check if the chosen graphics queue can present to the given chain
         if !match unsafe {
-            surface.get_physical_device_surface_support(self.physical_device, self.queue_families.graphics, surface.surface())
+            surface.get_physical_device_surface_support(self.physical_device, self.families.graphics, surface.vk())
         } {
             Ok(supports) => supports,
             Err(err)     => { return Err(Error::SurfaceSupportError{ err }); }
@@ -671,7 +455,7 @@ impl Gpu {
 
         // Get the surface capabilities
         let capabilities = match unsafe {
-            surface.get_physical_device_surface_capabilities(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_capabilities(self.physical_device, surface.vk())
         } {
             Ok(capabilities) => capabilities,
             Err(err)         => { return Err(Error::SurfaceCapabilitiesError{ err }); }
@@ -679,7 +463,7 @@ impl Gpu {
 
         // Get the surface formats
         let formats = match unsafe {
-            surface.get_physical_device_surface_formats(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_formats(self.physical_device, surface.vk())
         } {
             Ok(formats) => formats,
             Err(err)    => { return Err(Error::SurfaceFormatsError{ err }); }
@@ -687,7 +471,7 @@ impl Gpu {
 
         // Get the surface capabilities
         let present_modes = match unsafe {
-            surface.get_physical_device_surface_present_modes(self.physical_device, surface.surface())
+            surface.get_physical_device_surface_present_modes(self.physical_device, surface.vk())
         } {
             Ok(present_modes) => present_modes,
             Err(err)          => { return Err(Error::SurfacePresentModesError{ err }); }
@@ -708,6 +492,24 @@ impl Gpu {
 
 
 
+    /// Returns the instance around which this Device is wrapped
+    #[inline]
+    pub fn instance(&self) -> &Rc<Instance> { &self.instance }    
+
+    /// Returns the internal device.
+    #[inline]
+    pub fn ash(&self) -> &ash::Device { &self.device }
+
+    /// Returns the internal physical device.
+    #[inline]
+    pub fn physical_device(&self) -> vk::PhysicalDevice { self.physical_device }
+
+    /// Returns the internal Queues struct, which contains the queues used on this device.
+    #[inline]
+    pub fn queues(&self) -> &Queues { &self.queues }
+
+
+
     /// Returns the index of this device.
     #[inline]
     pub fn index(&self) -> usize { self.index }
@@ -716,36 +518,24 @@ impl Gpu {
     #[inline]
     pub fn name(&self) -> &str { &self.name }
     
-    /// Returns the type of this device (as a String).
+    /// Returns the type of this device.
     #[inline]
-    pub fn kind(&self) -> &str { &self.kind }
+    pub fn kind(&self) -> &DeviceKind { &self.kind }
     
     /// Returns information about the QueueFamilies for this device.
     #[inline]
-    pub fn families(&self) -> &QueueFamilyInfo { &self.queue_families }
-
-    /// Returns the internal device.
-    #[inline]
-    pub fn device(&self) -> &ash::Device { &self.device }
-
-    /// Returns the internal physical device.
-    #[inline]
-    pub fn physical_device(&self) -> &vk::PhysicalDevice { &self.physical_device }
-
-    /// Returns the internal Queues struct, which contains the queues used on this device.
-    #[inline]
-    pub fn queues(&self) -> &Queues { &self.queues }
+    pub fn families(&self) -> &QueueFamilyInfo { &self.families }
 }
 
-impl Drop for Gpu {
+impl Drop for Device {
     fn drop(&mut self) {
         // Destroy the internal device
-        debug!("Destroying Gpu...");
+        log_destroy!(self, Device);
         unsafe { self.device.destroy_device(None); };
     }
 }
 
-impl Deref for Gpu {
+impl Deref for Device {
     type Target = ash::Device;
     
     #[inline]
