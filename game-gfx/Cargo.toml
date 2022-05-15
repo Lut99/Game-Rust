@@ -10,7 +10,7 @@ lazy_static = "1.4.0"
 log = "0.4.16"
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 semver = "1.0.6"
-winit = "0.26.1"
+winit = "0.26"
 
 game-ecs = { path = "../game-ecs" }
 game-utl = { path = "../game-utl" }

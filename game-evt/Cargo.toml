@@ -1,0 +1,10 @@
+[package]
+name = "game-evt"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+winit = "0.26"
+
+game-utl = { path = "../game-utl" }
