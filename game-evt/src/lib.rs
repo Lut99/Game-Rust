@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 11:53:31
  * Last edited:
- *   15 May 2022, 12:12:28
+ *   21 May 2022, 11:31:55
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,8 @@
 pub mod errors;
 /// Defines the (public) interfaces used by the EventSystem.
 pub mod spec;
+/// Defines the EventHandler class.
+pub mod handler;
 /// Defines the EventSystem itself
 pub mod system;
 
