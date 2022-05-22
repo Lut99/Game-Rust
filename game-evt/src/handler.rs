@@ -4,7 +4,7 @@
  * Created:
  *   21 May 2022, 11:31:00
  * Last edited:
- *   21 May 2022, 12:39:36
+ *   22 May 2022, 14:26:05
  * Auto updated?
  *   Yes
  *
@@ -18,20 +18,21 @@ use std::any::type_name;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::panic;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockWriteGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread::{self, JoinHandle};
 
-use log::{debug, error};
+use log::{debug, error, warn};
 
 use crate::errors::ThreadedHandlerError;
-use crate::spec::EventResult;
+use crate::spec::{Callback, EventHandler, EventResult};
 
 
 /***** CUSTOM TYPES *****/
 /// The type of the EventQueues we use.
-type EventQueue<H, E> = VecDeque<(Arc<usize>, Arc<RwLock<Vec<Box<dyn FnMut(&H, E) -> EventResult>>>>)>;
+type EventQueue<H, E> = VecDeque<(Arc<dyn Callback<H, E>>, E)>;
 
 
 
@@ -41,56 +42,53 @@ type EventQueue<H, E> = VecDeque<(Arc<usize>, Arc<RwLock<Vec<Box<dyn FnMut(&H, E
 /// Defines the code that runs on the worker thread of the ThreadedEventHandler.
 /// 
 /// # Arguments
-/// - `enabled`: Whether or not this thread should continue looping.
-/// - `start`: The EventQueue/CondVar pair that launches the thread whenever a new event has landed on the queue.
-/// - `stop`: The EventQueue/CondVar pair that is used to signal we are done.
-/// - `callbacks`: The callbacks to call.
-fn worker_thread<E>(enabled: Arc<bool>, start: Arc<(Arc<Mutex<EventQueue<E>>>, Condvar)>, stop: Arc<(Arc<Mutex<EventQueue<E>>>, Condvar)>) -> Result<(), ThreadedHandlerError> {
+/// - `handler`: The ThreadedEventHandler for which we work. Both contains stuff like the enabled var and the event queue, as being able to pass it to callbacks.
+fn worker_thread<E>(
+    handler: Arc<ThreadedEventHandler<E>>,
+) -> Result<(), ThreadedHandlerError>
+where
+    E: Send + Sync + Debug,
+{
     debug!("Spawned tread {}", thread::current().name().unwrap_or("???"));
 
     // Loop
     loop {
         // Read the next count/event pair from the queue
-        let event: (Arc<usize>, E);
+        let event: (Arc<dyn Callback<ThreadedEventHandler<E>, E>>, E);
         {
-            let (lock, cond): &(Arc<Mutex<EventQueue<E>>>, Condvar) = &*start;
-
             // Get a lock
-            let queue: MutexGuard<EventQueue<_>> = match lock.lock() {
+            let queue: MutexGuard<EventQueue<_, _>> = match handler.queue.lock() {
                 Ok(queue) => queue,
-                Err(err)  => { return Err(ThreadedHandlerError::LockError{ what: "queue lock in worker thread", err: format!("{}", err) }); }
+                Err(err)  => { return Err(ThreadedHandlerError::LockError{ what: "event queue in worker thread", err: format!("{}", err) }); }
             };
 
             // Wait for something to become available in the queue
-            if let Err(err) = cond.wait_while(queue, |queue| queue.is_empty()) {
-                return Err(ThreadedHandlerError::LockError{ what: "queue lock in worker thread", err: format!("{}", err) });
+            if let Err(err) = handler.signal.wait_while(queue, |queue| queue.is_empty()) {
+                return Err(ThreadedHandlerError::LockError{ what: "event queue in worker thread (aft condvar)", err: format!("{}", err) });
             }
 
             // Pop it, then we can release the lock for other worker threads
             event = queue.pop_front().unwrap();
         }
 
-        // Fire all of the associated callbacks
-        {
+        // Process the callback
+        match event.0(handler.as_ref(), event.1) {
+            // Everything's going fine (do nothing)
+            EventResult::Continue => {},
 
+            // Ignore Block too
+            EventResult::Block => { warn!("EventResult::Block returned from threaded event callback (no use)"); }
+            // On exit, set the flag in the handler
+            EventResult::Exit  => { *handler.enabled = false; }
+
+            // If Error, then notify the user
+            EventResult::Error(err) => { error!("{}::{:?} callback: {}", type_name::<E>(), event.1, err); }
+            // If Fatal, then notify the user _and_ quit
+            EventResult::Fatal(err) => { error!("{}::{:?} callback: {}", type_name::<E>(), event.1, err); *handler.enabled = false; }
         }
-        // Get a read lock on the callbacks for this event type
-        {}
-        {
-            
-        }
-
-        // Wait for the conditional variable to become available
-        let (lock, cond) = &*start;
-        if let Err(err) = cond.wait_while(lock.lock().map_err(|err| ThreadedHandlerError::LockError{ what: "start lock in worker thread", err: format!("{}", err) })?, |queue| queue.len() == 0) {
-            return Err(ThreadedHandlerError::WriteLockError{ what: "start lock in worker thread", err: format!("{}", err) });
-        }
-
-        // Acquire a read lock on the queue to get the event
-
 
         // Check if we need to stop
-        if !*enabled { break; }
+        if !*handler.enabled { break; }
     }
 
     // Done
@@ -101,50 +99,11 @@ fn worker_thread<E>(enabled: Arc<bool>, start: Arc<(Arc<Mutex<EventQueue<E>>>, C
 
 
 
-/***** INTERFACE *****/
-/// The EventHandler trait, which defines a generalised interface to both the LocalEventHandler and the ThreadedEventHandler.
-pub trait EventHandler {
-    /// The Event type to handle.
-    type Event;
-
-
-    /// Registers a new callback for the given Event type.
-    /// 
-    /// # Generic types
-    /// - `F`: The type of the closure / function to call.
-    /// 
-    /// # Arguments
-    /// - `event`: The specific Event variant to fire on.
-    /// - `callback`: The function to register for calling once `event` has fired.
-    /// 
-    /// # Errors
-    /// This function may error if the actual struct does (for example, could not get a lock).
-    fn register<F>(&self, event: Self::Event, callback: F) -> Result<(), Box<dyn Error>>
-    where
-        F: FnMut(&Self, Self::Event) -> EventResult;
-
-    /// Fires the given Event.
-    /// 
-    /// Firing an event may trigger other Events. Thus, it is good practise not to have a cyclic dependency.
-    /// 
-    /// # Arguments
-    /// - `event`: The Event to fire.
-    /// 
-    /// # Returns
-    /// Returns the value of the last EventResult callback in the chain, or (if there are no callbacks for this Event) `EventResult::Continue`.
-    /// 
-    /// # Errors
-    /// This function may error if the actual struct does (for example, could not get a lock).
-    fn fire(&self, event: Self::Event) -> Result<EventResult, Box<dyn Error>>;
-}
-
-
-
 /***** EVENT HANDLERS *****/
 /// The LocalEventHandler handles fired events on the local thread.
 pub struct LocalEventHandler<E>{
     /// A list of callbacks to call for each possible event type.
-    callbacks : RefCell<HashMap<E, Vec<Box<dyn FnMut(&Self, E) -> EventResult>>>>,
+    callbacks : RefCell<HashMap<E, Vec<Box<dyn Callback<Self, E>>>>>,
 }
 
 impl<E> LocalEventHandler<E> {
@@ -156,14 +115,14 @@ impl<E> LocalEventHandler<E> {
     }
 }
 
-impl<E> EventHandler for LocalEventHandler<E> {
+impl<E> EventHandler for LocalEventHandler<E>
+where
+    E: Eq + Hash,
+{
     type Event = E;
 
 
     /// Registers a new callback for the given Event type.
-    /// 
-    /// # Generic types
-    /// - `F`: The type of the closure / function to call.
     /// 
     /// # Arguments
     /// - `event`: The specific Event variant to fire on.
@@ -171,11 +130,7 @@ impl<E> EventHandler for LocalEventHandler<E> {
     /// 
     /// # Errors
     /// This function may error if the actual struct does (for example, could not get a lock).
-    fn register<F>(&self, event: Self::Event, callback: F) -> Result<(), Box<dyn Error>>
-    where
-        E: Eq + Hash,
-        F: 'static + FnMut(&Self, Self::Event) -> EventResult
-    {
+    fn register(&self, event: Self::Event, callback: impl 'static + Callback<Self, Self::Event>) -> Result<(), Box<dyn Error>> {
         // Borrow the hashmap muteably
         let mut map: RefMut<HashMap<_, _>> = self.callbacks.borrow_mut();
 
@@ -235,6 +190,14 @@ impl<E> EventHandler for LocalEventHandler<E> {
         // Done
         Ok(EventResult::Continue)
     }
+
+
+
+    /// Stops the EventHandler (telling threads to stop and junk)
+    #[inline]
+    fn stop(&mut self) {
+        // Nothing to do
+    }
 }
 
 
@@ -244,10 +207,12 @@ pub struct ThreadedEventHandler<E>{
     /// The queue that we use to pass fired events around
     queue     : Arc<Mutex<EventQueue<Self, E>>>,
     /// A list of callbacks to call for each possible event type.
-    callbacks : HashMap<E, Arc<RwLock<Vec<Box<dyn FnMut(&Self, E) -> EventResult>>>>>,
+    callbacks : RwLock<HashMap<E, Vec<Arc<dyn Callback<Self, E>>>>>,
 
     /// The boolean that enables the threads or causes them to shutdown
     enabled  : Arc<bool>,
+    /// The conditional variable used for waking threads.
+    signal   : Arc<Condvar>,
     /// The list of consuming worker threads
     handlers : Vec<JoinHandle<Result<(), ThreadedHandlerError>>>,
 }
@@ -257,53 +222,58 @@ impl<E> ThreadedEventHandler<E> {
     /// 
     /// # Arguments
     /// - `n_threads`: The number of threads to spawn. Cannot be less than 1.
-    pub fn new(n_threads: usize) -> Result<Self, ThreadedHandlerError>
+    pub(crate) fn new(n_threads: usize) -> Result<Arc<Self>, ThreadedHandlerError>
     where
-        E: Clone,
+        E: 'static + Send + Sync + Debug,
     {
         // Do a sanity check
         if n_threads < 1 { panic!("`n_threads` cannot be less than 1"); }
 
         // Prepare the queue
-        let queue: Arc<_> = Arc::new(Mutex::new(VecDeque::with_capacity(16)));
-
+        let queue: Arc<Mutex<EventQueue<_, _>>> = Arc::new(Mutex::new(VecDeque::with_capacity(16)));
         // Prepare the list of callbacks
-        let callbacks: HashMap<_, _> = HashMap::with_capacity(16);
+        let callbacks = RwLock::new(HashMap::with_capacity(16));
 
-        // Spawn the handler threads
+        // Prepare the enabled & conditional variables
         let enabled: Arc<bool> = Arc::new(true);
-        let mut handlers: Vec<JoinHandle<Result<(), ThreadedHandlerError>>> = Vec::with_capacity(n_threads);
-        for i in 0..n_threads {
-            handlers.push(match thread::Builder::new()
-                .name(format!("{}_worker-{}", type_name::<ThreadedEventHandler<E>>(), i))
-                .spawn(|| {
-                    worker_thread(enabled.clone())
-                })
-            {
-                Ok(handle) => handle,
-                Err(err)   => { return Err(ThreadedHandlerError::ThreadSpawnError{ err }); }
-            });
-        };
+        let signal = Arc::new(Condvar::new());
 
-        // Done, return us
-        Ok(Self {
+        // Wrap them in an instance we may pass to the threads
+        let this = Arc::new(Self {
             queue,
             callbacks,
 
             enabled,
-            handlers,
-        })
+            signal,
+            handlers : Vec::with_capacity(n_threads),
+        });
+
+        // Spawn the handler threads
+        for i in 0..n_threads {
+            let handle = match thread::Builder::new()
+                .name(format!("game_rust-{}_worker-{}", type_name::<ThreadedEventHandler<E>>(), i))
+                .spawn(|| {
+                    worker_thread(this.clone())
+                })
+            {
+                Ok(handle) => handle,
+                Err(err)   => { return Err(ThreadedHandlerError::ThreadSpawnError{ err }); }
+            };
+        };
+
+        // Done, return us
+        Ok(this)
     }
 }
 
-impl<E> EventHandler for ThreadedEventHandler<E> {
+impl<E> EventHandler for ThreadedEventHandler<E>
+where
+    E: Eq + Hash,
+{
     type Event = E;
 
 
     /// Registers a new callback for the given Event type.
-    /// 
-    /// # Generic types
-    /// - `F`: The type of the closure / function to call.
     /// 
     /// # Arguments
     /// - `event`: The specific Event variant to fire on.
@@ -311,31 +281,27 @@ impl<E> EventHandler for ThreadedEventHandler<E> {
     /// 
     /// # Errors
     /// This function may error if the actual struct does (for example, could not get a lock).
-    fn register<F>(&self, event: Self::Event, callback: F) -> Result<(), Box<dyn Error>>
-    where
-        E: Eq + Hash,
-        F: 'static + FnMut(&Self, Self::Event) -> EventResult
-    {
-        // Get a write lock on the hashmap
-        let mut map: RwLockWriteGuard<HashMap<_, _>> = match self.callbacks.write() {
-            Ok(map)  => map,
-            Err(err) => { return Err(Box::new(ThreadedHandlerError::WriteLockError{ what: "callbacks map", err: format!("{}", err) })); }
+    fn register(&self, event: Self::Event, callback: impl 'static + Callback<Self, Self::Event>) -> Result<(), Box<dyn Error>> {
+        // Get the write lock
+        let mut callbacks: RwLockWriteGuard<HashMap<_, _>> = match self.callbacks.write() {
+            Ok(callbacks) => callbacks,
+            Err(err)      => { return Err(Box::new(ThreadedHandlerError::WriteLockError{ what: "callback map", err: format!("{}", err) })); }
         };
 
         // Make sure there is an event queue in the HashMap
-        let queue: &mut Vec<_> = match map.get_mut(&event) {
+        let queue: &mut Vec<_> = match callbacks.get_mut(&event) {
             Some(queue) => queue,
             None        => {
                 // Insert it
-                map.insert(event, Vec::with_capacity(4));
+                callbacks.insert(event, Vec::with_capacity(4));
 
                 // Return the new queue
-                map.get_mut(&event).unwrap()
+                callbacks.get_mut(&event).unwrap()
             }
         };
 
         // Add the new callback to it
-        queue.push(Box::new(callback));
+        queue.push(Arc::new(callback));
 
         // Done
         Ok(())
@@ -351,59 +317,48 @@ impl<E> EventHandler for ThreadedEventHandler<E> {
     /// - `event`: The Event to fire.
     /// 
     /// # Returns
-    /// Returns the value of the last EventResult callback in the chain, or (if there are no callbacks for this Event) `EventResult::Continue`.
+    /// Because this is the multi-threaded implementation, it always returns 'EventResult::Continue'. However, any other results are processed to (roughly) result in the same outcome.
     /// 
     /// # Errors
     /// This function may error if the actual struct does (for example, could not get a lock).
+    #[inline]
     fn fire(&self, event: Self::Event) -> Result<EventResult, Box<dyn Error>>
     where
-        E: Clone + Eq + Hash,
+        E: Eq + Hash,
     {
-        // Get a lock for the callback, to make sure nobody writes to it
-        let callbacks = match self.callbacks.read() {
-            Ok(queue) => queue,
-            Err(err)  => { return Err(Box::new(ThreadedHandlerError::ReadLockError{ what: "event queue", err: format!("{}", err) })); }
+        // Get a read lock on the callback list
+        let callbacks: RwLockReadGuard<HashMap<_, _>> = match self.callbacks.read() {
+            Ok(callbacks) => callbacks,
+            Err(err)      => { return Err(Box::new(ThreadedHandlerError::ReadLockError{ what: "callback map", err: format!("{}", err) })); }
         };
 
-        // Get the length for this event call
-        let n_callbacks: usize = callbacks.get(&event).map(|v| v.len()).unwrap_or(0);
+        // Get the write lock on the queue
+        let mut queue: MutexGuard<EventQueue<_, _>> = match self.queue.lock() {
+            Ok(queue) => queue,
+            Err(err)  => { return Err(Box::new(ThreadedHandlerError::WriteLockError{ what: "event queue", err: format!("{}", err) })); }
+        };
 
-        // Write the event on the local queue
-        {
-            // Get the write lock
-            let mut queue: MutexGuard<EventQueue<_>> = match self.queue.lock() {
-                Ok(queue) => queue,
-                Err(err)  => { return Err(Box::new(ThreadedHandlerError::WriteLockError{ what: "event queue", err: format!("{}", err) })); }
-            };
-
-            // Push it
-            queue.push_back((Arc::new(n_callbacks), event));
-
-            // Signal the conditional variable
-            
-        }
-
-        // Now wait until the Event has completed
-        
-
-        // Get a borrow to the hashmap
-        let map: Ref<HashMap<_, _>> = self.callbacks.borrow();
-
-        // If there is an Event to fire, then fire it
-        if let Some(callbacks) = map.get(&event) {
+        // Push the callbacks to the queue
+        if let Some(callbacks) = callbacks.get(&event) {
             for callback in callbacks {
-                match callback(self, event) {
-                    // Continue the chain if allowed to do so
-                    EventResult::Continue => { continue; }
-
-                    // Otherwise, return the result
-                    result => { return Ok(result); }
-                }
+                queue.push_back((callback.clone(), event));
             }
         }
 
-        // Done
+        // Notify the worker threads to wakeup (if they weren't running already)
+        self.signal.notify_all();
+
+        // Done (we don't wait)
         Ok(EventResult::Continue)
+    }
+
+
+
+    /// Stops the EventHandler (telling threads to stop and junk)
+    #[inline]
+    fn stop(&mut self) {
+        // Set stop. When we're dropped, we'll properly stop.
+        *self.enabled = false;
     }
 }
 

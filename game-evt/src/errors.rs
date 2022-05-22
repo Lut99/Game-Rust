@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 11:53:47
  * Last edited:
- *   21 May 2022, 12:31:29
+ *   22 May 2022, 14:01:55
  * Auto updated?
  *   Yes
  *
@@ -52,8 +52,18 @@ impl Error for ThreadedHandlerError {}
 /// Defines errors that relate to the EventLoop and its operation.
 #[derive(Debug)]
 pub enum EventSystemError {
-    /// Failed to spawn a new thread
-    ThreadSpawnError{ err: std::io::Error },
+    /// Could not create a handler
+    HandlerCreateError{ what: &'static str, err: Box<dyn Error> },
+    /// Failed to spawn a new thread.
+    TimerThreadSpawnError{ err: std::io::Error },
+
+    /// Could not fire a tick event
+    TickFireError{ err: Box<dyn Error> },
+
+    /// Could not register a new callback
+    RegisterError{ err: Box<dyn Error> },
+    /// Could not fire an event
+    FireError{ event: String, err: Box<dyn Error> },
 }
 
 impl Display for EventSystemError {
@@ -61,7 +71,13 @@ impl Display for EventSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use EventSystemError::*;
         match self {
-            ThreadSpawnError{ err } => write!(f, "Failed to spawn thread: {}", err),
+            TimerThreadSpawnError{ err }    => write!(f, "Failed to spawn timer thread: {}", err),
+            HandlerCreateError{ what, err } => write!(f, "Could not create the {} handler: {}", what, err),
+
+            TickFireError{ err } => write!(f, "Failed to fire TickEvent::Tick: {}", err),
+
+            RegisterError{ err }    => write!(f, "Could not register a new callback: {}", err),
+            FireError{ event, err } => write!(f, "Could not fire event {}: {}", event, err),
         }
     }
 }
