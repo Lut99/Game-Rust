@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 11:53:31
  * Last edited:
- *   21 May 2022, 11:31:55
+ *   25 May 2022, 20:53:49
  * Auto updated?
  *   Yes
  *
@@ -24,4 +24,4 @@ pub mod system;
 
 // Bring some stuff into the main namespace
 pub use spec::Event;
-pub use system::{Error, EventSystem as System};
+// pub use system::{Error, EventSystem as System};

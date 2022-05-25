@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 12:03:22
  * Last edited:
- *   22 May 2022, 14:25:21
+ *   25 May 2022, 21:26:18
  * Auto updated?
  *   Yes
  *
@@ -22,57 +22,18 @@ use game_utl::traits::AsAny;
 
 
 /***** LIBRARY TRAITS *****/
-/// The EventHandler trait, which defines a generalised interface to both the LocalEventHandler and the ThreadedEventHandler.
-pub trait EventHandler {
-    /// The Event type to handle.
-    type Event: Eq + Hash;
-
-
-    /// Registers a new callback for the given Event type.
-    /// 
-    /// # Arguments
-    /// - `event`: The specific Event variant to fire on.
-    /// - `callback`: The function to register for calling once `event` has fired.
-    /// 
-    /// # Errors
-    /// This function may error if the actual struct does (for example, could not get a lock).
-    fn register(&self, event: Self::Event, callback: impl 'static + Callback<Self, Self::Event>) -> Result<(), Box<dyn Error>>
-    where
-        Self: Sized;
-
-    /// Fires the given Event.
-    /// 
-    /// Firing an event may trigger other Events. Thus, it is good practise not to have a cyclic dependency.
-    /// 
-    /// # Arguments
-    /// - `event`: The Event to fire.
-    /// 
-    /// # Returns
-    /// Returns the value of the last EventResult callback in the chain, or (if there are no callbacks for this Event) `EventResult::Continue`.
-    /// 
-    /// # Errors
-    /// This function may error if the actual struct does (for example, could not get a lock).
-    fn fire(&self, event: Self::Event) -> Result<EventResult, Box<dyn Error>>;
-
-
-
-    /// Stops the EventHandler (telling threads to stop and junk)
-    fn stop(&mut self);
+/// The global trait stitching the Events together.
+pub trait Event: AsAny + Debug + Eq + Hash + Send + Sync {
+    /// Returns the kind of this event.
+    fn kind(&self) -> EventKind;
 }
 
 
 
-/// The traits implementing the closure
-pub trait Callback<H: EventHandler<Event=E>, E>: Send + Sync + FnMut(&H, E) -> EventResult {}
-
-impl<H: EventHandler<Event=E>, E, T> Callback<H, E> for T where T: Send + Sync + FnMut(&H, E) -> EventResult {}
-
-
-
-/// The global trait stitching the Events together.
-pub trait Event: AsAny + Debug + Eq + Hash {
-    /// Returns the kind of this event.
-    fn kind(&self) -> EventKind;
+/// The global EventResult trait stitching EventResults together.
+pub trait EventResult: Debug + PartialEq {
+    /// Returns the ::Continue variant.
+    fn cont() -> Self;
 }
 
 
@@ -155,41 +116,119 @@ pub enum EventKind {
 
 
 
-/// Marries the SyncResult and AsyncResult together in one enum.
+/// Defines the results allowed for a LocalEvent callback.
 #[derive(Debug)]
-pub enum EventResult {
+pub enum LocalEventResult {
     /// Nothing special needs to happen.
     Continue,
 
-    /// The event should not propagate further down to other callbacks.
+    /// Stop propagating the event.
     Block,
-    /// The program should stop.
-    Exit,
 
-    /// The program ran into an error.
+    /// The callback ran into an error.
     Error(Box<dyn Error>),
-    /// The program ran into an error so severe the Game should quit.
+    /// The callback ran into an error so severe the Game should quit.
     Fatal(Box<dyn Error>),
 }
 
-impl EventResult {
-    /// Returns some kind of 'importance' score; results with a higher score will not be kicked out in multi-threaded scenario's.
+impl Default for LocalEventResult {
     #[inline]
-    pub fn importance(&self) -> u32 {
-        use EventResult::*;
-        match self {
-            Continue => 0,
+    fn default() -> Self { LocalEventResult::Continue }
+}
 
-            Block => 1,
-            Exit  => 2,
+impl EventResult for LocalEventResult {
+    /// Returns the ::Continue variant.
+    #[inline]
+    fn cont() -> Self { Self::Continue }
+}
 
-            Error(_) => 1,
-            Fatal(_) => 2,
+impl PartialEq for LocalEventResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Continue, Self::Continue) => true,
+            (Self::Block,    Self::Block)    => true,
+            (Self::Error(_), Self::Error(_)) => true,
+            (Self::Fatal(_), Self::Fatal(_)) => true,
+            _                                => false,
         }
     }
 }
 
-impl Default for EventResult {
+
+
+/// Defines the results allowed for a ControlEvent callback.
+#[derive(Debug)]
+pub enum ControlEventResult {
+    /// Nothing special needs to happen.
+    Continue,
+
+    /// Stop propagating the event.
+    Block,
+    /// Stop the application altogether.
+    Exit,
+
+    /// The callback ran into an error.
+    Error(Box<dyn Error>),
+    /// The callback ran into an error so severe the Game should quit.
+    Fatal(Box<dyn Error>),
+}
+
+impl Default for ControlEventResult {
     #[inline]
-    fn default() -> Self { EventResult::Continue }
+    fn default() -> Self { ControlEventResult::Continue }
+}
+
+impl EventResult for ControlEventResult {
+    /// Returns the ::Continue variant.
+    #[inline]
+    fn cont() -> Self { Self::Continue }
+}
+
+impl PartialEq for ControlEventResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Continue, Self::Continue) => true,
+            (Self::Block,    Self::Block)    => true,
+            (Self::Exit,     Self::Exit)     => true,
+            (Self::Error(_), Self::Error(_)) => true,
+            (Self::Fatal(_), Self::Fatal(_)) => true,
+            _                                => false,
+        }
+    }
+}
+
+
+
+/// Defines the results allowed for a ThreadedEvent callback.
+#[derive(Debug)]
+pub enum ThreadedEventResult {
+    /// Nothing special needs to happen.
+    Continue,
+
+    /// The callback ran into an error.
+    Error(Box<dyn Error>),
+    /// The callback ran into an error so severe the Game should quit.
+    Fatal(Box<dyn Error>),
+}
+
+impl Default for ThreadedEventResult {
+    #[inline]
+    fn default() -> Self { ThreadedEventResult::Continue }
+}
+
+impl EventResult for ThreadedEventResult {
+    /// Returns the ::Continue variant.
+    #[inline]
+    fn cont() -> Self { Self::Continue }
+}
+
+impl PartialEq for ThreadedEventResult {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Continue, Self::Continue) => true,
+            (Self::Error(_), Self::Error(_)) => true,
+            (Self::Fatal(_), Self::Fatal(_)) => true,
+            _                                => false,
+        }
+    }
 }
