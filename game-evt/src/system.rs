@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 11:54:47
  * Last edited:
- *   22 May 2022, 14:26:29
+ *   25 May 2022, 20:15:32
  * Auto updated?
  *   Yes
  *
@@ -107,10 +107,12 @@ impl EventSystem {
 
         // Spawn the timer thread
         let enabled: Arc<bool> = Arc::new(true);
+        let timer_tick_handler = tick_handler.clone();
+        let timer_enabled = enabled.clone();
         let timer_thread: JoinHandle<Result<(), String>> = match thread::Builder::new()
             .name("game_rust-event_system-timer".to_string())
-            .spawn(|| {
-                timer_thread(enabled.clone(), tick_interval, tick_handler.clone())
+            .spawn(move || {
+                timer_thread(timer_enabled, tick_interval, timer_tick_handler)
                     .map_err(|err| format!("{}", err))
             })
         {
@@ -235,7 +237,7 @@ impl EventSystem {
     /// This function may error if something went wrong during the main loop (which is basically everything).
     pub fn run(mut self) -> Result<(), Error> {
         // Split self
-        let Self { event_loop, control_handler, .. } = self;
+        let Self { event_loop, mut control_handler, mut window_handler, mut input_handler, mut tick_handler, .. } = self;
 
         // Simply run the EventLoop
         event_loop.run(move |event, _, control_flow| {
@@ -295,13 +297,13 @@ impl EventSystem {
             // Call closing events if necessary
             if let ControlFlow::Exit = *control_flow {
                 // Fire the ControlHandler
-                if let Err(err) = self.control_handler.fire(ControlEvent::Closing) { error!("Failed to run closing events: {}", err); };
+                if let Err(err) = control_handler.fire(ControlEvent::Closing) { error!("Failed to run closing events: {}", err); };
 
                 // Tell all handlers to stop
-                self.control_handler.stop();
-                self.window_handler.stop();
-                self.input_handler.stop();
-                self.tick_handler.stop();
+                control_handler.stop();
+                window_handler.stop();
+                input_handler.stop();
+                tick_handler.stop();
             }
         });
     }
