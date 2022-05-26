@@ -4,7 +4,7 @@
  * Created:
  *   15 May 2022, 12:03:22
  * Last edited:
- *   25 May 2022, 21:26:18
+ *   26 May 2022, 16:20:07
  * Auto updated?
  *   Yes
  *
@@ -22,8 +22,14 @@ use game_utl::traits::AsAny;
 
 
 /***** LIBRARY TRAITS *****/
+/// A trait 'shortcut' for the entire callback thing
+pub trait Callback<D, E, R>: 'static + Send + Sync + FnMut(D, E) -> R {}
+impl<D, E, R, T: 'static + Send + Sync + FnMut(D, E) -> R> Callback<D, E, R> for T {}
+
+
+
 /// The global trait stitching the Events together.
-pub trait Event: AsAny + Debug + Eq + Hash + Send + Sync {
+pub trait Event: AsAny + Clone + Debug + Eq + Hash + Send + Sync {
     /// Returns the kind of this event.
     fn kind(&self) -> EventKind;
 }
@@ -206,9 +212,9 @@ pub enum ThreadedEventResult {
     Continue,
 
     /// The callback ran into an error.
-    Error(Box<dyn Error>),
+    Error(Box<dyn Send + Sync + Error>),
     /// The callback ran into an error so severe the Game should quit.
-    Fatal(Box<dyn Error>),
+    Fatal(Box<dyn Send + Sync + Error>),
 }
 
 impl Default for ThreadedEventResult {
