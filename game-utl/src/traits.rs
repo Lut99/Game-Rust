@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:12:04
  * Last edited:
- *   22 May 2022, 13:44:32
+ *   28 May 2022, 16:50:20
  * Auto updated?
  *   Yes
  *
@@ -12,7 +12,7 @@
  *   Implements common traits that are a bit miscellaneous in type.
 **/
 
-use std::any::{Any, type_name};
+use std::any::Any;
 
 
 /***** AS ANY *****/
@@ -23,16 +23,6 @@ pub trait AsAny {
 
     /// Casts this trait object to a (muteable) Any reference.
     fn as_any_mut(&mut self) -> &mut dyn Any;
-
-
-
-    /// Casts this trait object to a(n immuteable) T reference.
-    #[inline]
-    fn as_t<T: 'static>(&self) -> &T { self.as_any().downcast_ref::<T>().unwrap_or_else(|| panic!("Could cast {} to {}", type_name::<Self>(), type_name::<T>())) }
-
-    /// Casts this trait object to a (muteable) T reference.
-    #[inline]
-    fn as_t_mut<T: 'static>(&mut self) -> &mut T { self.as_any_mut().downcast_mut::<T>().unwrap_or_else(|| panic!("Could cast {} to {}", type_name::<Self>(), type_name::<T>())) }
 }
 
 impl<T: 'static> AsAny for T {
