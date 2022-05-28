@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   14 May 2022, 14:38:34
+ *   28 May 2022, 17:23:54
  * Auto updated?
  *   Yes
  *
@@ -3264,6 +3264,101 @@ impl From<DynamicState> for vk::DynamicState {
 
 
 /***** POOLS *****/
+/// Define a type of memory that a device has to offer.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DeviceMemoryType(u32);
+
+impl From<u32> for DeviceMemoryType {
+    #[inline]
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+impl From<DeviceMemoryType> for u32 {
+    #[inline]
+    fn from(value: DeviceMemoryType) -> Self {
+        value.0
+    }
+}
+
+
+
+/// Lists properties of certain memory areas.
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryPropertyFlags(u16);
+
+impl MemoryPropertyFlags {
+    /// Defines no flags
+    pub const EMPTY: Self = Self(0x0000);
+    /// Defines all flags
+    pub const ALL: Self = Self(0xFFFF);
+
+    /// Memory should be local to the Device (i.e., not some shared memory pool).
+    pub const DEVICE_LOCAL: Self = Self(0x0001);
+    /// Memory should be writeable/readable by the Host.
+    pub const HOST_VISIBLE: Self = Self(0x0002);
+    /// Memory should be coherent with the host (not requiring separate flush calls).
+    pub const HOST_COHERENT: Self = Self(0x0004);
+    /// Memory is cached, which is faster but non-coherent.
+    pub const HOST_CACHED: Self = Self(0x0008);
+    /// Memory might need to be allocated on first access.
+    pub const LAZILY_ALLOCATED: Self = Self(0x0010);
+    /// Memory is protected; only Device may access it and some special queue operations.
+    pub const PROTECTED: Self = Self(0x0020);
+
+
+    /// Checks if this MemoryPropertyFlags is a superset of the given one. For example, if this is `DEVICE_LOCAL | HOST_VISIBLE` and the given one is `DEVICE_LOCAL`, returns true.
+    #[inline]
+    pub fn check(&self, other: MemoryPropertyFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for MemoryPropertyFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for MemoryPropertyFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<vk::MemoryPropertyFlags> for MemoryPropertyFlags {
+    fn from(value: vk::MemoryPropertyFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::EMPTY;
+        if (value & vk::MemoryPropertyFlags::DEVICE_LOCAL).as_raw() != 0 { result |= MemoryPropertyFlags::DEVICE_LOCAL; }
+        if (value & vk::MemoryPropertyFlags::HOST_VISIBLE).as_raw() != 0 { result |= MemoryPropertyFlags::HOST_VISIBLE; }
+        if (value & vk::MemoryPropertyFlags::HOST_COHERENT).as_raw() != 0 { result |= MemoryPropertyFlags::HOST_COHERENT; }
+        if (value & vk::MemoryPropertyFlags::HOST_CACHED).as_raw() != 0 { result |= MemoryPropertyFlags::HOST_CACHED; }
+        if (value & vk::MemoryPropertyFlags::LAZILY_ALLOCATED).as_raw() != 0 { result |= MemoryPropertyFlags::LAZILY_ALLOCATED; }
+        if (value & vk::MemoryPropertyFlags::PROTECTED).as_raw() != 0 { result |= MemoryPropertyFlags::PROTECTED; }
+        result
+    }
+}
+
+impl From<MemoryPropertyFlags> for vk::MemoryPropertyFlags {
+    fn from(value: MemoryPropertyFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::empty();
+        if value.check(MemoryPropertyFlags::DEVICE_LOCAL) { result |= vk::MemoryPropertyFlags::DEVICE_LOCAL; }
+        if value.check(MemoryPropertyFlags::HOST_VISIBLE) { result |= vk::MemoryPropertyFlags::HOST_VISIBLE; }
+        if value.check(MemoryPropertyFlags::HOST_COHERENT) { result |= vk::MemoryPropertyFlags::HOST_COHERENT; }
+        if value.check(MemoryPropertyFlags::HOST_CACHED) { result |= vk::MemoryPropertyFlags::HOST_CACHED; }
+        if value.check(MemoryPropertyFlags::LAZILY_ALLOCATED) { result |= vk::MemoryPropertyFlags::LAZILY_ALLOCATED; }
+        if value.check(MemoryPropertyFlags::PROTECTED) { result |= vk::MemoryPropertyFlags::PROTECTED; }
+        result
+    }
+}
+
+
+
 /// Flags for the CommandPool construction.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct CommandBufferFlags(u8);
@@ -3280,7 +3375,7 @@ impl CommandBufferFlags {
     pub const ALLOW_RESET: Self = Self(0x02);
 
 
-    /// Checks if this DependencyFlags is a superset of the given one. For example, if this is `FRAMEBUFFER_LOCAL | VIEW_LOCAL` and the given one is `VIEW_LOCAL`, returns true.
+    /// Checks if this CommandBufferFlags is a superset of the given one. For example, if this is `TRANSIENT | ALLOW_RESET` and the given one is `TRANSIENT`, returns true.
     #[inline]
     pub fn check(&self, other: CommandBufferFlags) -> bool { (self.0 & other.0) == other.0 }
 }
