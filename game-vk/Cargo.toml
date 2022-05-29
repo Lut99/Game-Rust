@@ -8,6 +8,7 @@ authors = [ "Lut99" ]
 
 [dependencies]
 ash = { version = "0.37.0", features = ["loaded"] }
+gpu-allocator = "0.18.0"
 log = "0.4.16"
 rust-embed = { version = "6.4.0" }
 semver = "1.0.6"

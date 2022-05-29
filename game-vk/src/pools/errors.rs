@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   05 May 2022, 12:47:09
+ *   29 May 2022, 17:22:44
  * Auto updated?
  *   Yes
  *
@@ -15,8 +15,39 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
+use crate::auxillary::{DeviceMemoryTypeFlags, MemoryPropertyFlags};
+
 
 /***** ERRORS *****/
+/// Defines errors for MemoryPools / Buffers.
+#[derive(Debug)]
+pub enum MemoryPoolError {
+    /// Failed to create a new Allocator for the pool.
+    AllocatorCreateError{ err: gpu_allocator::AllocationError },
+
+    /// Failed to create a new VkBuffer object.
+    BufferCreateError{ err: ash::vk::Result },
+    /// Could not find a memory type with all of the supported requirements and properties.
+    UnsupportedMemoryRequirements{ name: String, types: DeviceMemoryTypeFlags, props: MemoryPropertyFlags },
+}
+
+impl Display for MemoryPoolError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use MemoryPoolError::*;
+        match self {
+            AllocatorCreateError{ err } => write!(f, "Could not create new Allocator: {}", err),
+
+            BufferCreateError{ err }                            => write!(f, "Could not create Buffer: {}", err),
+            UnsupportedMemoryRequirements{ name, types, props } => write!(f, "Device '{}' has no memory type that supports memory requirements '{:#b}' and memory properties {}", name, u32::from(*types), props),
+        }
+    }
+}
+
+impl Error for MemoryPoolError {}
+
+
+
 /// Defines errors for CommandPools / CommandBuffers.
 #[derive(Debug)]
 pub enum CommandPoolError {

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   14 May 2022, 14:45:08
+ *   29 May 2022, 18:00:11
  * Auto updated?
  *   Yes
  *
@@ -23,7 +23,7 @@ use semver::Version;
 use winit::event_loop::EventLoop;
 
 use game_ecs::Ecs;
-use game_vk::auxillary::DeviceKind;
+use game_vk::auxillary::DeviceInfo;
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
@@ -389,7 +389,7 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function fails if the Instance failed to be created or if we could not query it for the available devices.
-    pub fn list(debug: bool) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
+    pub fn list(debug: bool) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
         // Create the instance
         let layers = if debug {
             let mut layers = Vec::from(INSTANCE_LAYERS);

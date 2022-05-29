@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   28 May 2022, 17:23:54
+ *   29 May 2022, 18:24:03
  * Auto updated?
  *   Yes
  *
@@ -417,6 +417,252 @@ impl From<DeviceKind> for vk::PhysicalDeviceType {
             DeviceKind::Cpu        => vk::PhysicalDeviceType::CPU,
             DeviceKind::Other      => vk::PhysicalDeviceType::OTHER,
         }
+    }
+}
+
+
+
+/// Lists information about a GPU (for use when listing them).
+#[derive(Clone, Debug)]
+pub struct DeviceInfo {
+    /// The index of the Device.
+    pub index : usize,
+    /// The name of the Device.
+    pub name  : String,
+    /// The kind of the Device.
+    pub kind  : DeviceKind,
+
+    /// The memory properties of the Device.
+    pub mem_props : DeviceMemoryProperties,
+}
+
+
+
+/// Lists information about a Device's memory.
+#[derive(Clone, Debug)]
+pub struct DeviceMemoryProperties {
+    /// The list of heaps supported by this device.
+    pub heaps : Vec<DeviceMemoryHeapInfo>,
+    /// The types of memory supported by this device.
+    pub types : Vec<DeviceMemoryTypeInfo>,
+}
+
+impl From<vk::PhysicalDeviceMemoryProperties> for DeviceMemoryProperties {
+    #[inline]
+    fn from(value: vk::PhysicalDeviceMemoryProperties) -> Self {
+        Self {
+            heaps : unsafe { slice::from_raw_parts::<vk::MemoryHeap>(value.memory_heaps.as_ptr(), value.memory_heap_count as usize) }.iter().map(|info| info.into()).collect(),
+            types : unsafe { slice::from_raw_parts::<vk::MemoryType>(value.memory_types.as_ptr(), value.memory_type_count as usize) }.iter().map(|info| info.into()).collect(),
+        }
+    }
+}
+
+impl From<DeviceMemoryProperties> for vk::PhysicalDeviceMemoryProperties {
+    fn from(value: DeviceMemoryProperties) -> Self {
+        // Prepare the fixed-size memory arrays
+        let mut memory_heaps: [vk::MemoryHeap; 16] = Default::default();
+        let mut memory_types: [vk::MemoryType; 32] = Default::default();
+
+        // Copy the infos over to it
+        let memory_heap_count: u32 = value.heaps.len() as u32;
+        let memory_type_count: u32 = value.types.len() as u32;
+        for (i, info) in value.heaps.into_iter().enumerate() { memory_heaps[i] = info.into(); }
+        for (i, info) in value.types.into_iter().enumerate() { memory_types[i] = info.into(); }
+
+        // Wrap them in a return struct
+        Self {
+            memory_heap_count,
+            memory_heaps,
+            memory_type_count,
+            memory_types,
+        }
+    }
+}
+
+
+
+/// Lists information about each heap on the Device.
+#[derive(Clone, Debug)]
+pub struct DeviceMemoryHeapInfo {
+    /// The size of this memory heap.
+    pub size  : usize,
+    /// Lists properties about the memory heap.
+    pub props : HeapPropertyFlags,
+}
+
+impl From<vk::MemoryHeap> for DeviceMemoryHeapInfo {
+    #[inline]
+    fn from(value: vk::MemoryHeap) -> Self {
+        // Use the referenced version
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::MemoryHeap> for DeviceMemoryHeapInfo {
+    #[inline]
+    fn from(value: &vk::MemoryHeap) -> Self {
+        Self {
+            size  : value.size as usize,
+            props : value.flags.into(),
+        }
+    }
+}
+
+impl From<DeviceMemoryHeapInfo> for vk::MemoryHeap {
+    #[inline]
+    fn from(value: DeviceMemoryHeapInfo) -> Self {
+        // Use the referenced version
+        Self::from(&value)
+    }
+}
+
+impl From<&DeviceMemoryHeapInfo> for vk::MemoryHeap {
+    #[inline]
+    fn from(value: &DeviceMemoryHeapInfo) -> Self {
+        Self {
+            size  : value.size as vk::DeviceSize,
+            flags : value.props.into(),
+        }
+    }
+}
+
+
+
+/// Lists information about each type of memory on the Device.
+#[derive(Clone, Debug)]
+pub struct DeviceMemoryTypeInfo {
+    /// The index of the corresponding heap.
+    pub heap_index : u32,
+    /// The property flags supported by this type.
+    pub props      : MemoryPropertyFlags,
+}
+
+impl From<vk::MemoryType> for DeviceMemoryTypeInfo {
+    #[inline]
+    fn from(value: vk::MemoryType) -> Self {
+        // Use the referenced version
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::MemoryType> for DeviceMemoryTypeInfo {
+    #[inline]
+    fn from(value: &vk::MemoryType) -> Self {
+        Self {
+            heap_index : value.heap_index,
+            props      : value.property_flags.into(),
+        }
+    }
+}
+
+impl From<DeviceMemoryTypeInfo> for vk::MemoryType {
+    #[inline]
+    fn from(value: DeviceMemoryTypeInfo) -> Self {
+        // Use the referenced version
+        Self::from(&value)
+    }
+}
+
+impl From<&DeviceMemoryTypeInfo> for vk::MemoryType {
+    #[inline]
+    fn from(value: &DeviceMemoryTypeInfo) -> Self {
+        Self {
+            heap_index     : value.heap_index,
+            property_flags : value.props.into(),
+        }
+    }
+}
+
+
+
+/// Contains information about what a device heap supports, exactly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapPropertyFlags(u8);
+
+impl HeapPropertyFlags {
+    /// Defines no flags
+    pub const EMPTY: Self = Self(0x00);
+    /// Defines all flags
+    pub const ALL: Self = Self(0xFF);
+
+    /// The heap corresponds to device-local memory.
+    pub const DEVICE_LOCAL: Self = Self(0x01);
+    /// In the case of a multi-instance logical device, this heap has a per-device instance. That means that (by default) every allocation will be replicated to each heap.
+    pub const MULTI_INSTANCE: Self = Self(0x02);
+
+
+    /// Returns true iff these flags are `HeapPropertyFlags::EMPTY`.
+    #[inline]
+    pub fn is_empty(&self) -> bool { self.0 == Self::EMPTY.0 }
+
+    /// Checks if this HeapPropertyFlags is a superset of the given one. For example, if this is `DEVICE_LOCAL | HOST_VISIBLE` and the given one is `DEVICE_LOCAL`, returns true.
+    #[inline]
+    pub fn check(&self, other: HeapPropertyFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl Display for HeapPropertyFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        // Construct a list
+        let mut first = true;
+        let mut i: u8 = 0x1;
+        while i != 0 {
+            // Check if this property is enabled
+            if self.0 & i != 0 {
+                // Write the comma if necessary
+                if first { first = false; }
+                else { write!(f, ", ")?; }
+
+                // Write the name of this property
+                match HeapPropertyFlags(self.0 & i) {
+                    HeapPropertyFlags::DEVICE_LOCAL   => { write!(f, "DEVICE_LOCAL")?; },
+                    HeapPropertyFlags::MULTI_INSTANCE => { write!(f, "MULTI_INSTANCE")?; },
+                    val                               => { panic!("Encountered illegal HeapPropertyFlags value '{}'", val.0); }
+                }
+            }
+
+            // Increment the i
+            i = i << 1;
+        }
+
+        // Done
+        Ok(())
+    }
+}
+
+impl BitOr for HeapPropertyFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for HeapPropertyFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<vk::MemoryHeapFlags> for HeapPropertyFlags {
+    fn from(value: vk::MemoryHeapFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::EMPTY;
+        if (value & vk::MemoryHeapFlags::DEVICE_LOCAL).as_raw() != 0 { result |= HeapPropertyFlags::DEVICE_LOCAL; }
+        if (value & vk::MemoryHeapFlags::MULTI_INSTANCE).as_raw() != 0 { result |= HeapPropertyFlags::MULTI_INSTANCE; }
+        if (value & vk::MemoryHeapFlags::MULTI_INSTANCE_KHR).as_raw() != 0 { result |= HeapPropertyFlags::MULTI_INSTANCE; }
+        result
+    }
+}
+
+impl From<HeapPropertyFlags> for vk::MemoryHeapFlags {
+    fn from(value: HeapPropertyFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::empty();
+        if value.check(HeapPropertyFlags::DEVICE_LOCAL) { result |= vk::MemoryHeapFlags::DEVICE_LOCAL; }
+        if value.check(HeapPropertyFlags::MULTI_INSTANCE) { result |= vk::MemoryHeapFlags::MULTI_INSTANCE; }
+        result
     }
 }
 
@@ -3265,19 +3511,43 @@ impl From<DynamicState> for vk::DynamicState {
 
 /***** POOLS *****/
 /// Define a type of memory that a device has to offer.
+/// 
+/// Note: because the actual list is device-dependent, there are no constants available for this Flags implementation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct DeviceMemoryType(u32);
+pub struct DeviceMemoryTypeFlags(u32);
 
-impl From<u32> for DeviceMemoryType {
+impl DeviceMemoryTypeFlags {
+    /// Checks if this DeviceMemoryTypeFlags is a superset of the given one.
+    #[inline]
+    pub fn check(&self, other: DeviceMemoryTypeFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for DeviceMemoryTypeFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for DeviceMemoryTypeFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<u32> for DeviceMemoryTypeFlags {
     #[inline]
     fn from(value: u32) -> Self {
         Self(value)
     }
 }
 
-impl From<DeviceMemoryType> for u32 {
+impl From<DeviceMemoryTypeFlags> for u32 {
     #[inline]
-    fn from(value: DeviceMemoryType) -> Self {
+    fn from(value: DeviceMemoryTypeFlags) -> Self {
         value.0
     }
 }
@@ -3285,7 +3555,7 @@ impl From<DeviceMemoryType> for u32 {
 
 
 /// Lists properties of certain memory areas.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MemoryPropertyFlags(u16);
 
 impl MemoryPropertyFlags {
@@ -3308,9 +3578,46 @@ impl MemoryPropertyFlags {
     pub const PROTECTED: Self = Self(0x0020);
 
 
+    /// Returns true iff these flags are `MemoryPropertyFlags::EMPTY`.
+    #[inline]
+    pub fn is_empty(&self) -> bool { self.0 == Self::EMPTY.0 }
+
     /// Checks if this MemoryPropertyFlags is a superset of the given one. For example, if this is `DEVICE_LOCAL | HOST_VISIBLE` and the given one is `DEVICE_LOCAL`, returns true.
     #[inline]
     pub fn check(&self, other: MemoryPropertyFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl Display for MemoryPropertyFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        // Construct a list
+        let mut first = true;
+        let mut i: u16 = 0x1;
+        while i != 0 {
+            // Check if this property is enabled
+            if self.0 & i != 0 {
+                // Write the comma if necessary
+                if first { first = false; }
+                else { write!(f, ", ")?; }
+
+                // Write the name of this property
+                match MemoryPropertyFlags(self.0 & i) {
+                    MemoryPropertyFlags::DEVICE_LOCAL     => { write!(f, "DEVICE_LOCAL")?; },
+                    MemoryPropertyFlags::HOST_VISIBLE     => { write!(f, "HOST_VISIBLE")?; },
+                    MemoryPropertyFlags::HOST_COHERENT    => { write!(f, "HOST_COHERENT")?; },
+                    MemoryPropertyFlags::HOST_CACHED      => { write!(f, "HOST_CACHED")?; },
+                    MemoryPropertyFlags::LAZILY_ALLOCATED => { write!(f, "LAZILY_ALLOCATED")?; },
+                    MemoryPropertyFlags::PROTECTED        => { write!(f, "PROTECTED")?; },
+                    val                                   => { panic!("Encountered illegal MemoryPropertyFlags value '{}'", val.0); }
+                }
+            }
+
+            // Increment the i
+            i = i << 1;
+        }
+
+        // Done
+        Ok(())
+    }
 }
 
 impl BitOr for MemoryPropertyFlags {
@@ -3353,6 +3660,98 @@ impl From<MemoryPropertyFlags> for vk::MemoryPropertyFlags {
         if value.check(MemoryPropertyFlags::HOST_CACHED) { result |= vk::MemoryPropertyFlags::HOST_CACHED; }
         if value.check(MemoryPropertyFlags::LAZILY_ALLOCATED) { result |= vk::MemoryPropertyFlags::LAZILY_ALLOCATED; }
         if value.check(MemoryPropertyFlags::PROTECTED) { result |= vk::MemoryPropertyFlags::PROTECTED; }
+        result
+    }
+}
+
+
+
+/// The BufferUsageFlags that determine what we can use a buffer for.
+#[derive(Clone, Copy, Debug)]
+pub struct BufferUsageFlags(u16);
+
+impl BufferUsageFlags {
+    /// Defines no flags
+    pub const EMPTY: Self = Self(0x0000);
+    /// Defines all flags
+    pub const ALL: Self = Self(0xFFFF);
+
+    /// The buffer may be used as a source buffer in a memory transfer operation.
+    pub const TRANSFER_SRC: Self = Self(0x0001);
+    /// The buffer may be used as a target buffer in a memory transfer operation.
+    pub const TRANSFER_DST: Self = Self(0x0002);
+    /// The buffer may be used as a uniform texel buffer.
+    /// 
+    /// Uniform buffers are much smaller but slightly faster than storage buffers.
+    pub const UNIFORM_TEXEL_BUFFER: Self = Self(0x0004);
+    /// The buffer may be used as a storage texel buffer.
+    /// 
+    /// Storage buffers are much larger but slightly slower than uniform buffers.
+    pub const STORAGE_TEXEL_BUFFER: Self = Self(0x0008);
+    /// The buffer may be used as a uniform buffer.
+    /// 
+    /// Uniform buffers are much smaller but slightly faster than storage buffers.
+    pub const UNIFORM_BUFFER: Self = Self(0x0010);
+    /// The buffer may be used as a storage buffer.
+    /// 
+    /// Storage buffers are much larger but slightly slower than uniform buffers.
+    pub const STORAGE_BUFFER: Self = Self(0x0020);
+    /// The buffer may be used to storage indices.
+    pub const INDEX_BUFFER: Self = Self(0x0040);
+    /// The buffer may be used to storage vertices.
+    pub const VERTEX_BUFFER: Self = Self(0x0080);
+    /// The buffer may be used for indirect draw commands (various applications).
+    pub const INDIRECT_BUFFER: Self = Self(0x0100);
+
+
+    /// Checks if this BufferUsageFlags is a superset of the given one. For example, if this is `DEVICE_LOCAL | HOST_VISIBLE` and the given one is `DEVICE_LOCAL`, returns true.
+    #[inline]
+    pub fn check(&self, other: BufferUsageFlags) -> bool { (self.0 & other.0) == other.0 }
+}
+
+impl BitOr for BufferUsageFlags {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, other: Self) -> Self::Output {
+        Self(self.0 | other.0)
+    }
+}
+
+impl BitOrAssign for BufferUsageFlags {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        self.0 |= other.0
+    }
+}
+
+impl From<vk::BufferUsageFlags> for BufferUsageFlags {
+    fn from(value: vk::BufferUsageFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::EMPTY;
+        if (value & vk::BufferUsageFlags::TRANSFER_SRC).as_raw() != 0 { result |= BufferUsageFlags::TRANSFER_SRC; }
+        if (value & vk::BufferUsageFlags::TRANSFER_DST).as_raw() != 0 { result |= BufferUsageFlags::TRANSFER_DST; }
+        if (value & vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER).as_raw() != 0 { result |= BufferUsageFlags::UNIFORM_TEXEL_BUFFER; }
+        if (value & vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER).as_raw() != 0 { result |= BufferUsageFlags::STORAGE_TEXEL_BUFFER; }
+        if (value & vk::BufferUsageFlags::UNIFORM_BUFFER).as_raw() != 0 { result |= BufferUsageFlags::UNIFORM_BUFFER; }
+        if (value & vk::BufferUsageFlags::STORAGE_BUFFER).as_raw() != 0 { result |= BufferUsageFlags::STORAGE_BUFFER; }
+        result
+    }
+}
+
+impl From<BufferUsageFlags> for vk::BufferUsageFlags {
+    fn from(value: BufferUsageFlags) -> Self {
+        // Construct one-by-one to maintain compatibility
+        let mut result = Self::empty();
+        if value.check(BufferUsageFlags::TRANSFER_SRC) { result |= vk::BufferUsageFlags::TRANSFER_SRC; }
+        if value.check(BufferUsageFlags::TRANSFER_DST) { result |= vk::BufferUsageFlags::TRANSFER_DST; }
+        if value.check(BufferUsageFlags::UNIFORM_TEXEL_BUFFER) { result |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER; }
+        if value.check(BufferUsageFlags::STORAGE_TEXEL_BUFFER) { result |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER; }
+        if value.check(BufferUsageFlags::UNIFORM_BUFFER) { result |= vk::BufferUsageFlags::UNIFORM_BUFFER; }
+        if value.check(BufferUsageFlags::STORAGE_BUFFER) { result |= vk::BufferUsageFlags::STORAGE_BUFFER; }
+        if value.check(BufferUsageFlags::INDEX_BUFFER) { result |= vk::BufferUsageFlags::INDEX_BUFFER; }
+        if value.check(BufferUsageFlags::VERTEX_BUFFER) { result |= vk::BufferUsageFlags::VERTEX_BUFFER; }
+        if value.check(BufferUsageFlags::INDIRECT_BUFFER) { result |= vk::BufferUsageFlags::INDIRECT_BUFFER; }
         result
     }
 }

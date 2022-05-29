@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   14 May 2022, 13:08:26
+ *   29 May 2022, 18:13:32
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,7 @@ use game_utl::to_cstring;
 
 pub use crate::errors::DeviceError as Error;
 use crate::log_destroy;
-use crate::auxillary::{DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
+use crate::auxillary::{DeviceInfo, DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
 use crate::queue::Queues;
@@ -393,7 +393,7 @@ impl Device {
     /// 
     /// # Returns
     /// Two vectors of (index, name, kind) tuples describing each GPU on success (0 = supported, 1 = unsupported), or else an Error describing the failure on a failure.
-    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<(usize, String, DeviceKind)>, Vec<(usize, String, DeviceKind)>), Error> {
+    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -405,8 +405,8 @@ impl Device {
             Ok(devices) => devices,
             Err(err)    => { return Err(Error::PhysicalDeviceEnumerateError{ err }); }  
         };
-        let mut supported_devices: Vec<(usize, String, DeviceKind)>   = Vec::with_capacity(physical_devices.len());
-        let mut unsupported_devices: Vec<(usize, String, DeviceKind)> = Vec::with_capacity(physical_devices.len());
+        let mut supported_devices: Vec<DeviceInfo>   = Vec::with_capacity(physical_devices.len());
+        let mut unsupported_devices: Vec<DeviceInfo> = Vec::with_capacity(physical_devices.len());
         for (i, physical_device) in physical_devices.iter().enumerate() {
             // Get the properties of this device
             let device_properties = unsafe { instance.get_physical_device_properties(*physical_device) };
@@ -418,11 +418,26 @@ impl Device {
             };
             let device_type = DeviceKind::from(device_properties.device_type);
 
+            // Get the memory properties
+            let device_mem_props: vk::PhysicalDeviceMemoryProperties = unsafe { instance.get_physical_device_memory_properties(*physical_device) };
+
             // Determine to which list to add it
             if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_ok() {
-                supported_devices.push((i, device_name, device_type));
+                supported_devices.push(DeviceInfo {
+                    index : i,
+                    name  : device_name,
+                    kind  : device_type,
+
+                    mem_props : device_mem_props.into(),
+                });
             } else {
-                unsupported_devices.push((i, device_name, device_type));
+                unsupported_devices.push(DeviceInfo {
+                    index : i,
+                    name  : device_name,
+                    kind  : device_type,
+
+                    mem_props : device_mem_props.into(),
+                });
             }
         }
 
