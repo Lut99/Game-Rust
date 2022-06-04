@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   29 May 2022, 18:24:03
+ *   04 Jun 2022, 15:45:37
  * Auto updated?
  *   Yes
  *
@@ -3509,7 +3509,7 @@ impl From<DynamicState> for vk::DynamicState {
 
 
 
-/***** POOLS *****/
+/***** MEMORY POOLS *****/
 /// Define a type of memory that a device has to offer.
 /// 
 /// Note: because the actual list is device-dependent, there are no constants available for this Flags implementation.
@@ -3758,6 +3758,89 @@ impl From<BufferUsageFlags> for vk::BufferUsageFlags {
 
 
 
+/// Determines how a Buffer may be accessed.
+#[derive(Clone, Debug)]
+pub enum SharingMode {
+    /// The buffer may be accessed by one queue family only. First come, first serve.
+    Exclusive,
+    /// The buffer may be accessed by multiple queue families. The queues have to be specified, though, as a list of queue family indices.
+    Concurrent(Vec<u32>),
+}
+
+impl SharingMode {
+    /// Construct the SharingMode from a given VkSharingMode and a (possible) list of concurrent queue family indices.
+    #[inline]
+    pub fn from_vk(sharing_mode: vk::SharingMode, queue_family_indices: Option<&[u32]>) -> Self {
+        // Simply match the sharing mode
+        match sharing_mode {
+            vk::SharingMode::EXCLUSIVE  => SharingMode::Exclusive,
+            vk::SharingMode::CONCURRENT => SharingMode::Concurrent(queue_family_indices.expect("Cannot set SharingMode to SharingMode::Concurrent without specifying a list of allowed queue family indices").into()),
+            sharing_mode                => { panic!("Encountered illegal VkSharingMode value '{}'", sharing_mode.as_raw()); }
+        }
+    }
+}
+
+impl From<SharingMode> for (vk::SharingMode, Option<Vec<u32>>) {
+    #[inline]
+    fn from(value: SharingMode) -> Self {
+        match value {
+            SharingMode::Exclusive           => (vk::SharingMode::EXCLUSIVE, None),
+            SharingMode::Concurrent(indices) => (vk::SharingMode::CONCURRENT, Some(indices)),
+        }
+    }
+}
+
+
+
+/// Determines the kind of memory allocator supported by the MemoryPool.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MemoryAllocatorKind {
+    /// Defines a "normal" allocator, that is reasonably space efficient but not so much time-wise.
+    Dense,
+    /// Defines a linear allocator, which is fast in allocation but which will not re-use deallocated buffer space.
+    /// 
+    /// The index in this linear allocator is referencing some block that was allocated beforehand.
+    Linear(usize),
+}
+
+impl Default for MemoryAllocatorKind {
+    fn default() -> Self { MemoryAllocatorKind::Dense }
+}
+
+impl Display for MemoryAllocatorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use MemoryAllocatorKind::*;
+        match self {
+            Dense      => write!(f, "Dense"),
+            Linear(id) => write!(f, "Linear({})", id),
+        }
+    }
+}
+
+
+
+/// An auxillary struct that describes the memory requirements and properties of a given Buffer.
+#[derive(Clone, Debug)]
+pub struct BufferAllocateInfo {
+    /// The usage flags of this Buffer
+    pub usage_flags  : BufferUsageFlags,
+    /// The sharing mode that determines how this Buffer may be accessed.
+    pub sharing_mode : SharingMode,
+
+    /// The size of the buffer, in bytes. Note that the resulting *actual* size may be slightly more based on alignment requirements.
+    pub size         : usize,
+    /// The additional properties that we require of the memory behind this buffer.
+    pub memory_props : MemoryPropertyFlags,
+
+    /// The type of allocator to use for this buffer.
+    pub allocator : MemoryAllocatorKind,
+}
+
+
+
+
+
+/***** COMMAND POOLS *****/
 /// Flags for the CommandPool construction.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct CommandBufferFlags(u8);

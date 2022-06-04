@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   29 May 2022, 17:22:44
+ *   04 Jun 2022, 15:44:38
  * Auto updated?
  *   Yes
  *
@@ -15,15 +15,15 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
-use crate::auxillary::{DeviceMemoryTypeFlags, MemoryPropertyFlags};
+use crate::auxillary::{DeviceMemoryTypeFlags, MemoryAllocatorKind, MemoryPropertyFlags};
 
 
 /***** ERRORS *****/
 /// Defines errors for MemoryPools / Buffers.
 #[derive(Debug)]
 pub enum MemoryPoolError {
-    /// Failed to create a new Allocator for the pool.
-    AllocatorCreateError{ err: gpu_allocator::AllocationError },
+    /// Could not allocate a new continious block of memory due to some kind of out-of-memory error.
+    OutOfMemoryError{ kind: MemoryAllocatorKind, size: usize, free: usize, fragmented: bool },
 
     /// Failed to create a new VkBuffer object.
     BufferCreateError{ err: ash::vk::Result },
@@ -36,7 +36,7 @@ impl Display for MemoryPoolError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use MemoryPoolError::*;
         match self {
-            AllocatorCreateError{ err } => write!(f, "Could not create new Allocator: {}", err),
+            OutOfMemoryError{ kind, size, free, fragmented } => write!(f, "Could not allocate new block of {} bytes on a {} allocator: largest free block is only {} bytes (caused by fragmentation: {})", size, kind, free, if *fragmented { "yes" } else { "no" }),
 
             BufferCreateError{ err }                            => write!(f, "Could not create Buffer: {}", err),
             UnsupportedMemoryRequirements{ name, types, props } => write!(f, "Device '{}' has no memory type that supports memory requirements '{:#b}' and memory properties {}", name, u32::from(*types), props),
