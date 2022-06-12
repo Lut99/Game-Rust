@@ -4,13 +4,15 @@
  * Created:
  *   04 Jun 2022, 15:29:44
  * Last edited:
- *   12 Jun 2022, 13:20:18
+ *   12 Jun 2022, 17:43:40
  * Auto updated?
  *   Yes
  *
  * Description:
  *   Defines the allocators used in the MemoryPool.
 **/
+
+use std::rc::Rc;
 
 use game_utl::traits::AsAny;
 
@@ -21,7 +23,35 @@ use crate::auxillary::MemoryAllocatorKind;
 /***** AUXILLARY STRUCTS *****/
 /// A single block of free memory within the free list.
 struct FreeBlock {
-    
+    /// The offset of this free block.
+    pointer : usize,
+    /// The size of this free block.
+    size    : usize,
+
+    /// The pointer to the next free block.
+    next : Option<Rc<FreeBlock>>,
+    /// The pointer to the previous free block.
+    prev : Option<Rc<FreeBlock>>,
+}
+
+impl FreeBlock {
+    /// Constructor for the FreeBlock.
+    /// 
+    /// # Arguments
+    /// - `pointer`: The start 'address' of the free block of memory. Relative to whatever block of memory the allocator is in charge of.
+    /// - `size`: The size of the free block.
+    /// - `next`: Pointer to the next FreeBlock. If omitted, implies the end of this FreeBlock aligns with the end of the allocator memory (i.e., last block).
+    /// - `prev`: Pointer to the previous FreeBlock. If omitted, implies the start of this FreeBlock aligns with the start of the allocator memory (i.e., first block).
+    #[inline]
+    fn new(pointer: usize, size: usize, next: Option<Rc<FreeBlock>>, prev: Option<Rc<FreeBlock>>) -> Rc<Self> {
+        Rc::new(Self {
+            pointer,
+            size,
+
+            next,
+            prev,
+        })
+    }
 }
 
 
@@ -153,18 +183,26 @@ impl MemoryAllocator for LinearAllocator {
 /// A more complex allocator that tries to find free space in previously freed blocks.
 pub(crate) struct DenseAllocator {
     /// A list of all free blocks within the DenseAllocator.
-    free_list : FreeBlock,
+    free_list : Rc<FreeBlock>,
+
+    /// A counter that keeps track of the used space in the allocator. Deducible from the free list, but here as optimization.
+    size     : usize,
+    /// A counter that keeps track of the total space in the allocator. Deducible from the free list, but here as optimization.
+    capacity : usize,
 }
 
 impl DenseAllocator {
     /// Constructor for the DenseAllocator.
     /// 
     /// # Arguments
-    /// - 
+    /// - `size`: The size of the memory managed by the allocator.
     #[inline]
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(size: usize) -> Self {
         Self {
-            free_list : FreeBlock{},
+            free_list : FreeBlock::new(0, size, None, None),
+
+            size     : 0,
+            capacity : size,
         }
     }
 }
@@ -184,7 +222,10 @@ impl MemoryAllocator for DenseAllocator {
     /// # Errors
     /// This function may error if the block could not be allocated. In general, this would be because of not enough (continious) memory available.
     fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error> {
-        todo!();
+        // Iterate over the available free blocks
+        for block in self.free_list {
+            
+        }
     }
 
 
@@ -195,9 +236,9 @@ impl MemoryAllocator for DenseAllocator {
 
     /// Returns the space used in the area managed by this MemoryAllocator.
     #[inline]
-    fn size(&self) -> usize { todo!(); }
+    fn size(&self) -> usize { self.size }
 
     /// Returns the total capacity of the area managed by this MemoryAllocator.
     #[inline]
-    fn capacity(&self) -> usize { todo!(); }
+    fn capacity(&self) -> usize { self.capacity }
 }
