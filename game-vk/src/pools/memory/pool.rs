@@ -4,43 +4,47 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   04 Jun 2022, 16:06:33
+ *   12 Jun 2022, 13:18:53
  * Auto updated?
  *   Yes
  *
  * Description:
  *   Contains the MemoryPool implementation, which manages general GPU
  *   memory structures.
- * 
- *   The memory allocation algorithm used is as follows (Taken from the VMA:
- *   https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/general_considerations.html):
- *    1. Try to find free range of memory in existing blocks.
- *    2. If failed, try to create a new block of VkDeviceMemory, with preferred 
- *       block size.
- *    3. If failed, try to create such block with size / 2, size / 4, size / 8.
- *    4. If failed, try to allocate separate VkDeviceMemory for this
- *       allocation.
- *    5. If failed, choose other memory type that meets the requirements
- *       specified in VmaAllocationCreateInfo and go to point 1.
- *    6. If failed, return out-of-memory error.
 **/
 
-use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
 
 use ash::vk;
-use gpu_allocator::vulkan::{Allocator, AllocationCreateDesc, AllocatorCreateDesc};
 
 pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::vec_as_ptr;
-use crate::auxillary::{BufferAllocateInfo, DeviceMemoryTypeFlags, MemoryAllocatorKind, MemoryPropertyFlags};
+use crate::auxillary::{BufferAllocateInfo, DeviceMemoryType, DeviceMemoryTypeFlags, MemoryAllocatorKind, MemoryPropertyFlags};
 use crate::device::Device;
-use crate::pools::memory::allocators::MemoryAllocator;
+use crate::pools::memory::allocators::{DenseAllocator, LinearAllocator, MemoryAllocator};
 use crate::pools::memory::buffers::Buffer;
 
 
 /***** POPULATE FUNCTIONS *****/
+/// Populates the alloc info for a new Buffer memory (VkMemoryAllocateInfo).
+/// 
+/// # Arguments
+/// - `size`: The VkDeviceSize number of bytes to allocate.
+/// - `types`: The index of the device memory type that we will allocate on.
+#[inline]
+fn populate_alloc_info(size: vk::DeviceSize, types: u32) -> vk::MemoryAllocateInfo {
+    vk::MemoryAllocateInfo {
+        // Set the standard stuff
+        s_type : vk::StructureType::MEMORY_ALLOCATE_INFO,
+        p_next : ptr::null(),
+
+        // Set the size & memory type
+        allocation_size   : size,
+        memory_type_index : types,
+    }
+}
+
 /// Populates the create info for a new Buffer (VkBufferCreateInfo).
 /// 
 /// # Arguments
@@ -72,14 +76,196 @@ fn populate_buffer_info(usage_flags: vk::BufferUsageFlags, sharing_mode: vk::Sha
 
 
 
+/***** AUXILLARY FUNCTIONS *****/
+/// Find a suitable VkDeviceMemory and returns it, along with reserved pointer and size for the given requirements.
+/// 
+/// The memory allocation algorithm used is as follows (Taken from the VMA:
+/// https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/general_considerations.html):
+///  1. Try to find free range of memory in existing blocks.
+///  2. If failed, try to create a new block of VkDeviceMemory, with preferred 
+///     block size.
+///  3. If failed, try to create such block with size / 2, size / 4, size / 8.
+///  // 4. If failed, try to allocate separate VkDeviceMemory for this
+///  //   allocation.
+///  5. If failed, choose other memory type that meets the requirements
+///     specified in VmaAllocationCreateInfo and go to point 1.
+///  6. If failed, return out-of-memory error.
+/// 
+/// # Arguments
+/// - `device`: The Device we use to allocate new blocks on.
+/// - `pref_block_size`: The preferred block size (in bytes) of new blocks. However, this is just a hint; larger or smaller blocks may be allocated.
+/// - `types`: A list of MemoryTypes with already allocated MemoryBlocks in them.
+/// - `req_size`: The desired size (in bytes) of the new memory area.
+/// - `req_align`: The required memory alignment for the new memory area (within some allocated DeviceMemory).
+/// - `req_types`: The desired DeviceMemoryType that we use to filter eventual memory types.
+/// - `req_props`: The desired MemoryPropertyFlags that we need supported by the eventual memory type.
+/// - `req_kind`: The desired MemoryAllocatorKind to use for the new block. In case of linear allocators, this will commit you to a specific block.
+/// 
+/// # Returns
+/// A tuple with the VkDeviceMemory on `.0` and the start address within that block on `.1`. The reserved memory will be guaranteed to have space for (at least) `req_size` bytes.
+/// 
+/// # Errors
+/// This function will error if there is no suitable memory type (at all), no memory type with enough space or the limit on memory allocations has been exceeded.
+fn allocate_memory(
+    device: &Rc<Device>,
+    pref_block_size: usize,
+    types: &mut Vec<MemoryType>,
+    req_size: usize,
+    req_align: usize,
+    req_types: DeviceMemoryTypeFlags,
+    req_props: MemoryPropertyFlags,
+    req_kind: MemoryAllocatorKind,
+) -> Result<(vk::DeviceMemory, usize), Error> {
+    // 1: Try to find a free range of memory in existing blocks
+    for mtype in types {
+        // Skip if the memory type of this block is not any of the required ones
+        if !req_types.check(mtype.mtype()) { continue; }
+        // Skip if the memory property flags are not present
+        if !mtype.mprops().check(req_props) { continue; }
+
+        // Check if any of the nested blocks can allocate the required size
+        for block in mtype.blocks_mut() {
+            // Skip if not enough total space
+            if block.capacity() - block.size() < req_size { continue; }
+            // Skip if not the desired allocator
+            if block.kind() != req_kind { continue; }
+
+            // Now try to allocate the block with the appropriate allocator
+            match block.allocate(req_align, req_size) {
+                Ok(pointer)                        => { return Ok((block.mem(), pointer)); },
+                Err(Error::OutOfMemoryError{ .. }) => { continue; },
+                Err(err)                           => { return Err(err); },
+            };
+        }
+
+        // 2. & 3. If there are no existing blocks with enough space, attempt to allocate a new one in this area
+        for size in [ pref_block_size, pref_block_size / 2, pref_block_size / 4, pref_block_size / 8, req_size ] {
+            // Skip if less than the required size
+            if size < req_size { continue; }
+
+            // Prepare the allocation info & try to allocate the VkDeviceMemory
+            let alloc_info = populate_alloc_info(size as vk::DeviceSize, mtype.mtype().into());
+            unsafe {
+                match device.allocate_memory(&alloc_info, None) {
+                    Ok(device_memory) => {
+                        // Wrap it in a new memory block
+                        let mut block = match req_kind {
+                            MemoryAllocatorKind::Dense      => MemoryBlock::new(device_memory, DenseAllocator::new()),
+                            MemoryAllocatorKind::Linear(id) => MemoryBlock::new(device_memory, LinearAllocator::new(id, size))
+                        };
+
+                        // Use the block to allocate the requested area, done
+                        match block.allocate(req_align, req_size) {
+                            Ok(pointer)                        => { return Ok((block.mem(), pointer)); },
+                            Err(err)                           => { return Err(err); },
+                        };
+                    },
+                    Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY)   |
+                    Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => { continue },
+                    Err(err) => { return Err(Error::MemoryAllocateError{ name: device.name().into(), size: req_size, mem_type: mtype.mtype(), err }); }
+                }
+            };
+        }
+
+        // 5. If we have not been able to allocate a new block of the given size, try again for another memory type which may support the requested area
+        continue;
+    }
+
+    // 6. Unable to find any memory :(
+    Err(Error::OutOfMemoryError{ req_size })
+}
+
+
+
+
+
 /***** AUXILLARY STRUCTS *****/
+/// Defines a collection of MemoryBlocks belonging to a certain type.
+struct MemoryType {
+    /// The DeviceMemoryType identifier of this type of memory.
+    mtype  : DeviceMemoryType,
+    /// The supported properties of this type of memory.
+    mprops : MemoryPropertyFlags,
+
+    /// The list of memory blocks allocated in this type.
+    blocks : Vec<MemoryBlock>,
+}
+
+impl MemoryType {
+    /// Constructor for the MemoryType.
+    /// 
+    /// # Arguments
+    /// - `mem_type`: The DeviceMemoryType that this MemoryType represents.
+    /// - `mem_props`: The supported MemoryPropertyFlags by this type of memory.
+    #[inline]
+    fn new(mem_type: DeviceMemoryType, mem_props: MemoryPropertyFlags) -> Self {
+        Self {
+            mtype  : mem_type,
+            mprops : mem_props,
+
+            blocks : Vec::with_capacity(16),
+        }
+    }
+
+
+
+    /// Adds a new MemoryBlock to this type.
+    /// 
+    /// # Argument
+    /// - `block`: The MemoryBlock to register belonging to this memory type.
+    #[inline]
+    fn add(&mut self, block: MemoryBlock) { self.blocks.push(block) }
+
+    /// Returns a(n immuteable) list of the Blocks in this type.
+    #[inline]
+    fn blocks(&self) -> &[MemoryBlock] { &self.blocks }
+
+    /// Returns a (muteable) list of the Blocks in this type.
+    #[inline]
+    fn blocks_mut(&mut self) -> &mut Vec<MemoryBlock> { &mut self.blocks }
+
+
+
+    /// Returns the DeviceMemoryType for this MemoryBlock.
+    #[inline]
+    fn mtype(&self) -> DeviceMemoryType { self.mtype }
+
+    /// Returns the MemoryPropertyFlags for this MemoryBlock.
+    #[inline]
+    fn mprops(&self) -> MemoryPropertyFlags { self.mprops }
+}
+
+
+
+
+
 /// Defines a single block of continious memory, which may be sub-allocated to provide buffers.
 struct MemoryBlock {
+    /// The VkDeviceMemory that we wrap.
+    memory    : vk::DeviceMemory,
     /// The allocator strategy of this block.
     allocator : Box<dyn MemoryAllocator>,
 }
 
 impl MemoryBlock {
+    /// Constructor for the MemoryBlock.
+    /// 
+    /// # Generic types
+    /// - `A`: The type of the MemoryAllocator to build this MemoryBlock around.
+    /// 
+    /// # Arguments
+    /// - `memory`: The VkDeviceMemory around which to wrap this block.
+    /// - `allocator`: Instance of the Allocator to allocate new memory in this block with.
+    #[inline]
+    fn new<A: 'static + MemoryAllocator>(memory: vk::DeviceMemory, allocator: A) -> Self {
+        Self {
+            memory,
+            allocator : Box::new(allocator),
+        }
+    }
+
+
+
     /// Allocates a new chunk of continious memory using the internal allocation strategy.
     /// 
     /// # Arguments
@@ -92,27 +278,31 @@ impl MemoryBlock {
     /// # Errors
     /// This function may error if there is no large enough continious block of memory available for the given alignment + size request.
     #[inline]
-    pub fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error> {
+    fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error> {
         self.allocator.allocate(align, size)
     }
 
 
 
+    /// Returns the memory wrapped by this block.
+    #[inline]
+    fn mem(&self) -> vk::DeviceMemory { self.memory }
+
     /// Returns the allocation strategy (and possibly the specific instance of it) for this memory block.
     #[inline]
-    pub fn kind(&self) -> MemoryAllocatorKind {
+    fn kind(&self) -> MemoryAllocatorKind {
         self.allocator.kind()
     }
 
     /// Returns the total space used in this MemoryBlock.
     #[inline]
-    pub fn size(&self) -> usize {
+    fn size(&self) -> usize {
         self.allocator.size()
     }
 
     /// Returns the total capacity of this MemoryBlock.
     #[inline]
-    pub fn capacity(&self) -> usize {
+    fn capacity(&self) -> usize {
         self.allocator.capacity()
     }
 }
@@ -132,7 +322,7 @@ pub struct MemoryPool {
     /// The preferred block size
     pref_block_size : usize,
     /// The memory-type mapped blocks of memory.
-    blocks          : HashMap<DeviceMemoryTypeFlags, Vec<MemoryBlock>>,
+    types           : Vec<MemoryType>,
 }
 
 impl MemoryPool {
@@ -152,39 +342,8 @@ impl MemoryPool {
             device_props,
 
             pref_block_size : block_size,
-            blocks          : HashMap::with_capacity(n_types),
+            types           : Vec::with_capacity(n_types),
         })
-    }
-
-
-
-    /// Given a set of memory requirements & desired properties, returns the associated DeviceMemoryTypeFlags.
-    /// 
-    /// # Arguments
-    /// - `requirements`: A filter of DeviceMemoryTypeFlags that contain the possible types which we allow according to the specific Buffer.
-    /// - `properties`: The MemoryPropertyFlags that list desired properties from our resulting memory type.
-    /// 
-    /// # Returns
-    /// The most suited DeviceMemoryTypeFlags according to the MemoryPool. If it returns None, then no memory type was found with all of the requirements.
-    pub fn select_device_type(&self, requirements: DeviceMemoryTypeFlags, properties: MemoryPropertyFlags) -> Option<DeviceMemoryTypeFlags> {
-        // Get the properties of the parent GPU
-        let device_props: vk::PhysicalDeviceMemoryProperties = unsafe { self.device.instance().vk().get_physical_device_memory_properties(self.device.physical_device()) };
-
-        // Iterate through the available memory types
-        for (i, memory_type) in device_props.memory_types.iter().enumerate() {
-            // Skip this type if not in the requirements
-            let memory_props: DeviceMemoryTypeFlags = (i as u32).into();
-            if !requirements.check(memory_props) { continue; }
-
-            // Make sure that the property flags are present
-            if !MemoryPropertyFlags::from(memory_type.property_flags).check(properties) { continue; }
-
-            // Alright, we'll take it
-            return Some(memory_props);
-        }
-
-        // No supported queue found
-        None
     }
 
 
@@ -228,75 +387,29 @@ impl MemoryPool {
         let buffer_size  : usize                 = buffer_requirements.size as usize;
         let buffer_types : DeviceMemoryTypeFlags = buffer_requirements.memory_type_bits.into();
 
-        // Now iterate over all memory types to find a suitable one
-        for (i, memory_type) in self.device_props.memory_types.iter().enumerate() {
-            // Skip if this type is not one of the required ones
-            let memory_props: DeviceMemoryTypeFlags = (i as u32).into();
-            if !memory_props.check(buffer_types) { continue; }
+        // Get a piece of memory to allocate
+        let (memory, pointer) = allocate_memory(
+            &self.device,
+            self.pref_block_size,
+            &mut self.types,
+            buffer_size, buffer_align, buffer_types, info.memory_props, info.allocator
+        )?;
 
-            // Skip if the memory property flags are not present
-            let type_props: MemoryPropertyFlags = memory_type.property_flags.into();
-            if !type_props.check(info.memory_props) { continue; }
-
-            // Now check to see if any blocks have already been allocated
-            let pointer = match self.blocks.get(&memory_props) {
-                Some(blocks) => {
-                    // Try to allocate it in *some* block of this type
-                    let mut pointer = usize::MAX;
-                    for block in blocks {
-                        // Skip if not enough total space
-                        if block.capacity() < buffer_size { continue; }
-                        // Skip if not the desired allocator
-                        if block.kind() != info.allocator { continue; }
-
-                        // Now try to allocate the block with the appropriate allocator
-                        pointer = match block.allocate(buffer_align, buffer_size) {
-                            Ok(pointer)                        => pointer,
-                            Err(Error::OutOfMemoryError{ .. }) => { continue; },
-                            Err(err)                           => { return Err(err); },
-                        };
-
-                        // Done
-                        break;
-                    }
-
-                    // Return it
-                    pointer
-                },
-                None => usize::MAX,
-            };
-
-            // If no suitable block has been found, attempt to allocate a new one
-            if pointer == usize::MAX {
-                
-            }
-        }
-
-        // Now prepare the allocation info for this Buffer type
-        let alloc_info = self.allocator.allocate(&AllocationCreateDesc {
-            name,
-            requirements: buffer_requirements,
-            location: location.into(),
-            linear: true,
-        });
-
-        // Now choose the memory type based on this buffer's requirements
-        let memory_type: DeviceMemoryTypeFlags = match self.select_device_type(buffer_requirements.memory_type_bits.into(), memory_properties) {
-            Some(memory_type) => memory_type,
-            None              => { return Err(Error::UnsupportedMemoryRequirements{ name: self.device.name().to_string(), types: buffer_requirements.memory_type_bits.into(), props: memory_properties }); }
-        };
-
-        // With the memory type chosen, see if we have a pool memory available
-        let pool: &mut DeviceMemory = match self.pools.get_mut(&memory_type) {
-            Some(pool) => pool,
-            None       => {
-                // Try to allocate a new one
-                self.pools.insert(memory_type, DeviceMemory::new(memory_type, self.block_size)?);
-
-                // Return it
-                self.pools.get_mut(&memory_type).unwrap()
+        // Bind the buffer to it
+        unsafe {
+            if let Err(err) = self.device.bind_buffer_memory(buffer, memory, pointer as vk::DeviceSize) {
+                return Err(Error::BufferBindError{ err });
             }
         };
+
+        // Nice! Return
+        Ok(Rc::new(Buffer {
+            buffer,
+
+            usage_flags : info.usage_flags,
+            mem_props   : info.memory_props,
+            size        : buffer_size,
+        }))
     }
 
 

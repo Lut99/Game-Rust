@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   04 Jun 2022, 15:44:38
+ *   12 Jun 2022, 13:16:32
  * Auto updated?
  *   Yes
  *
@@ -15,20 +15,24 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
-use crate::auxillary::{DeviceMemoryTypeFlags, MemoryAllocatorKind, MemoryPropertyFlags};
+use crate::auxillary::{DeviceMemoryType, DeviceMemoryTypeFlags, MemoryPropertyFlags};
 
 
 /***** ERRORS *****/
 /// Defines errors for MemoryPools / Buffers.
 #[derive(Debug)]
 pub enum MemoryPoolError {
+    /// Could not find a memory type with all of the supported requirements and properties.
+    UnsupportedMemoryRequirements{ name: String, types: DeviceMemoryTypeFlags, props: MemoryPropertyFlags },
+    /// Failed to allocate a new memory block
+    MemoryAllocateError{ name: String, size: usize, mem_type: DeviceMemoryType, err: ash::vk::Result },
     /// Could not allocate a new continious block of memory due to some kind of out-of-memory error.
-    OutOfMemoryError{ kind: MemoryAllocatorKind, size: usize, free: usize, fragmented: bool },
+    OutOfMemoryError{ req_size: usize },
 
     /// Failed to create a new VkBuffer object.
     BufferCreateError{ err: ash::vk::Result },
-    /// Could not find a memory type with all of the supported requirements and properties.
-    UnsupportedMemoryRequirements{ name: String, types: DeviceMemoryTypeFlags, props: MemoryPropertyFlags },
+    /// Failed to bind a buffer to allocated memory.
+    BufferBindError{ err: ash::vk::Result },
 }
 
 impl Display for MemoryPoolError {
@@ -36,10 +40,12 @@ impl Display for MemoryPoolError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use MemoryPoolError::*;
         match self {
-            OutOfMemoryError{ kind, size, free, fragmented } => write!(f, "Could not allocate new block of {} bytes on a {} allocator: largest free block is only {} bytes (caused by fragmentation: {})", size, kind, free, if *fragmented { "yes" } else { "no" }),
-
-            BufferCreateError{ err }                            => write!(f, "Could not create Buffer: {}", err),
             UnsupportedMemoryRequirements{ name, types, props } => write!(f, "Device '{}' has no memory type that supports memory requirements '{:#b}' and memory properties {}", name, u32::from(*types), props),
+            MemoryAllocateError{ name, size, mem_type, err }    => write!(f, "Device '{}' could not allocate {} bytes on memory type {}: {}", name, size, u32::from(*mem_type), err),
+            OutOfMemoryError{ req_size }                        => write!(f, "Could not allocate new block of {} bytes", req_size),
+
+            BufferCreateError{ err } => write!(f, "Could not create Buffer: {}", err),
+            BufferBindError{ err }   => write!(f, "Could not bind Buffer to memory: {}", err),
         }
     }
 }

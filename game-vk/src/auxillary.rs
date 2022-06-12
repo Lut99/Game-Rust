@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   04 Jun 2022, 15:45:37
+ *   12 Jun 2022, 12:37:33
  * Auto updated?
  *   Yes
  *
@@ -3510,16 +3510,53 @@ impl From<DynamicState> for vk::DynamicState {
 
 
 /***** MEMORY POOLS *****/
-/// Define a type of memory that a device has to offer.
+/// Define a single type of memory that a device has to offer.
 /// 
-/// Note: because the actual list is device-dependent, there are no constants available for this Flags implementation.
+/// Note: because the actual list is device-dependent, there are no constants available for this "enum" implementation.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct DeviceMemoryType(u32);
+
+impl From<u32> for DeviceMemoryType {
+    #[inline]
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+impl From<DeviceMemoryType> for u32 {
+    #[inline]
+    fn from(value: DeviceMemoryType) -> Self {
+        value.0
+    }
+}
+
+impl From<DeviceMemoryTypeFlags> for DeviceMemoryType {
+    fn from(value: DeviceMemoryTypeFlags) -> Self {
+        // Sanity check that it has only one value set
+        if value.0.count_ones() != 1 { panic!("Cannot cast a DeviceMemoryTypeFlags to a DeviceMemoryType if it has less or more than one flags set"); }
+        Self(value.0)
+    }
+}
+
+impl From<DeviceMemoryType> for DeviceMemoryTypeFlags {
+    #[inline]
+    fn from(value: DeviceMemoryType) -> Self {
+        Self(value.0)
+    }
+}
+
+
+
+/// Define a multiple types of memory that a device has to offer.
+/// 
+/// Note: because the actual list is device-dependent, there are no constants available for this "flags" implementation.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceMemoryTypeFlags(u32);
 
 impl DeviceMemoryTypeFlags {
     /// Checks if this DeviceMemoryTypeFlags is a superset of the given one.
     #[inline]
-    pub fn check(&self, other: DeviceMemoryTypeFlags) -> bool { (self.0 & other.0) == other.0 }
+    pub fn check<T: Into<u32>>(&self, other: T) -> bool { (self.0 & other.into()) == other.into() }
 }
 
 impl BitOr for DeviceMemoryTypeFlags {
@@ -3800,7 +3837,7 @@ pub enum MemoryAllocatorKind {
     /// Defines a linear allocator, which is fast in allocation but which will not re-use deallocated buffer space.
     /// 
     /// The index in this linear allocator is referencing some block that was allocated beforehand.
-    Linear(usize),
+    Linear(u64),
 }
 
 impl Default for MemoryAllocatorKind {

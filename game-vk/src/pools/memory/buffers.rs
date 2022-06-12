@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:11:03
  * Last edited:
- *   29 May 2022, 15:54:12
+ *   12 Jun 2022, 13:18:22
  * Auto updated?
  *   Yes
  *
@@ -12,16 +12,21 @@
  *   Defines buffers that are used in the MemoryPool.
 **/
 
+use ash::vk;
+
 use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags};
 
 
 /***** LIBRARY *****/
 /// An allocated piece of memory in the MemoryPool.
 pub struct Buffer {
+    /// The VkBuffer object we wrap.
+    pub(crate) buffer : vk::Buffer,
+
     /// The usage flags for this Buffer.
-    usage_flags : BufferUsageFlags,
+    pub(crate) usage_flags : BufferUsageFlags,
     /// The memory properties of the memory backing this Buffer.
-    mem_props   : MemoryPropertyFlags,
+    pub(crate) mem_props   : MemoryPropertyFlags,
     /// The size (in bytes) of this Buffer.
-    size        : usize,
+    pub(crate) size        : usize,
 }

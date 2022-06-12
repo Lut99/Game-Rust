@@ -4,7 +4,7 @@
  * Created:
  *   04 Jun 2022, 15:29:44
  * Last edited:
- *   04 Jun 2022, 16:01:08
+ *   12 Jun 2022, 13:20:18
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,16 @@ use game_utl::traits::AsAny;
 
 pub(crate) use crate::pools::errors::MemoryPoolError as Error;
 use crate::auxillary::MemoryAllocatorKind;
+
+
+/***** AUXILLARY STRUCTS *****/
+/// A single block of free memory within the free list.
+struct FreeBlock {
+    
+}
+
+
+
 
 
 /***** LIBRARY TRAIT *****/
@@ -52,7 +62,7 @@ pub(crate) trait MemoryAllocator: AsAny {
 /// A simple allocator optimised for allocating many blocks and then throwing them away again.
 pub(crate) struct LinearAllocator {
     /// Some ID used to distinguish multiple LinearAllocators.
-    id : usize,
+    id : u64,
 
     /// The current pointer in the area managed by this allocator.
     pointer  : usize,
@@ -67,7 +77,7 @@ impl LinearAllocator {
     /// - `id`: The identifier of this allocator, so it may be distinguished and reset as a whole.
     /// - `size`: The size of the area which this allocator manages.
     #[inline]
-    pub fn new(id: usize, size: usize) -> Self {
+    pub(crate) fn new(id: u64, size: usize) -> Self {
         Self {
             id,
 
@@ -80,7 +90,13 @@ impl LinearAllocator {
 
     /// Resets the LinearAllocator to be completely empty again.
     #[inline]
-    pub fn reset(&mut self) { self.pointer = 0; }
+    pub(crate) fn reset(&mut self) { self.pointer = 0; }
+
+
+
+    /// Returns the ID of the LinearAllocator.
+    #[inline]
+    pub(crate) fn id(&self) -> u64 { self.id }
 }
 
 impl MemoryAllocator for LinearAllocator {
@@ -107,7 +123,7 @@ impl MemoryAllocator for LinearAllocator {
         };
 
         // Check if the space left behind the pointer is enough
-        if self.capacity - pointer > size { return Err(Error::OutOfMemoryError{ kind: self.kind(), size: (pointer - self.pointer) + size, free: self.capacity - self.pointer, fragmented: false }); }
+        if self.capacity - pointer > size { return Err(Error::OutOfMemoryError{ req_size: size }); }
 
         // Get the pointer, then increment it
         let result = pointer;
@@ -130,4 +146,58 @@ impl MemoryAllocator for LinearAllocator {
     /// Returns the total capacity of the area managed by this MemoryAllocator.
     #[inline]
     fn capacity(&self) -> usize { self.capacity }
+}
+
+
+
+/// A more complex allocator that tries to find free space in previously freed blocks.
+pub(crate) struct DenseAllocator {
+    /// A list of all free blocks within the DenseAllocator.
+    free_list : FreeBlock,
+}
+
+impl DenseAllocator {
+    /// Constructor for the DenseAllocator.
+    /// 
+    /// # Arguments
+    /// - 
+    #[inline]
+    pub(crate) fn new() -> Self {
+        Self {
+            free_list : FreeBlock{},
+        }
+    }
+}
+
+impl MemoryAllocator for DenseAllocator {
+    /// Allocates a new piece of memory in the area managed by the allocator.
+    /// 
+    /// Doesn't really allocate it, but does reserve space for it internally and returns where this area may be created.
+    /// 
+    /// # Arguments
+    /// - `align`: The bytes on which to align for the linear allocator. Must be a multiple of two.
+    /// - `size`: The size of the area to allocate.
+    /// 
+    /// # Returns
+    /// The "pointer" (index) in the area that this allocator manages that has been reserved for the new block.
+    /// 
+    /// # Errors
+    /// This function may error if the block could not be allocated. In general, this would be because of not enough (continious) memory available.
+    fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error> {
+        todo!();
+    }
+
+
+
+    /// Returns the type of this MemoryAllocator.
+    #[inline]
+    fn kind(&self) -> MemoryAllocatorKind { MemoryAllocatorKind::Dense }
+
+    /// Returns the space used in the area managed by this MemoryAllocator.
+    #[inline]
+    fn size(&self) -> usize { todo!(); }
+
+    /// Returns the total capacity of the area managed by this MemoryAllocator.
+    #[inline]
+    fn capacity(&self) -> usize { todo!(); }
 }
