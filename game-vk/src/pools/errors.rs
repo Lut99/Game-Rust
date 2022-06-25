@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   25 Jun 2022, 16:10:04
+ *   25 Jun 2022, 18:36:11
  * Auto updated?
  *   Yes
  *
@@ -35,6 +35,8 @@ pub enum MemoryPoolError {
     BufferCreateError{ err: ash::vk::Result },
     /// Failed to bind a buffer to allocated memory.
     BufferBindError{ err: ash::vk::Result },
+    /// Failed to acquire a lock on the memory pool.
+    PoolLockError{ err: String },
 }
 
 impl Display for MemoryPoolError {
@@ -49,6 +51,7 @@ impl Display for MemoryPoolError {
 
             BufferCreateError{ err } => write!(f, "Could not create Buffer: {}", err),
             BufferBindError{ err }   => write!(f, "Could not bind Buffer to memory: {}", err),
+            PoolLockError{ err }     => write!(f, "Could not get a write lock on the MemoryPool: {}", err),
         }
     }
 }

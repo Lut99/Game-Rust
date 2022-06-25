@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   12 Jun 2022, 12:37:33
+ *   25 Jun 2022, 18:21:47
  * Auto updated?
  *   Yes
  *
@@ -3516,6 +3516,13 @@ impl From<DynamicState> for vk::DynamicState {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceMemoryType(u32);
 
+impl Display for DeviceMemoryType {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl From<u32> for DeviceMemoryType {
     #[inline]
     fn from(value: u32) -> Self {
@@ -3557,6 +3564,31 @@ impl DeviceMemoryTypeFlags {
     /// Checks if this DeviceMemoryTypeFlags is a superset of the given one.
     #[inline]
     pub fn check<T: Into<u32>>(&self, other: T) -> bool { (self.0 & other.into()) == other.into() }
+}
+
+impl Display for DeviceMemoryTypeFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        // Construct a list
+        let mut first = true;
+        let mut i: u32 = 0x1;
+        while i != 0 {
+            // Check if this property is enabled
+            if self.0 & i != 0 {
+                // Write the comma if necessary
+                if first { first = false; }
+                else { write!(f, ", ")?; }
+
+                // Write the name of this property
+                write!(f, "{}", self.0)?;
+            }
+
+            // Increment the i
+            i = i << 1;
+        }
+
+        // Done
+        Ok(())
+    }
 }
 
 impl BitOr for DeviceMemoryTypeFlags {

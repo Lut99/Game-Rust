@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:16:04
  * Last edited:
- *   25 Jun 2022, 16:17:02
+ *   25 Jun 2022, 18:37:19
  * Auto updated?
  *   Yes
  *
@@ -12,14 +12,14 @@
  *   Entrypoint to the Buffers, Images and MemoryPool module.
 **/
 
+/// Contains common definitions for the MemoryPool specifically.
+pub mod spec;
+/// Contains shared functions across the pools.
+pub mod utils;
+/// Contains the pools with which we allocate the buffer.
+pub mod pools;
 /// Contains the buffer definitions
 pub mod buffers;
-/// Contains the pool trait that is the frontend for multiple types of memory pools
-pub mod pool;
-/// Contains the cheap but inflexible linear pool
-pub mod linear_pool;
-/// Contains the expensive but flexible block pool
-pub mod block_pool;
 
 
 // // Bring some stuff into the module scope
