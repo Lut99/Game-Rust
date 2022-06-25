@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   12 Jun 2022, 13:18:53
+ *   25 Jun 2022, 16:15:56
  * Auto updated?
  *   Yes
  *
@@ -312,6 +312,15 @@ impl MemoryBlock {
 
 
 /***** LIBRARY *****/
+/// Defines the common interface to all kinds of MemoryPools.
+pub trait MemoryPool {
+    /// Logic that determines the offset 
+}
+
+
+
+
+
 /// The CommandPool defines a Pool for command buffers.
 pub struct MemoryPool {
     /// The parent GPU where the pools will be allocated.

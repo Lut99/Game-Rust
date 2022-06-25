@@ -4,7 +4,7 @@
  * Created:
  *   04 Jun 2022, 15:29:44
  * Last edited:
- *   12 Jun 2022, 17:43:40
+ *   25 Jun 2022, 16:15:55
  * Auto updated?
  *   Yes
  *
@@ -21,29 +21,29 @@ use crate::auxillary::MemoryAllocatorKind;
 
 
 /***** AUXILLARY STRUCTS *****/
-/// A single block of free memory within the free list.
-struct FreeBlock {
-    /// The offset of this free block.
+/// A single block of used memory within the used list.
+struct UsedBlock {
+    /// The offset of this used block.
     pointer : usize,
-    /// The size of this free block.
+    /// The size of this used block.
     size    : usize,
 
-    /// The pointer to the next free block.
-    next : Option<Rc<FreeBlock>>,
-    /// The pointer to the previous free block.
-    prev : Option<Rc<FreeBlock>>,
+    /// The pointer to the next used block.
+    next : Option<Rc<Self>>,
+    /// The pointer to the previous used block.
+    prev : Option<Rc<Self>>,
 }
 
-impl FreeBlock {
-    /// Constructor for the FreeBlock.
+impl UsedBlock {
+    /// Constructor for the UsedBlock.
     /// 
     /// # Arguments
     /// - `pointer`: The start 'address' of the free block of memory. Relative to whatever block of memory the allocator is in charge of.
     /// - `size`: The size of the free block.
-    /// - `next`: Pointer to the next FreeBlock. If omitted, implies the end of this FreeBlock aligns with the end of the allocator memory (i.e., last block).
-    /// - `prev`: Pointer to the previous FreeBlock. If omitted, implies the start of this FreeBlock aligns with the start of the allocator memory (i.e., first block).
+    /// - `next`: Pointer to the next UsedBlock. If omitted, implies the end of this UsedBlock aligns with the end of the allocator memory (i.e., last block).
+    /// - `prev`: Pointer to the previous UsedBlock. If omitted, implies the start of this UsedBlock aligns with the start of the allocator memory (i.e., first block).
     #[inline]
-    fn new(pointer: usize, size: usize, next: Option<Rc<FreeBlock>>, prev: Option<Rc<FreeBlock>>) -> Rc<Self> {
+    fn new(pointer: usize, size: usize, next: Option<Rc<Self>>, prev: Option<Rc<Self>>) -> Rc<Self> {
         Rc::new(Self {
             pointer,
             size,
@@ -75,6 +75,10 @@ pub(crate) trait MemoryAllocator: AsAny {
     /// # Errors
     /// This function may error if the block could not be allocated. In general, this would be because of not enough (continious) memory available.
     fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error>;
+    /// Resets the Allocator to its empty state.
+    /// 
+    /// This _might_ be a very cheap operation for some allocators (i.e., `LinearAllocator`), and a less cheap operation for others (i.e., `DenseAllocator`).
+    fn reset(&mut self);
 
     /// Returns the type of this MemoryAllocator.
     fn kind(&self) -> MemoryAllocatorKind;
@@ -118,12 +122,6 @@ impl LinearAllocator {
 
 
 
-    /// Resets the LinearAllocator to be completely empty again.
-    #[inline]
-    pub(crate) fn reset(&mut self) { self.pointer = 0; }
-
-
-
     /// Returns the ID of the LinearAllocator.
     #[inline]
     pub(crate) fn id(&self) -> u64 { self.id }
@@ -163,6 +161,12 @@ impl MemoryAllocator for LinearAllocator {
         Ok(result)
     }
 
+    /// Resets the Allocator to its empty state.
+    /// 
+    /// This _might_ be a very cheap operation for some allocators (i.e., `LinearAllocator`), and a less cheap operation for others (i.e., `DenseAllocator`).
+    #[inline]
+    fn reset(&mut self) { self.pointer = 0; }
+
 
 
     /// Returns the type of this MemoryAllocator.
@@ -182,8 +186,8 @@ impl MemoryAllocator for LinearAllocator {
 
 /// A more complex allocator that tries to find free space in previously freed blocks.
 pub(crate) struct DenseAllocator {
-    /// A list of all free blocks within the DenseAllocator.
-    free_list : Rc<FreeBlock>,
+    /// A list of all used blocks within the DenseAllocator.
+    used_list : Option<Rc<UsedBlock>>,
 
     /// A counter that keeps track of the used space in the allocator. Deducible from the free list, but here as optimization.
     size     : usize,
@@ -199,11 +203,51 @@ impl DenseAllocator {
     #[inline]
     pub(crate) fn new(size: usize) -> Self {
         Self {
-            free_list : FreeBlock::new(0, size, None, None),
+            used_list : Some(UsedBlock::new(0, size, None, None)),
 
             size     : 0,
             capacity : size,
         }
+    }
+
+
+
+    /// Frees a given block in the DenseAllocator.
+    /// 
+    /// # Arguments
+    /// - `pointer`: The pointer in the block to remove.
+    /// 
+    /// # Errors
+    /// This function may error if the pointer does not point to the start of a block.
+    pub(crate) fn free(&mut self, pointer: usize) -> Result<(), Error> {
+        // Try to find the UsedBlock with this pointer
+        let mut this: Option<&mut Rc<UsedBlock>> = self.used_list.as_mut();
+        while this.is_some() {
+            // Extract the block from the ptr
+            let block: &mut Rc<UsedBlock> = this.unwrap();
+
+            // Do the comparison
+            if block.pointer == pointer {
+                // Cool, remove it
+                if let Some(prev) = block.prev.as_mut() {
+                    prev.next = block.next;
+                } else {
+                    self.used_list = block.next;
+                }
+                if let Some(next) = block.next.as_mut() {
+                    next.prev = block.prev;
+                }
+
+                // Return
+                return Ok(());
+            }
+
+            // Otherwise, try the next one
+            this = block.next.as_mut();
+        }
+
+        // Didn't find the memory block
+        Err(Error::UnknownPointer{ ptr: pointer })
     }
 }
 
@@ -222,10 +266,77 @@ impl MemoryAllocator for DenseAllocator {
     /// # Errors
     /// This function may error if the block could not be allocated. In general, this would be because of not enough (continious) memory available.
     fn allocate(&mut self, align: usize, size: usize) -> Result<usize, Error> {
-        // Iterate over the available free blocks
-        for block in self.free_list {
-            
+        // Optimisation: we can sometimes be sure no free block has space left
+        if size > (self.capacity - self.size) { return Err(Error::OutOfMemoryError{ req_size: size }); }
+
+        // Try find if we can insert enough memory before any of the used blocks
+        // Note: we require that the list of memory blocks is sorted
+        let mut this: Option<&mut Rc<UsedBlock>> = self.used_list.as_mut();
+        while this.is_some() {
+            // Extract the block from the ptr
+            let block: &mut Rc<UsedBlock> = this.unwrap();
+
+            // Compute the aligned end of the previous block
+            let pointer = block.prev.map(|b| b.pointer + b.size).unwrap_or(0);
+            let align_pointer = if align != 0 {
+                if (align & (align - 1)) != 0 { panic!("Given alignment '{}' is not a power of two", align); }
+                (pointer + (align - 1)) & ((!align) + 1)
+            } else {
+                pointer
+            };
+
+            // Compute the required and available space before this block
+            let req_size: usize = (align_pointer - pointer) + size;
+            let avl_size: usize = block.pointer - block.prev.map(|b| b.pointer + b.size).unwrap_or(0);
+            if avl_size >= req_size {
+                // Create a new used block and insert it before this one
+                let new_block = UsedBlock::new(align_pointer, size, Some(block.clone()), block.prev.map(|b| b.clone()));
+                block.prev = Some(new_block);
+
+                // Update the size & return
+                self.size += req_size;
+                return Ok(align_pointer);
+            }
+
+            // Otherwise, try the next block
+            this = block.next.as_mut();
         }
+    
+        // If we haven't found space before any of the blocks, then check if we have space after the last one
+        if let Some(block) = self.used_list.as_mut() {
+            // Compute the aligned end of the previous block
+            let pointer = block.prev.map(|b| b.pointer + b.size).unwrap_or(0);
+            let align_pointer = if align != 0 {
+                if (align & (align - 1)) != 0 { panic!("Given alignment '{}' is not a power of two", align); }
+                (pointer + (align - 1)) & ((!align) + 1)
+            } else {
+                pointer
+            };
+
+            // If that leaves enough space until the end, use it
+            let req_size: usize = (align_pointer - pointer) + size;
+            let avl_size: usize = self.capacity - align_pointer;
+            if avl_size >= req_size {
+                // Create a new used block and insert it after this one
+                let new_block = UsedBlock::new(align_pointer, size, None, Some(block.clone()));
+                block.next = Some(new_block);
+
+                // Update the size & return
+                self.size += req_size;
+                return Ok(align_pointer);
+            }
+        }
+
+        // No suitable free block found
+        Err(Error::OutOfMemoryError{ req_size: size })
+    }
+
+    /// Resets the Allocator to its empty state.
+    /// 
+    /// This _might_ be a very cheap operation for some allocators (i.e., `LinearAllocator`), and a less cheap operation for others (i.e., `DenseAllocator`).
+    fn reset(&mut self) {
+        self.used_list = None;
+        self.size      = 0;
     }
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   12 Jun 2022, 13:16:32
+ *   25 Jun 2022, 16:10:04
  * Auto updated?
  *   Yes
  *
@@ -28,6 +28,8 @@ pub enum MemoryPoolError {
     MemoryAllocateError{ name: String, size: usize, mem_type: DeviceMemoryType, err: ash::vk::Result },
     /// Could not allocate a new continious block of memory due to some kind of out-of-memory error.
     OutOfMemoryError{ req_size: usize },
+    /// The given memory pointer was not one matching a block to free.
+    UnknownPointer{ ptr: usize },
 
     /// Failed to create a new VkBuffer object.
     BufferCreateError{ err: ash::vk::Result },
@@ -43,6 +45,7 @@ impl Display for MemoryPoolError {
             UnsupportedMemoryRequirements{ name, types, props } => write!(f, "Device '{}' has no memory type that supports memory requirements '{:#b}' and memory properties {}", name, u32::from(*types), props),
             MemoryAllocateError{ name, size, mem_type, err }    => write!(f, "Device '{}' could not allocate {} bytes on memory type {}: {}", name, size, u32::from(*mem_type), err),
             OutOfMemoryError{ req_size }                        => write!(f, "Could not allocate new block of {} bytes", req_size),
+            UnknownPointer{ ptr }                               => write!(f, "Pointer '{:#X}' does not point to an allocated block", ptr),
 
             BufferCreateError{ err } => write!(f, "Could not create Buffer: {}", err),
             BufferBindError{ err }   => write!(f, "Could not bind Buffer to memory: {}", err),

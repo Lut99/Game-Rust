@@ -2,9 +2,9 @@
  *   by Lut99
  *
  * Created:
- *   28 May 2022, 17:09:25
+ *   25 Jun 2022, 16:16:04
  * Last edited:
- *   04 Jun 2022, 15:30:00
+ *   25 Jun 2022, 16:17:02
  * Auto updated?
  *   Yes
  *
@@ -14,12 +14,14 @@
 
 /// Contains the buffer definitions
 pub mod buffers;
-/// Defines the allocators used
-pub mod allocators;
-/// Contains the pool itself
+/// Contains the pool trait that is the frontend for multiple types of memory pools
 pub mod pool;
+/// Contains the cheap but inflexible linear pool
+pub mod linear_pool;
+/// Contains the expensive but flexible block pool
+pub mod block_pool;
 
 
-// Bring some stuff into the module scope
-pub use buffers::Buffer;
-pub use pool::{Error, MemoryPool as Pool};
+// // Bring some stuff into the module scope
+// pub use buffers::Buffer;
+// pub use pool::{Error, MemoryPool as Pool};
