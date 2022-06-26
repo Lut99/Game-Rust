@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   29 May 2022, 18:00:11
+ *   26 Jun 2022, 13:06:11
  * Auto updated?
  *   Yes
  *
@@ -137,6 +137,9 @@ impl RenderSystem {
             Ok(device) => device,
             Err(err)   => { return Err(Error::DeviceCreateError{ err }); }  
         };
+
+        // Allocate the memory pools on the GPU
+        // let pool = LinearPool::new(device.clone());
 
         // Allocate the pools on the GPU
         let command_pool = match CommandPool::new(device.clone()) {

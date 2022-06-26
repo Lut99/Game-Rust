@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   25 Jun 2022, 18:03:17
+ *   26 Jun 2022, 13:04:52
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,7 @@ use ash::vk;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::vec_as_ptr;
-use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags, SharingMode};
+use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
 use crate::device::Device;
 use crate::pools::memory::spec::MemoryPool;
 
@@ -79,11 +79,11 @@ pub struct Buffer {
     /// The sharing mode that determines which queue families have access to this Buffer.
     sharing_mode : SharingMode,
     /// The memory requirements of this Buffer.
-    mem_req      : vk::MemoryRequirements,
+    mem_req      : MemoryRequirements,
     /// The memory properties of the memory backing this Buffer.
     mem_props    : MemoryPropertyFlags,
     /// The size (in bytes) of this Buffer.
-    size         : usize,
+    capacity     : usize,
 }
 
 impl Buffer {
@@ -121,16 +121,15 @@ impl Buffer {
         // For now, we leave it at this; return the buffer
         Ok(Rc::new(Self {
             device,
-            pool : None,
 
             buffer,
             memory : None,
 
             usage_flags,
             sharing_mode,
-            mem_req : requirements,
+            mem_req : requirements.into(),
             mem_props,
-            size,
+            capacity: size,
         }))
     }
 
@@ -170,7 +169,7 @@ impl Buffer {
             };
 
             // Reserve the area
-            lock.allocate(self.mem_req, self.mem_props)?
+            lock.allocate(&self.mem_req, self.mem_props)?
         };
 
         // Bind the memory
@@ -185,7 +184,60 @@ impl Buffer {
         Ok(())
     }
 
+    /// Frees the memory that is backing this Buffer.
+    /// 
+    /// # Returns
+    /// Nothing explicitly, but does free the backend memory. Call `Buffer::bind()` before using the Buffer again.
+    /// 
+    /// # Errors
+    /// This function may error if the pool lock was poisoned.
+    #[inline]
+    pub fn release(&mut self) -> Result<(), Error> {
+        // Only free if there is something to be freed
+        if let Some((pool, _, pointer)) = self.memory.take() {
+            // Get a lock
+            let mut lock: RwLockWriteGuard<_> = match pool.write() {
+                Ok(lock) => lock,
+                Err(err) => { return Err(Error::PoolLockError{ err: format!("{}", err) }); }
+            };
+
+            // Free the pointer
+            lock.free(pointer);
+        }
+
+        // Done
+        Ok(())
+    }
 
 
-    
+
+    /// Returns the usage flags for this Buffer.
+    #[inline]
+    pub fn usage(&self) -> BufferUsageFlags { self.usage_flags }
+
+    /// Returns the usage flags for this Buffer.
+    #[inline]
+    pub fn sharing_mode(&self) -> &SharingMode { &self.sharing_mode }
+
+    /// Returns the memory requirements for this Buffer.
+    #[inline]
+    pub fn requirements(&self) -> &MemoryRequirements { &self.mem_req }
+
+    /// Returns the memory properties of the memory underlying this Buffer.
+    #[inline]
+    pub fn properties(&self) -> MemoryPropertyFlags { self.mem_props }
+
+    /// Returns the allocated size of the buffer.
+    /// 
+    /// Note that the actual allocate size may vary; check `Buffer::requirements().size` for the actual allocated size.
+    #[inline]
+    pub fn capacity(&self) -> usize { self.capacity }
+}
+
+impl Drop for Buffer {
+    #[inline]
+    fn drop(&mut self) {
+        // Simply call release
+        self.release().unwrap_or_else(|err| panic!("Failed to free Buffer memory: {}", err));
+    }
 }

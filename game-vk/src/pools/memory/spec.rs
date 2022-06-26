@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   25 Jun 2022, 18:11:58
+ *   26 Jun 2022, 14:15:04
  * Auto updated?
  *   Yes
  *
@@ -12,29 +12,16 @@
  *   Contains the interfaces and definitions for the MemoryPools.
 **/
 
+use std::rc::Rc;
+
 use ash::vk;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::auxillary::{DeviceMemoryType, MemoryPropertyFlags};
+use crate::auxillary::{MemoryPropertyFlags, MemoryRequirements};
+use crate::device::Device;
 
 
 /***** LIBRARY *****/
-/// Defines a single, continious block of memory that lives on a single type of memory on the Device.
-pub(crate) struct MemoryBlock {
-    /// The VkDeviceMemory that is actually represented by this block.
-    pub(crate) mem       : vk::DeviceMemory,
-    /// The memory type for this block.
-    pub(crate) mem_type  : DeviceMemoryType,
-    /// The properties supported by this block.
-    pub(crate) mem_props : MemoryPropertyFlags,
-    /// The size (in bytes) of this block.
-    pub(crate) mem_size  : usize,
-}
-
-
-
-
-
 /// The MemoryPool trait which we use to define common access to a MemoryPool.
 pub trait MemoryPool {
     /// Returns a newly allocated area of (at least) the requested size.
@@ -48,7 +35,7 @@ pub trait MemoryPool {
     /// 
     /// # Errors
     /// This function errors if the MemoryPool failed to allocate new memory.
-    fn allocate(&mut self, reqs: vk::MemoryRequirements, props: MemoryPropertyFlags) -> Result<(vk::DeviceMemory, usize), Error>;
+    fn allocate(&mut self, reqs: &MemoryRequirements, props: MemoryPropertyFlags) -> Result<(vk::DeviceMemory, usize), Error>;
 
     /// Frees an allocated bit of memory.
     /// 
@@ -63,4 +50,15 @@ pub trait MemoryPool {
 
     /// Resets the memory pool back to its initial, empty state.
     fn reset(&mut self);
+
+
+
+    /// Returns the device of the pool.
+    fn device(&self) -> &Rc<Device>;
+
+    /// Returns the used space in the pool.
+    fn size(&self) -> usize;
+
+    /// Returns the total space in the pool.
+    fn capacity(&self) -> usize;
 }

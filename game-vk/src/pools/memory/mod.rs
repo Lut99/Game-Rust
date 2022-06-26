@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:16:04
  * Last edited:
- *   25 Jun 2022, 18:37:19
+ *   26 Jun 2022, 13:16:39
  * Auto updated?
  *   Yes
  *
@@ -14,14 +14,15 @@
 
 /// Contains common definitions for the MemoryPool specifically.
 pub mod spec;
-/// Contains shared functions across the pools.
-pub mod utils;
+/// Contains a memory block wrapper.
+pub mod block;
 /// Contains the pools with which we allocate the buffer.
 pub mod pools;
 /// Contains the buffer definitions
 pub mod buffers;
 
 
-// // Bring some stuff into the module scope
-// pub use buffers::Buffer;
-// pub use pool::{Error, MemoryPool as Pool};
+// Bring some stuff into the module scope
+pub use buffers::Buffer;
+pub use spec::MemoryPool;
+pub use pools::{Error, LinearPool};

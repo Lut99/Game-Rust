@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   25 Jun 2022, 18:21:47
+ *   26 Jun 2022, 13:02:02
  * Auto updated?
  *   Yes
  *
@@ -3510,6 +3510,41 @@ impl From<DynamicState> for vk::DynamicState {
 
 
 /***** MEMORY POOLS *****/
+/// Defines the memory requirements of a buffer or image.
+#[derive(Clone, Debug)]
+pub struct MemoryRequirements {
+    /// The minimum size of the required memory block.
+    pub size  : usize,
+    /// The alignment (in bytes) of the start of the required memory block. Must be a multiple of two.
+    pub align : usize,
+    /// The device memory types that are supported by the buffer or image for this particular usage.
+    pub types : DeviceMemoryTypeFlags,
+}
+
+impl From<vk::MemoryRequirements> for MemoryRequirements {
+    #[inline]
+    fn from(value: vk::MemoryRequirements) -> Self {
+        Self {
+            size  : value.size as usize,
+            align : value.alignment as usize,
+            types : value.memory_type_bits.into(),
+        }
+    }
+}
+
+impl From<MemoryRequirements> for vk::MemoryRequirements {
+    #[inline]
+    fn from(value: MemoryRequirements) -> Self {
+        Self {
+            size             : value.size as vk::DeviceSize,
+            alignment        : value.align as vk::DeviceSize,
+            memory_type_bits : value.types.into(),
+        }
+    }
+}
+
+
+
 /// Define a single type of memory that a device has to offer.
 /// 
 /// Note: because the actual list is device-dependent, there are no constants available for this "enum" implementation.
@@ -3563,7 +3598,7 @@ pub struct DeviceMemoryTypeFlags(u32);
 impl DeviceMemoryTypeFlags {
     /// Checks if this DeviceMemoryTypeFlags is a superset of the given one.
     #[inline]
-    pub fn check<T: Into<u32>>(&self, other: T) -> bool { (self.0 & other.into()) == other.into() }
+    pub fn check<T: Into<u32>>(&self, other: T) -> bool { let other = other.into(); (self.0 & other) == other }
 }
 
 impl Display for DeviceMemoryTypeFlags {
