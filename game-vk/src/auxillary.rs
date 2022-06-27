@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   26 Jun 2022, 13:02:02
+ *   27 Jun 2022, 18:28:51
  * Auto updated?
  *   Yes
  *
@@ -3516,7 +3516,7 @@ pub struct MemoryRequirements {
     /// The minimum size of the required memory block.
     pub size  : usize,
     /// The alignment (in bytes) of the start of the required memory block. Must be a multiple of two.
-    pub align : usize,
+    pub align : u8,
     /// The device memory types that are supported by the buffer or image for this particular usage.
     pub types : DeviceMemoryTypeFlags,
 }

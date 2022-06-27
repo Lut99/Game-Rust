@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:18:26
  * Last edited:
- *   26 Jun 2022, 13:21:22
+ *   27 Jun 2022, 18:47:49
  * Auto updated?
  *   Yes
  *
@@ -67,6 +67,9 @@ impl MemoryBlock {
     /// Factory method for the MemoryBlock, which allocates a new vk::DeviceMemory with the given requirements and properties.
     /// 
     /// # Arguments
+    /// - `device`: The Device on which we allocate.
+    /// - `reqs`: The allowed memory types to allocate on.
+    /// - `props`: The requested properties of the chosen memory type.
     /// 
     /// # Returns
     /// A new MemoryBlock.
@@ -86,35 +89,14 @@ impl MemoryBlock {
             if !mem_props.check(props) { continue; }
             found_candidate = true;
 
-            // Populate the memory info
-            let alloc_info: vk::MemoryAllocateInfo = populate_alloc_info(
-                reqs.size as vk::DeviceSize,
-                i as u32,
-            );
+            // Call the other factory method for this device type
+            match Self::allocate_on_type(device, DeviceMemoryType::from(i as u32), reqs.size) {
+                // If it's an out-of-memory error, then we try the next type
+                Err(Error::OutOfMemoryError{ .. }) => { continue; }
 
-            // Now attempt to allocate a suitably large enough block
-            let memory: vk::DeviceMemory = unsafe {
-                match device.allocate_memory(&alloc_info, None) {
-                    Ok(memory) => memory,
-
-                    // Try the next block if out of memory
-                    Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY)   |
-                    Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => { continue; },
-
-                    // Otherwise, throw error
-                    Err(err)   => { return Err(Error::MemoryAllocateError{ name: device.name().into(), size: reqs.size, mem_type: (i as u32).into(), err }); }
-                }
-            };
-
-            // Wrap it in a block and we're done
-            return Ok(MemoryBlock {
-                device,
-
-                mem       : memory,
-                mem_type  : (i as u32).into(),
-                mem_props,
-                mem_size  : reqs.size,
-            });
+                // Otherwise, use the result
+                res => { return res; },
+            }
         }
 
         // Failed to find a suitable block; determine the exact error to throw
@@ -122,6 +104,53 @@ impl MemoryBlock {
             true  => Err(Error::OutOfMemoryError{ req_size: reqs.size }),
             false => Err(Error::UnsupportedMemoryRequirements{ name: device.name().into(), types: reqs.types, props }),
         }
+    }
+
+    /// Factory method for the MemoryBlock, which allocates a new vk::DeviceMemory on the given memory type.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device on which we allocate.
+    /// - `mem_type`: The DeviceMemoryType on which we allocate.
+    /// - `size`: The size (in bytes) of the new block to allocate.
+    /// 
+    /// # Returns
+    /// A new MemoryBlock.
+    /// 
+    /// # Errors
+    /// This function may error if there was no memory left.
+    pub fn allocate_on_type(device: Rc<Device>, mem_type: DeviceMemoryType, size: usize) -> Result<Self, Error> {
+        // First: query the supported properties of this block (again)
+        let device_props : vk::PhysicalDeviceMemoryProperties = unsafe { device.instance().get_physical_device_memory_properties(device.physical_device()) };
+
+        // Populate the memory info
+        let alloc_info: vk::MemoryAllocateInfo = populate_alloc_info(
+            size as vk::DeviceSize,
+            mem_type.into(),
+        );
+
+        // Now attempt to allocate a suitably large enough block
+        let memory: vk::DeviceMemory = unsafe {
+            match device.allocate_memory(&alloc_info, None) {
+                Ok(memory) => memory,
+
+                // Return an out-of-memory error specifically (so other functions may try for another type)
+                Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY)   |
+                Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => { return Err(Error::OutOfMemoryError{ req_size: size }) },
+
+                // Otherwise, throw error
+                Err(err)   => { return Err(Error::MemoryAllocateError{ name: device.name().into(), size, mem_type, err }); }
+            }
+        };
+
+        // Wrap it in a block and we're done
+        return Ok(MemoryBlock {
+            device,
+
+            mem       : memory,
+            mem_type,
+            mem_props : device_props.memory_types[u32::from(mem_type) as usize].property_flags.into(),
+            mem_size  : size,
+        });
     }
 
 
