@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   27 Jun 2022, 18:29:14
+ *   29 Jun 2022, 19:20:10
  * Auto updated?
  *   Yes
  *
@@ -26,9 +26,10 @@ use crate::device::Device;
 /***** LIBRARY *****/
 /// The type of pointers used across the pools.
 /// 
-/// We current use 64-bit pointers, which we split into one number of 16-bit and one of 48 bits:
-/// - The first number determines the block pool used (in the case of a meta pool; otherwise, always 0's)
-/// - The second number determines the pointer within that pool.
+/// We current use 64-bit pointers, which we split into one number of 5-bit, one of 11 bits and one of 48 bits:
+/// - The first number determines the memory type used (in the case of a non-meta pool, always 0's)
+/// - The second number determines the block pool used within that type (in the case of a non-meta pool, always 0's)
+/// - The third number determines the pointer within that pool.
 #[derive(Copy, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct GpuPtr(u64);
 
@@ -38,6 +39,15 @@ impl GpuPtr {
 
     /// Returns a NULL pointer.
     pub const NULL: Self = Self(!0);
+
+
+
+    /// Constructs a new GpuPtr with the appropriate values set
+    /// 
+    /// # Arguments
+    /// - `mem_type`: The index of the memory type.
+    /// - `pool`: The index of the memory pool.
+    /// - `
 
 
 

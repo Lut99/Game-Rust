@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 18:04:08
  * Last edited:
- *   27 Jun 2022, 18:51:05
+ *   29 Jun 2022, 19:20:13
  * Auto updated?
  *   Yes
  *
@@ -15,10 +15,9 @@
  *   (https://github.com/Lut99/Rasterizer).
 **/
 
-use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Result as FResult};
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::slice;
 
 use ash::vk;
 
@@ -141,7 +140,9 @@ impl Debug for UsedBlock {
 /// Groups the BlockPools belonging to one type.
 struct MemoryType {
     /// The list of pools that are allocated for this type.
-    pools : Vec<BlockPool>,
+    pools : Vec<Rc<BlockPool>>,
+    /// The index of this type
+    index : DeviceMemoryType,
     /// The supported properties by this type.
     props : MemoryPropertyFlags,
 }
@@ -175,14 +176,14 @@ impl LinearPool {
     /// # Returns
     /// A new LinearPool instance, already wrapped in an Arc and a RwLock.
     #[inline]
-    pub fn new(device: Rc<Device>, capacity: usize) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self {
+    pub fn new(device: Rc<Device>, capacity: usize) -> Rc<Self> {
+        Rc::new(Self {
             device,
             block : None,
 
             pointer : GpuPtr::ZERO,
             capacity,
-        }))
+        })
     }
 
 
@@ -308,15 +309,15 @@ impl BlockPool {
     /// # Returns
     /// A new BlockPool instance, already wrapped in an Arc and a RwLock.
     #[inline]
-    pub fn new(device: Rc<Device>, block: MemoryBlock) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self {
+    pub fn new(device: Rc<Device>, block: MemoryBlock) -> Rc<Self> {
+        Rc::new(Self {
             device,
             block,
 
             first : None,
             last  : None,
             size : 0,
-        }))
+        })
     }
 }
 
@@ -455,12 +456,57 @@ pub struct MetaPool {
     /// The device where all nested pools live.
     device: Rc<Device>,
 
-    /// A map of memory types where we have already allocated stuff.
-    types : HashMap<DeviceMemoryType, MemoryType>,
+    /// The preferred size of a new pool. Note that pools may actually be smaller or larger, but this is the default size.
+    pref_size  : usize,
+    /// A collection of memory types supported by this GPU.
+    types      : Vec<MemoryType>,
+
+    /// The total used size in the MetaPool.
+    size     : usize,
+    /// The total capacity in the MetaPool (estimation).
+    capacity : usize,
 }
 
 impl MetaPool {
+    /// Constructor for the MetaPool.
+    /// 
+    /// This constructor analyses the given device for quite some things and locks those in memory for the duration of its lifetime. If the memory properties are prone to change (somehow), consider creating the pool closer to where you need it.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device where all memory will be allocated.
+    /// - `pref_size`: The preferred memory block size. Note that blocks may still be smaller (to fill gaps) or larger (for larger allocations).
+    /// 
+    /// # Returns
+    /// A new MetaPool instance, wrapped in a reference-counting pointer.
+    pub fn new(device: Rc<Device>, pref_size: usize) -> Rc<Self> {
+        // Get all available types from the device
+        let device_props: vk::PhysicalDeviceMemoryProperties = unsafe { device.instance().get_physical_device_memory_properties(device.physical_device()) };
+        let device_heaps: &[vk::MemoryHeap] = unsafe { slice::from_raw_parts(device_props.memory_heaps.as_ptr(), device_props.memory_heap_count as usize) };
+        let device_types: &[vk::MemoryType] = unsafe { slice::from_raw_parts(device_props.memory_types.as_ptr(), device_props.memory_type_count as usize) };
 
+        // Deduce both the list and the total capacity
+        let types: Vec<MemoryType> = Vec::with_capacity(device_types.len());
+        let capacity: usize = 0;
+        for (i, mem_type) in device_types.into_iter().enumerate() {
+            capacity += device_heaps[mem_type.heap_index as usize].size as usize;
+            types.push(MemoryType {
+                pools : Vec::with_capacity(4),
+                index : DeviceMemoryType::from(i as u32),
+                props : mem_type.property_flags.into(),
+            })
+        }
+
+        // Wrap that in ourselves and done
+        Rc::new(Self {
+            device,
+
+            pref_size,
+            types,
+
+            size : 0,
+            capacity,
+        })
+    }
 }
 
 impl MemoryPool for MetaPool {
@@ -488,20 +534,69 @@ impl MemoryPool for MetaPool {
     /// # Errors
     /// This function errors if the MemoryPool failed to allocate new memory.
     fn allocate(&mut self, reqs: &MemoryRequirements, props: MemoryPropertyFlags) -> Result<(vk::DeviceMemory, GpuPtr), Error> {
-        // 1. Iterate over the blocks to find if any existing block suits us
-        for (mem_type, mem_type_props) in &self.types {
-            // Skip if not in the allowed types or not supporting the correct properties
-            if !reqs.types.check(*mem_type)       { continue; }
-            if !mem_type_props.props.check(props) { continue; }
-
-            // Now try to find a pool with enough space
-            for pool in &mem_type_props.pools {
-                
-            }
+        // Preparation: construct a list of types that favours those we have already allocated from
+        let memory_types: Vec<&mut MemoryType> = Vec::with_capacity(self.types.len());
+        for mem_type in &mut self.types {
+            if !mem_type.pools.is_empty() { memory_types.push(mem_type); }
+        }
+        for mem_type in &mut self.types {
+            if  mem_type.pools.is_empty() { memory_types.push(mem_type); }
         }
 
-        // Done
-        Ok(())
+        // 1. Iterate over the blocks to find if any existing block suits us
+        for mem_type in memory_types {
+            // Skip if not in the allowed types or not supporting the correct properties
+            if !reqs.types.check(mem_type.index)       { continue; }
+            if !mem_type.props.check(props) { continue; }
+
+            // Now try to find a pool with enough space
+            for pool in &mut mem_type.pools {
+                // Get the muteable pool lock on the pool
+                let pool: &mut BlockPool = Rc::get_mut(pool).expect("Could not get muteable BlockPool");
+
+                // Skip if not enough space
+                if reqs.size > pool.capacity() - pool.size() { continue; }
+
+                // Attempt to allocate a new block here and encode the pool index in the pointer
+                let (memory, pointer): (vk::DeviceMemory, GpuPtr) = pool.allocate(reqs, props)?;
+                
+                return Ok((memory, pointer));
+            }
+
+            // 2. & 3. If we failed to find an appropriate pool, then (try to) allocate a new one
+            for block_size in [ self.pref_size, self.pref_size / 2, self.pref_size / 4, self.pref_size / 8, reqs.size ] {
+                // Stop trying if the block isn't large enough for this allocation
+                if reqs.size > block_size { continue; }
+
+                // Attempt the allocation
+                let new_block: MemoryBlock = match MemoryBlock::allocate_on_type(self.device.clone(), mem_type.index, block_size) {
+                    Ok(new_block)                      => new_block,
+                    // Try the next block if not enough memory, or fail otherwise
+                    Err(Error::OutOfMemoryError{ .. }) => { continue; }
+                    Err(err)                           => { return Err(err); }
+                };
+
+                // Allocate new memory on this block (which we assume succeeds)
+                let new_pool: Rc<BlockPool> = BlockPool::new(self.device.clone(), new_block);
+                let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
+                    // Get the muteable pool lock on the pool
+                    let new_pool: &mut BlockPool = Rc::get_mut(&mut new_pool).expect("Could not get muteable BlockPool");
+
+                    // Perform the allocation
+                    new_pool.allocate(reqs, props)?
+                };
+
+                // Now add the pool internally and return the new allocation
+                mem_type.pools.push(new_pool);
+                return Ok((memory, pointer));
+            }
+
+            // If not found, attempt to seek another memory type that we already know of
+            continue;
+        }
+
+        // No free memory on the device anymore :(
+        Err(Error::OutOfMemoryError{ req_size: reqs.size })
     }
 
     /// Frees an allocated bit of memory.
@@ -515,13 +610,13 @@ impl MemoryPool for MetaPool {
     /// This function may panic if the given pointer was never allocated with this pool.
     #[inline]
     fn free(&mut self, pointer: GpuPtr) {
-        
+        /* TODO */
     }
 
     /// Resets the memory pool back to its initial, empty state.
     #[inline]
     fn reset(&mut self) {
-        
+        /* TODO */
     }
 
 
@@ -531,10 +626,9 @@ impl MemoryPool for MetaPool {
     fn device(&self) -> &Rc<Device> { &self.device }
 
     /// Returns the used space in the pool.
-    #[inline]
-    fn size(&self) -> usize {  }
+    fn size(&self) -> usize { self.size }
 
     /// Returns the total space in the pool.
     #[inline]
-    fn capacity(&self) -> usize {  }
+    fn capacity(&self) -> usize { self.capacity }
 }
