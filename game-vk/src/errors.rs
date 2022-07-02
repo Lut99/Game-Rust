@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:56
  * Last edited:
- *   14 May 2022, 13:41:23
+ *   02 Jul 2022, 11:31:13
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,37 @@ use ash::vk;
 
 
 /***** ERRORS *****/
-// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
+/// Defines error(s) relating to the extension & layer enums.
+#[derive(Debug)]
+pub enum ExtensionError {
+    /// The given string value was not a valid one for the InstanceExtension.
+    UnknownInstanceExtension{ got: String },
+    /// The given string value was not a valid one for the InstanceLayer.
+    UnknownInstanceLayer{ got: String },
+    /// The given string value was not a valid one for the DeviceExtension.
+    UnknownDeviceExtension{ got: String },
+    /// The given string value was not a valid one for the DeviceLayer.
+    UnknownDeviceLayer{ got: String },
+}
+
+impl Display for ExtensionError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use ExtensionError::*;
+        match self {
+            UnknownInstanceExtension{ got } => write!(f, "Unknown instance extension '{}'", got),
+            UnknownInstanceLayer{ got }     => write!(f, "Unknown instance layer '{}'", got),
+            UnknownDeviceExtension{ got }   => write!(f, "Unknown device extension '{}'", got),
+            UnknownDeviceLayer{ got }       => write!(f, "Unknown device layer '{}'", got),
+        }
+    }
+}
+
+impl Error for ExtensionError {}
+
+
+
+/// Defines errors relating to going back and forth between AttributeLayouts and vk::Formats.
 #[derive(Clone, Debug)]
 pub enum AttributeLayoutError {
     /// Given vk::Format value was a valid vk::Format, but not a valid AttributeLayout

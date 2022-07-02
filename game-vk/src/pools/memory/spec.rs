@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   02 Jul 2022, 10:37:51
+ *   02 Jul 2022, 11:15:57
  * Auto updated?
  *   Yes
  *
@@ -26,7 +26,7 @@ use crate::device::Device;
 
 /***** UNIT TESTS *****/
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     /// Tests GpuPtr's initializers
@@ -48,6 +48,109 @@ mod test {
 
         // Test the aligned constructor
         assert_eq!(GpuPtr::aligned(5, 5, 0x42, 16).as_raw(), 0x2805000000000050);
+    }
+
+    /// Tests GpuPtr's `align` and `agnostic` functions
+    #[test]
+    fn test_operators() {
+        // Test align
+        assert_eq!(GpuPtr::new(5, 0, 0x42).align(1).as_raw(),   0x2800000000000042);
+        assert_eq!(GpuPtr::new(5, 0, 0x42).align(4).as_raw(),   0x2800000000000044);
+        assert_eq!(GpuPtr::new(5, 0, 0x42).align(16).as_raw(),  0x2800000000000050);
+
+        // Test agnostic
+        assert_eq!(GpuPtr::new(0, 0, 0x42).agnostic().as_raw(), 0x42);
+        assert_eq!(GpuPtr::new(5, 0, 0x42).agnostic().as_raw(), 0x42);
+        assert_eq!(GpuPtr::new(0, 0, 0x42).agnostic().as_raw(), 0x42);
+        assert_eq!(GpuPtr::new(5, 5, 0x42).agnostic().as_raw(), 0x42);
+    }
+
+    /// Tests GpuPtr's `set_*` functions
+    #[test]
+    fn test_set() {
+        // Test set_type_idx
+        let mut ptr1 = GpuPtr::new(0, 0, 0   ); ptr1.set_type_idx(15);
+        let mut ptr2 = GpuPtr::new(5, 0, 0   ); ptr2.set_type_idx(15);
+        let mut ptr3 = GpuPtr::new(0, 5, 0x42); ptr3.set_type_idx(15);
+        let mut ptr4 = GpuPtr::new(5, 5, 0x42); ptr4.set_type_idx(15);
+        assert_eq!(ptr1, GpuPtr::new(15, 0, 0));
+        assert_eq!(ptr2, GpuPtr::new(15, 0, 0));
+        assert_eq!(ptr3, GpuPtr::new(15, 5, 0x42));
+        assert_eq!(ptr4, GpuPtr::new(15, 5, 0x42));
+        
+        // Test set_pool_idx
+        let mut ptr1 = GpuPtr::new(0, 0, 0   ); ptr1.set_pool_idx(15);
+        let mut ptr2 = GpuPtr::new(5, 0, 0   ); ptr2.set_pool_idx(15);
+        let mut ptr3 = GpuPtr::new(0, 5, 0x42); ptr3.set_pool_idx(15);
+        let mut ptr4 = GpuPtr::new(5, 5, 0x42); ptr4.set_pool_idx(15);
+        assert_eq!(ptr1, GpuPtr::new(0, 15, 0));
+        assert_eq!(ptr2, GpuPtr::new(5, 15, 0));
+        assert_eq!(ptr3, GpuPtr::new(0, 15, 0x42));
+        assert_eq!(ptr4, GpuPtr::new(5, 15, 0x42));
+
+        // Test set_ptr
+        let mut ptr1 = GpuPtr::new(0, 0, 0   ); ptr1.set_ptr(0x84);
+        let mut ptr2 = GpuPtr::new(5, 0, 0   ); ptr2.set_ptr(0x84);
+        let mut ptr3 = GpuPtr::new(0, 5, 0x42); ptr3.set_ptr(0x84);
+        let mut ptr4 = GpuPtr::new(5, 5, 0x42); ptr4.set_ptr(0x84);
+        assert_eq!(ptr1, GpuPtr::new(0, 0, 0x84));
+        assert_eq!(ptr2, GpuPtr::new(5, 0, 0x84));
+        assert_eq!(ptr3, GpuPtr::new(0, 5, 0x84));
+        assert_eq!(ptr4, GpuPtr::new(5, 5, 0x84));
+    }
+
+    /// Tests GpuPtr's arithmetic operators
+    #[test]
+    fn test_arithmetic() {
+        // Test normal add
+        assert_eq!(GpuPtr::new(0, 0, 0   ) + GpuPtr::new(0, 0, 0   ), GpuPtr::new(0, 0, 0   ));
+        assert_eq!(GpuPtr::new(0, 0, 0x42) + GpuPtr::new(0, 0, 0   ), GpuPtr::new(0, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 0, 0   ) + GpuPtr::new(0, 0, 0x42), GpuPtr::new(0, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 0, 0x42) + GpuPtr::new(0, 0, 0x42), GpuPtr::new(0, 0, 0x84));
+        assert_eq!(GpuPtr::new(5, 0, 0x42) + GpuPtr::new(5, 0, 0   ), GpuPtr::new(5, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 5, 0   ) + GpuPtr::new(0, 5, 0x42), GpuPtr::new(0, 5, 0x42));
+        assert_eq!(GpuPtr::new(5, 5, 0x42) + GpuPtr::new(5, 5, 0x42), GpuPtr::new(5, 5, 0x84));
+        
+        // Test assign add
+        let mut ptr1 = GpuPtr::new(0, 0, 0   ); ptr1 += GpuPtr::new(0, 0, 0   );
+        let mut ptr2 = GpuPtr::new(0, 0, 0x42); ptr2 += GpuPtr::new(0, 0, 0   );
+        let mut ptr3 = GpuPtr::new(0, 0, 0   ); ptr3 += GpuPtr::new(0, 0, 0x42);
+        let mut ptr4 = GpuPtr::new(0, 0, 0x42); ptr4 += GpuPtr::new(0, 0, 0x42);
+        let mut ptr5 = GpuPtr::new(5, 0, 0x42); ptr5 += GpuPtr::new(5, 0, 0   );
+        let mut ptr6 = GpuPtr::new(0, 5, 0   ); ptr6 += GpuPtr::new(0, 5, 0x42);
+        let mut ptr7 = GpuPtr::new(5, 5, 0x42); ptr7 += GpuPtr::new(5, 5, 0x42);
+        assert_eq!(ptr1, GpuPtr::new(0, 0, 0   ));
+        assert_eq!(ptr2, GpuPtr::new(0, 0, 0x42));
+        assert_eq!(ptr3, GpuPtr::new(0, 0, 0x42));
+        assert_eq!(ptr4, GpuPtr::new(0, 0, 0x84));
+        assert_eq!(ptr5, GpuPtr::new(5, 0, 0x42));
+        assert_eq!(ptr6, GpuPtr::new(0, 5, 0x42));
+        assert_eq!(ptr7, GpuPtr::new(5, 5, 0x84));
+        
+        // Test normal add, but now for usizes
+        assert_eq!(GpuPtr::new(0, 0, 0   ) + 0   , GpuPtr::new(0, 0, 0   ));
+        assert_eq!(GpuPtr::new(0, 0, 0x42) + 0   , GpuPtr::new(0, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 0, 0   ) + 0x42, GpuPtr::new(0, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 0, 0x42) + 0x42, GpuPtr::new(0, 0, 0x84));
+        assert_eq!(GpuPtr::new(5, 0, 0x42) + 0   , GpuPtr::new(5, 0, 0x42));
+        assert_eq!(GpuPtr::new(0, 5, 0   ) + 0x42, GpuPtr::new(0, 5, 0x42));
+        assert_eq!(GpuPtr::new(5, 5, 0x42) + 0x42, GpuPtr::new(5, 5, 0x84));
+        
+        // Test assign add, but now for usizes
+        let mut ptr1 = GpuPtr::new(0, 0, 0   ); ptr1 += 0;
+        let mut ptr2 = GpuPtr::new(0, 0, 0x42); ptr2 += 0;
+        let mut ptr3 = GpuPtr::new(0, 0, 0   ); ptr3 += 0x42;
+        let mut ptr4 = GpuPtr::new(0, 0, 0x42); ptr4 += 0x42;
+        let mut ptr5 = GpuPtr::new(5, 0, 0x42); ptr5 += 0;
+        let mut ptr6 = GpuPtr::new(0, 5, 0   ); ptr6 += 0x42;
+        let mut ptr7 = GpuPtr::new(5, 5, 0x42); ptr7 += 0x42;
+        assert_eq!(ptr1, GpuPtr::new(0, 0, 0   ));
+        assert_eq!(ptr2, GpuPtr::new(0, 0, 0x42));
+        assert_eq!(ptr3, GpuPtr::new(0, 0, 0x42));
+        assert_eq!(ptr4, GpuPtr::new(0, 0, 0x84));
+        assert_eq!(ptr5, GpuPtr::new(5, 0, 0x42));
+        assert_eq!(ptr6, GpuPtr::new(0, 5, 0x42));
+        assert_eq!(ptr7, GpuPtr::new(5, 5, 0x84));
     }
 }
 
@@ -294,6 +397,9 @@ impl Add for GpuPtr {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
+        // Sanity check
+        if self.0 & (0xFFFF << (64 - 16)) != rhs.0 & (0xFFFF << (64 - 16)) { warn!("Attempting to add two GpuPtr's with differing type/pool indices (T{}P{} + T{}P{})", self.type_idx(), self.pool_idx(), rhs.type_idx(), rhs.pool_idx()); }
+
         // Fetch the ptr-parts
         let lhs_ptr: u64 = self.0 & 0xFFFFFFFFFFFF;
         let rhs_ptr: u64 = rhs.0  & 0xFFFFFFFFFFFF;
@@ -343,70 +449,6 @@ impl AddAssign<usize> for GpuPtr {
         *self = self.add(rhs)
     }
 }
-
-// impl BitAnd for GpuPtr {
-//     type Output = Self;
-
-//     #[inline]
-//     fn bitand(self, rhs: Self) -> Self::Output {
-//         Self(self.0 & rhs.0)
-//     }
-// }
-
-// impl BitAndAssign for GpuPtr {
-//     #[inline]
-//     fn bitand_assign(&mut self, rhs: Self) {
-//         self.0 &= rhs.0;
-//     }
-// }
-
-// impl BitAnd<usize> for GpuPtr {
-//     type Output = Self;
-
-//     #[inline]
-//     fn bitand(self, rhs: usize) -> Self::Output {
-//         Self(self.0 & rhs as u64)
-//     }
-// }
-
-// impl BitAndAssign<usize> for GpuPtr {
-//     #[inline]
-//     fn bitand_assign(&mut self, rhs: usize) {
-//         self.0 &= rhs as u64;
-//     }
-// }
-
-// impl BitOr for GpuPtr {
-//     type Output = Self;
-
-//     #[inline]
-//     fn bitor(self, rhs: Self) -> Self::Output {
-//         Self(self.0 | rhs.0)
-//     }
-// }
-
-// impl BitOrAssign for GpuPtr {
-//     #[inline]
-//     fn bitor_assign(&mut self, rhs: Self) {
-//         self.0 |= rhs.0;
-//     }
-// }
-
-// impl BitOr<usize> for GpuPtr {
-//     type Output = Self;
-
-//     #[inline]
-//     fn bitor(self, rhs: usize) -> Self::Output {
-//         Self(self.0 | rhs as u64)
-//     }
-// }
-
-// impl BitOrAssign<usize> for GpuPtr {
-//     #[inline]
-//     fn bitor_assign(&mut self, rhs: usize) {
-//         self.0 |= rhs as u64;
-//     }
-// }
 
 impl From<usize> for GpuPtr {
     #[inline]

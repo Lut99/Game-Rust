@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 18:04:08
  * Last edited:
- *   02 Jul 2022, 10:34:22
+ *   02 Jul 2022, 15:14:11
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,6 @@
  *   (https://github.com/Lut99/Rasterizer).
 **/
 
-use std::fmt::{Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 use std::slice;
 
@@ -29,115 +28,217 @@ use crate::pools::memory::block::MemoryBlock;
 use crate::pools::memory::spec::{GpuPtr, MemoryPool};
 
 
+/***** UNIT TESTS *****/
+#[cfg(test)]
+mod tests {
+    use semver::Version;
+    use crate::auxillary::{DeviceFeatures, DeviceMemoryTypeFlags, InstanceLayer};
+    use crate::instance::Instance;
+    use super::*;
+
+    /// The instance extensions to use for the tests
+    const INSTANCE_EXTENSIONS: &[&'static str] = &[];
+    /// The instance layers to use for the tests
+    const INSTANCE_LAYERS: &[&'static str]     = &[ InstanceLayer::KhronosValidation.as_str() ];
+    /// The device extensions to use for the tests
+    const DEVICE_EXTENSIONS: &[&'static str]   = &[];
+    /// The device layers to use for the tests
+    const DEVICE_LAYERS: &[&'static str]       = &[];
+    /// The device layers to use for the tests
+    const DEVICE_FEATURES: DeviceFeatures      = DeviceFeatures::cdefault();
+
+    /// Tests the linearpool's allocation algorithm
+    #[test]
+    fn test_linear_pool() {
+        // Initialize an instance and a device
+        let instance = Instance::new(
+            format!("{}_test_linear_pool", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            format!("{}_test_linear_pool_engine", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            INSTANCE_EXTENSIONS,
+            INSTANCE_LAYERS,
+        ).expect("Failed to initialize Instance");
+        let device = Device::new(
+            instance.clone(),
+            Device::auto_select(
+                instance.clone(),
+                &DEVICE_EXTENSIONS,
+                &DEVICE_LAYERS,
+                &DEVICE_FEATURES,
+            ).expect("Could not find a suitable GPU for tests"),
+            &DEVICE_EXTENSIONS,
+            &DEVICE_LAYERS,
+            &DEVICE_FEATURES,
+        ).expect("Failed to initialize Device");
+
+        // Create a LinearPool on said device
+        let mut pool = LinearPool::new(device.clone(), 512);
+        let mpool: &mut LinearPool = Rc::get_mut(&mut pool).expect("Could not get muteable linear pool");
+        // Allocate four non-aligned blocks of 128 bytes
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 128));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 256));
+
+        // Create another to check it overflow correctly
+        let mut pool = LinearPool::new(device.clone(), 512);
+        let mpool: &mut LinearPool = Rc::get_mut(&mut pool).expect("Could not get muteable linear pool");
+        // Allocate a block that's always too large
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+        // Next, allocate some blocks and then check out-of-bounds
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+
+        // Finally, a block to check alignment
+        let mut pool = LinearPool::new(device.clone(), 512);
+        let mpool: &mut LinearPool = Rc::get_mut(&mut pool).expect("Could not get muteable linear pool");
+        // Allocate the first block with  weird size
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        // Allocate one that needs to be aligned
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 136));
+        // One with even bigger alignment
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 272));
+        // This one should fail _because_ of its alignment
+        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 400));
+
+        // If we now reset this pool, we should then be able to allocate new blocks
+        mpool.reset();
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+    }
+
+    /// Tests the blockpool's allocation algorithm
+    #[test]
+    fn test_block_pool() {
+        // Initialize an instance and a device
+        let instance = Instance::new(
+            format!("{}_test_block_pool", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            format!("{}_test_block_pool_engine", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            INSTANCE_EXTENSIONS,
+            INSTANCE_LAYERS,
+        ).expect("Failed to initialize Instance");
+        let device = Device::new(
+            instance.clone(),
+            Device::auto_select(
+                instance.clone(),
+                &DEVICE_EXTENSIONS,
+                &DEVICE_LAYERS,
+                &DEVICE_FEATURES,
+            ).expect("Could not find a suitable GPU for tests"),
+            &DEVICE_EXTENSIONS,
+            &DEVICE_LAYERS,
+            &DEVICE_FEATURES,
+        ).expect("Failed to initialize Device");
+
+        // Create a BlockPool on said device
+        let mut pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let mpool: &mut BlockPool = Rc::get_mut(&mut pool).expect("Could not get muteable block pool");
+        // Allocate four non-aligned blocks of 128 bytes
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 128));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 256));
+
+        // Create another to check it overflow correctly
+        let mut pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let mpool: &mut BlockPool = Rc::get_mut(&mut pool).expect("Could not get muteable block pool");
+        // Allocate a block that's always too large
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+        // Next, allocate some blocks and then check out-of-bounds
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+
+        // A block to check alignment
+        let mut pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let mpool: &mut BlockPool = Rc::get_mut(&mut pool).expect("Could not get muteable block pool");
+        // Allocate the first block with  weird size
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        // Allocate one that needs to be aligned
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 136));
+        // One with even bigger alignment
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 272));
+        // This one should fail _because_ of its alignment
+        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 400));
+
+        // If we now reset this pool, we should then be able to allocate new blocks
+        mpool.reset();
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+
+        // Finally we do a pool to check if it properly frees
+        let mut pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let mpool: &mut BlockPool = Rc::get_mut(&mut pool).expect("Could not get muteable block pool");
+        // Allocate three blocks of 128 bytes
+        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        // Free the second
+        mpool.free(pointer2);
+        // Where we expect the new pointer to be allocated we don't know, but we should be able to allocate at least two
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fifth block");
+        // Free the third now
+        mpool.free(pointer3);
+        // This one fails bc not enough space
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+        // This _two_ succeed again
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+    }
+}
+
+
+
+
+
 /***** HELPER STRUCTS *****/
-/// Represents a piece of a MemoryBlock that is used for something. It's implemented as a (doubly) linked list.
-struct UsedBlock {
-    /// The start of the block.
-    offset : GpuPtr,
-    /// The size of the block (in bytes).
-    size   : usize,
-
-    /// The next block in the list.
-    next : Option<Rc<Self>>,
-    /// The previous block in the list.
-    prev : Option<Rc<Self>>,
-}
-
-impl UsedBlock {
-    /// Convenience constructor for the UsedBlock.
-    /// 
-    /// # Arguments
-    /// - `offset`: The start of the UsedBlock (as a byte offset).
-    /// - `size`: The size of the UsedBlock (in bytes).
-    /// - `next`: An optional previous block in the list.
-    /// - `prev`: An optional next block in the list.
-    /// 
-    /// # Returns
-    /// A new instance of the UsedBlock, already wrapped in a reference-counting pointer.
-    #[inline]
-    fn new(offset: GpuPtr, size: usize, next: Option<Rc<Self>>, prev: Option<Rc<Self>>) -> Rc<Self> {
-        Rc::new(Self {
-            offset,
-            size,
-
-            next,
-            prev,
-        })
-    }
-
-
-
-    /// Inserts a new block directly before this one, properly setting links and such.
-    /// 
-    /// # Arguments
-    /// - `this`: The "self" to change.
-    /// - `block`: The new UsedBlock to insert.
-    /// 
-    /// # Returns
-    /// Nothing, but does set links internally in this and neighbouring blocks to insert the new block.
-    fn insert_before(this: &mut Rc<Self>, mut block: Rc<UsedBlock>) {
-        // If there is a next block, link the new one to that first
-        if let Some(prev) = Rc::get_mut(this).expect("Could not get this as muteable reference").prev.as_mut() {
-            Rc::get_mut(prev).expect("Could not get prev as muteable reference").next        = Some(block.clone());
-            Rc::get_mut(&mut block).expect("Could not get block as muteable reference").prev = Some(prev.clone());
-        }
-
-        // Set it as the neighbour before
-        Rc::get_mut(&mut block).expect("Could not get block as muteable reference").next = Some(this.clone());
-        Rc::get_mut(this).expect("Could not get this as muteable reference").prev        = Some(block);
-    }
-
-    /// Inserts a new block directly after this one, properly setting links and such.
-    /// 
-    /// # Arguments
-    /// - `this`: The "self" to change.
-    /// - `block`: The new UsedBlock to insert.
-    /// 
-    /// # Returns
-    /// Nothing, but does set links internally in this and neighbouring blocks to insert the new block.
-    fn insert_after(this: &mut Rc<Self>, mut block: Rc<UsedBlock>) {
-        // If there is a next block, link the new one to that first
-        if let Some(next) = Rc::get_mut(this).expect("Could not get this as muteable reference").next.as_mut() {
-            Rc::get_mut(next).expect("Could not get next as muteable reference").prev        = Some(block.clone());
-            Rc::get_mut(&mut block).expect("Could not get block as muteable reference").next = Some(next.clone());
-        }
-
-        // Set it as the neighbour before
-        Rc::get_mut(&mut block).expect("Could not get block as muteable reference").prev = Some(this.clone());
-        Rc::get_mut(this).expect("Could not get this as muteable reference").next        = Some(block);
-    }
-
-    /// Removes this block from the chain, fixing links around it.
-    /// 
-    /// # Arguments
-    /// - `this`: The "self" to remove.
-    /// 
-    /// # Returns
-    /// Nothing, but does set links internally in this and neighbouring blocks to insert the new block.
-    fn remove(this: &mut Rc<Self>) {
-        // If there is a previous block, fix that
-        if let Some(mut prev) = Rc::get_mut(this).expect("Could not get this as muteable reference").prev.take() {
-            Rc::get_mut(&mut prev).expect("Could not get prev as muteable reference").next = this.next.clone();
-        }
-        // If there is a next block, fix that
-        if let Some(mut next) = Rc::get_mut(this).expect("Could not get this as muteable reference").next.take() {
-            Rc::get_mut(&mut next).expect("Could not get next as muteable reference").prev = this.prev.clone();
-        }
-    }
-}
-
-impl Debug for UsedBlock {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        // We always print the entire chain, no matter where you start
-        if let Some(prev) = &self.prev { write!(f, "{:?}, ", prev); }
-        write!(f, "UsedBlock{{offset={:?}, size={}}}", self.offset, self.size);
-        if let Some(next) = &self.next { write!(f, ", {:?}", next); }
-        Ok(())
-    }
-}
-
-
-
 /// Groups the BlockPools belonging to one type.
 struct MemoryType {
     /// The list of pools that are allocated for this type.
@@ -295,12 +396,20 @@ pub struct BlockPool {
     /// The single memory block used in this pool.
     block  : MemoryBlock,
 
-    /// Pointer to the start of the linked list.
-    first : Option<Rc<UsedBlock>>,
-    /// Pointer to the end of the linked list.
-    last  : Option<Rc<UsedBlock>>,
+    /// The list of free blocks in the BlockPool.
+    /// 
+    /// Elements are of the shape:
+    /// - `.0`: The offset of the block compared to the MemoryBlock.
+    /// - `.1`: The size of the block (in bytes).
+    free : Vec<(GpuPtr, usize)>,
+    /// The list of used blocks in the BlockPool.
+    /// 
+    /// Elements are of the shape:
+    /// - `.0`: The offset of the block compared to the MemoryBlock.
+    /// - `.1`: The size of the block (in bytes).
+    used : Vec<(GpuPtr, usize)>,
     /// The used space in the BlockPool.
-    size  : usize,
+    size : usize,
 }
 
 impl BlockPool {
@@ -311,14 +420,17 @@ impl BlockPool {
     /// 
     /// # Returns
     /// A new BlockPool instance, already wrapped in an Arc and a RwLock.
-    #[inline]
     pub fn new(device: Rc<Device>, block: MemoryBlock) -> Rc<Self> {
+        // Get the new capacity
+        let capacity = block.mem_size();
+
+        // Done
         Rc::new(Self {
             device,
             block,
 
-            first : None,
-            last  : None,
+            free : vec![ (GpuPtr::default(), capacity) ],
+            used : Vec::with_capacity(1),
             size : 0,
         })
     }
@@ -342,53 +454,45 @@ impl MemoryPool for BlockPool {
         if !self.block.mem_props().check(props) { panic!("BlockPool is allocated for device memory type {} which supports the properties {}, but new allocation requires {}", self.block.mem_type(), self.block.mem_props(), props); }
 
         // Optimization: we can stop early if there is no more space
-        if reqs.size > self.size { return Err(Error::OutOfMemoryError{ req_size: reqs.size }); }
+        if reqs.size > self.block.mem_size() { return Err(Error::OutOfMemoryError{ req_size: reqs.size }); }
 
-        // Now, check if we have simply the space to add it after the last block.
-        {
-            // Compute the aligned pointer based on the last block
-            let block_end: GpuPtr = self.last.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::default());
-            let pointer = block_end.align(reqs.align);
+        // Now, search for a free block with enough size
+        let mut new_used: (GpuPtr, usize) = (GpuPtr::null(), reqs.size);
+        let mut remove: Option<usize> = None;
+        for (i, (block_ptr, block_size)) in self.free.iter_mut().enumerate() {
+            // Compute the aligned pointer for this block
+            let align_ptr: GpuPtr = block_ptr.align(reqs.align);
 
-            // Check the size
-            if usize::from(pointer + reqs.size) < self.block.mem_size() {
-                // Allocate a new block and return it
-                let new = UsedBlock::new(pointer, reqs.size, None, self.last.as_ref().map(|b| b.clone()));
-                if let Some(last) = self.last.as_mut() {
-                    UsedBlock::insert_after(last, new.clone());
-                }
-                self.last = Some(new);
-                self.size += reqs.size;
-                return Ok((self.block.vk(), pointer));
-            }
-        }
+            // Take that into account with the aligned size
+            let new_size: usize = (align_ptr.ptr() - block_ptr.ptr()) as usize + reqs.size;
+            if new_size <= *block_size {
+                // Set the pointer of the new used block
+                new_used.0 = align_ptr;
 
-        // If there was no space after the last block, iterate to find the first free space
-        let mut this: Option<&mut Rc<UsedBlock>> = self.first.as_mut();
-        while this.is_some() {
-            // Get the block
-            let block: &mut Rc<UsedBlock> = this.unwrap();
+                // Split the block in a used block and shrink the free block.
+                *block_ptr  += new_size;
+                *block_size -= new_size;
+                // Mark for removal if that leaves us with an empty block
+                if *block_size == 0 { remove = Some(i); }
 
-            // Check if there is space to insert the block before this one
-            let block_end: GpuPtr = block.prev.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::default());
-            let pointer = block_end.align(reqs.align);
-            if reqs.size <= usize::from(block.offset) - usize::from(pointer) {
-                // There is; add a new block before this one
-                let new = UsedBlock::new(pointer, reqs.size, None, self.last.as_ref().map(|b| b.clone()));
-                UsedBlock::insert_before(block, new.clone());
-                if new.prev.is_none() {
-                    self.first = Some(new);
-                }
-                self.size += reqs.size;
-                return Ok((self.block.vk(), pointer));
+                // Quit for speedz
+                break;
             }
 
-            // Otherwise, go to the next block
-            this = Rc::get_mut(block).expect("Could not get block as muteable reference").next.as_mut();
+            // If not enough size, try the next one
         }
+        if new_used.0.is_null() { return Err(Error::OutOfMemoryError{ req_size: reqs.size }); }
+        // If needed, remove the free block
+        if let Some(index) = remove { self.free.swap_remove(index); }
 
-        // If we've reached the end of the chain and allocated nothing, then no memory available
-        Err(Error::OutOfMemoryError{ req_size: reqs.size })
+        // Insert the new used block
+        if self.used.len() == self.used.capacity() { self.used.reserve(self.used.capacity()); }
+        self.used.push(new_used);
+
+        // Update the size and we're done
+        self.size += new_used.1;
+        println!("Blocks after allocate:\n - Used: {:?}\n - Free: {:?}", self.used, self.free);
+        Ok((self.block.vk(), new_used.0))
     }
 
     /// Frees an allocated bit of memory.
@@ -402,37 +506,36 @@ impl MemoryPool for BlockPool {
     /// This function may panic if the given pointer was never allocated with this pool.
     #[inline]
     fn free(&mut self, pointer: GpuPtr) {
-        // Get a type/pool-agnositc version of the pointer
-        let pointer = pointer.agnostic();
-
-        // Search for the block with the given pointer
-        let mut this: Option<&mut Rc<UsedBlock>> = self.first.as_mut();
-        while this.is_some() {
-            // Get the block
-            let block: &mut Rc<UsedBlock> = this.unwrap();
-
-            // Check the pointer
-            if block.offset == pointer {
-                // Remove it
-                UsedBlock::remove(block);
-                self.size -= block.size;
-                return;
+        // Search the used blocks for a matching allocation
+        let mut new_free: (GpuPtr, usize) = (GpuPtr::null(), 0);
+        let mut remove: usize = 0;
+        for (i, (block_ptr, block_size)) in self.used.iter_mut().enumerate() {
+            if *block_ptr == pointer {
+                // Mark this one for removal, update the new free
+                new_free = (*block_ptr, *block_size);
+                remove   = i;
+                break;
             }
-
-            // Otherwise, go to the next block
-            this = Rc::get_mut(block).expect("Could not get block as muteable reference").next.as_mut();
         }
+        if new_free.0.is_null() { panic!("Given pointer '{:?}' was not allocated with this pool", pointer); }
+        self.used.swap_remove(remove);
 
-        // Didn't find the block!
-        panic!("Given pointer '{:?}' was not allocated with this pool", pointer);
+        // Add the new free to the list
+        if self.free.len() == self.free.capacity() { self.free.reserve(self.free.capacity()); }
+        self.free.push(new_free);
+
+        // Update the size, done
+        self.size -= new_free.1;
+        println!("Blocks after free:\n - Used: {:?}\n - Free: {:?}", self.used, self.free);
     }
 
     /// Resets the memory pool back to its initial, empty state.
     #[inline]
     fn reset(&mut self) {
-        // Clear the list
-        self.first = None;
-        self.last  = None;
+        // Clear the lists
+        self.used.clear();
+        self.free.clear();
+        self.free.push((GpuPtr::default(), self.block.mem_size()));
 
         // Reset the size
         self.size = 0;
@@ -550,11 +653,11 @@ impl MemoryPool for MetaPool {
         // 1. Iterate over the blocks to find if any existing block suits us
         for mem_type in memory_types {
             // Skip if not in the allowed types or not supporting the correct properties
-            if !reqs.types.check(mem_type.index)       { continue; }
-            if !mem_type.props.check(props) { continue; }
+            if !reqs.types.check(mem_type.index) { continue; }
+            if !mem_type.props.check(props)      { continue; }
 
             // Now try to find a pool with enough space
-            for pool in &mut mem_type.pools {
+            for (i, pool) in &mut mem_type.pools.iter_mut().enumerate() {
                 // Get the muteable pool lock on the pool
                 let pool: &mut BlockPool = Rc::get_mut(pool).expect("Could not get muteable BlockPool");
 
@@ -562,8 +665,9 @@ impl MemoryPool for MetaPool {
                 if reqs.size > pool.capacity() - pool.size() { continue; }
 
                 // Attempt to allocate a new block here and encode the pool index in the pointer
-                let (memory, pointer): (vk::DeviceMemory, GpuPtr) = pool.allocate(reqs, props)?;
-                
+                let (memory, mut pointer): (vk::DeviceMemory, GpuPtr) = pool.allocate(reqs, props)?;
+                pointer.set_type_idx(u32::from(mem_type.index) as u8);
+                pointer.set_pool_idx(i                         as u16);
                 return Ok((memory, pointer));
             }
 
@@ -582,24 +686,27 @@ impl MemoryPool for MetaPool {
 
                 // Allocate new memory on this block (which we assume succeeds)
                 let mut new_pool: Rc<BlockPool> = BlockPool::new(self.device.clone(), new_block);
-                let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
+                let (memory, mut pointer): (vk::DeviceMemory, GpuPtr) = {
                     // Get the muteable pool lock on the pool
                     let new_pool: &mut BlockPool = Rc::get_mut(&mut new_pool).expect("Could not get muteable BlockPool");
 
                     // Perform the allocation
                     new_pool.allocate(reqs, props)?
                 };
+                // Set the pointer indices
+                pointer.set_type_idx(u32::from(mem_type.index) as u8);
+                pointer.set_pool_idx(mem_type.pools.len()      as u16);
 
                 // Now add the pool internally and return the new allocation
                 mem_type.pools.push(new_pool);
                 return Ok((memory, pointer));
             }
 
-            // If not found, attempt to seek another memory type that we already know of
+            // 5. If not found, attempt to seek another memory type that we already know of
             continue;
         }
 
-        // No free memory on the device anymore :(
+        // 6. No free memory on the device anymore :(
         Err(Error::OutOfMemoryError{ req_size: reqs.size })
     }
 
@@ -612,15 +719,27 @@ impl MemoryPool for MetaPool {
     /// 
     /// # Panics
     /// This function may panic if the given pointer was never allocated with this pool.
-    #[inline]
     fn free(&mut self, pointer: GpuPtr) {
-        /* TODO */
+        let type_idx: usize = pointer.type_idx() as usize;
+        let pool_idx: usize = pointer.pool_idx() as usize;
+
+        // Do some sanity checking on the type & pool index
+        if type_idx >= self.types.len()                 { panic!("The given pointer {:?} was not allocated in this MetaPool: no type '{}'", pointer, type_idx); }
+        if pool_idx >= self.types[type_idx].pools.len() { panic!("The given pointer {:?} was not allocated in this MetaPool: no pool '{}' in type {}", pointer, pool_idx, type_idx); }
+
+        // We can instantly go to the correct memory type / pool
+        Rc::get_mut(&mut self.types[type_idx].pools[pool_idx]).expect("Could not get muteable pool").free(pointer.agnostic())
     }
 
     /// Resets the memory pool back to its initial, empty state.
     #[inline]
     fn reset(&mut self) {
-        /* TODO */
+        // Reset all pools
+        for mem_type in &mut self.types {
+            for pool in &mut mem_type.pools {
+                Rc::get_mut(pool).expect("Could not get muteable pool").reset();
+            }
+        }
     }
 
 

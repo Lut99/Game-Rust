@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   02 Jul 2022, 10:40:52
+ *   02 Jul 2022, 14:04:22
  * Auto updated?
  *   Yes
  *
@@ -17,12 +17,13 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::ops::{BitOr, BitOrAssign, Range};
 use std::ptr;
-use std::slice;
 use std::rc::Rc;
+use std::slice;
+use std::str::FromStr;
 
 use ash::vk;
 
-pub use crate::errors::{AttributeLayoutError, QueueError};
+pub use crate::errors::{AttributeLayoutError, ExtensionError, QueueError};
 use crate::instance::Instance;
 
 
@@ -321,6 +322,85 @@ where
         Self {
             offset : value.offset.into(),
             extent : value.extent.into(),
+        }
+    }
+}
+
+
+
+
+
+/***** INSTANCE *****/
+/// An enum that describes instance extensions used in the Game.
+#[derive(Copy, Clone, Debug)]
+pub enum InstanceExtension {
+    /// A dummy extension as a temporary placeholder
+    Dummy,
+}
+
+impl InstanceExtension {
+    /// Constant function to get the string value of the InstanceExtension.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        use InstanceExtension::*;
+        match self {
+            Dummy => "dummy",
+        }
+    }
+}
+
+impl Display for InstanceExtension {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for InstanceExtension {
+    type Err = ExtensionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "dummy" => Ok(InstanceExtension::Dummy),
+            value   => Err(ExtensionError::UnknownInstanceExtension{ got: value.into() }),
+        }
+    }
+}
+
+
+
+/// An enum that describes instance layers used in the Game.
+#[derive(Copy, Clone, Debug)]
+pub enum InstanceLayer {
+    /// The Khronos validation layer
+    KhronosValidation,
+}
+
+impl InstanceLayer {
+    /// Constant function to get the string value of the InstanceLayer.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        use InstanceLayer::*;
+        match self {
+            KhronosValidation => "VK_LAYER_KHRONOS_validation",
+        }
+    }
+}
+
+impl Display for InstanceLayer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for InstanceLayer {
+    type Err = ExtensionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "VK_LAYER_KHRONOS_validation" => Ok(Self::KhronosValidation),
+            value                         => Err(ExtensionError::UnknownInstanceLayer{ got: value.into() }),
         }
     }
 }
@@ -663,6 +743,138 @@ impl From<HeapPropertyFlags> for vk::MemoryHeapFlags {
         if value.check(HeapPropertyFlags::DEVICE_LOCAL) { result |= vk::MemoryHeapFlags::DEVICE_LOCAL; }
         if value.check(HeapPropertyFlags::MULTI_INSTANCE) { result |= vk::MemoryHeapFlags::MULTI_INSTANCE; }
         result
+    }
+}
+
+
+
+/// An enum that describes device extensions used in the Game.
+#[derive(Copy, Clone, Debug)]
+pub enum DeviceExtension {
+    /// The Swapchain device extension.
+    Swapchain,
+}
+
+impl DeviceExtension {
+    /// Constant function to get the string value of the DeviceExtension.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        use DeviceExtension::*;
+        match self {
+            Swapchain => "VK_KHR_swapchain",
+        }
+    }
+}
+
+impl Display for DeviceExtension {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for DeviceExtension {
+    type Err = ExtensionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "VK_KHR_swapchain" => Ok(DeviceExtension::Swapchain),
+            value              => Err(ExtensionError::UnknownDeviceExtension{ got: value.into() }),
+        }
+    }
+}
+
+
+
+/// An enum that describes device layers used in the Game.
+#[derive(Copy, Clone, Debug)]
+pub enum DeviceLayer {
+    /// A dummy extension as a temporary placeholder
+    Dummy,
+}
+
+impl DeviceLayer {
+    /// Constant function to get the string value of the DeviceLayer.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        use DeviceLayer::*;
+        match self {
+            Dummy => "dummy",
+        }
+    }
+}
+
+impl Display for DeviceLayer {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for DeviceLayer {
+    type Err = ExtensionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "dummy" => Ok(DeviceLayer::Dummy),
+            value   => Err(ExtensionError::UnknownDeviceLayer{ got: value.into() }),
+        }
+    }
+}
+
+
+
+/// The features that we can enable on a Device.
+#[derive(Clone, Copy, Debug)]
+pub struct DeviceFeatures {
+    
+}
+
+impl DeviceFeatures {
+    /// Constant default() function.
+    #[inline]
+    pub const fn cdefault() -> Self {
+        Self {}
+    }
+}
+
+impl Default for DeviceFeatures {
+    #[inline]
+    fn default() -> Self { Self::cdefault() }
+}
+
+impl From<vk::PhysicalDeviceFeatures> for DeviceFeatures {
+    #[inline]
+    fn from(value: vk::PhysicalDeviceFeatures) -> Self {
+        // Use the reference one
+        Self::from(&value)
+    }
+}
+
+impl From<&vk::PhysicalDeviceFeatures> for DeviceFeatures {
+    #[inline]
+    fn from(_value: &vk::PhysicalDeviceFeatures) -> Self {
+        Self {
+            
+        }
+    }
+}
+
+impl From<DeviceFeatures> for vk::PhysicalDeviceFeatures {
+    #[inline]
+    fn from(value: DeviceFeatures) -> Self {
+        // Use the reference one
+        Self::from(&value)
+    }
+}
+
+impl From<&DeviceFeatures> for vk::PhysicalDeviceFeatures {
+    #[inline]
+    fn from(_value: &DeviceFeatures) -> Self {
+        Self {
+            // Set the rest to off
+            ..Default::default()
+        }
     }
 }
 
@@ -3596,6 +3808,11 @@ impl From<DeviceMemoryType> for DeviceMemoryTypeFlags {
 pub struct DeviceMemoryTypeFlags(u32);
 
 impl DeviceMemoryTypeFlags {
+    /// A DeviceMemoryTypeFlags struct with _all_ memory types.
+    pub const ALL: Self   = Self(!0);
+    /// An empty DeviceMemoryTypeFlags struct.
+    pub const EMPTY: Self = Self(0);
+
     /// Checks if this DeviceMemoryTypeFlags is a superset of the given one.
     #[inline]
     pub fn check<T: Into<u32>>(&self, other: T) -> bool { let other = other.into(); (self.0 & other) == other }

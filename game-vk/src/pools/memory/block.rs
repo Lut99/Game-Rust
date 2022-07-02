@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:18:26
  * Last edited:
- *   02 Jul 2022, 10:31:20
+ *   02 Jul 2022, 14:46:54
  * Auto updated?
  *   Yes
  *
@@ -138,7 +138,7 @@ impl MemoryBlock {
                 Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => { return Err(Error::OutOfMemoryError{ req_size: size }) },
 
                 // Otherwise, throw error
-                Err(err)   => { return Err(Error::MemoryAllocateError{ name: device.name().into(), size, mem_type, err }); }
+                Err(err) => { return Err(Error::MemoryAllocateError{ name: device.name().into(), size, mem_type, err }); }
             }
         };
 

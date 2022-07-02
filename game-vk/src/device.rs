@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   29 May 2022, 18:13:32
+ *   02 Jul 2022, 11:46:18
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,7 @@ use game_utl::to_cstring;
 
 pub use crate::errors::DeviceError as Error;
 use crate::log_destroy;
-use crate::auxillary::{DeviceInfo, DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
+use crate::auxillary::{DeviceFeatures, DeviceInfo, DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
 use crate::queue::Queues;
@@ -206,11 +206,11 @@ impl Device {
     /// - `physical_device_index`: The index of the physical device we want to wrap around. Can be obtained by using Device::auto_select().
     /// - `device_extensions`: A slice of Device extensions to enable on the Device.
     /// - `device_layers`: A slice of Device layers to enable on the Device.
-    /// - `device_features`: A PhysicalDeviceFeatures struct that describes the features to enable on the Device.
+    /// - `device_features`: A DeviceFeatures struct that describes the features to enable on the Device.
     /// 
     /// # Returns
     /// Returns a new Device instance on success, or else an Error describing what went wrong if the Device creation failed.
-    pub fn new(instance: Rc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<Rc<Self>, Error> {
+    pub fn new(instance: Rc<Instance>, physical_device_index: usize, device_extensions: &[&str], device_layers: &[&str], device_features: &DeviceFeatures) -> Result<Rc<Self>, Error> {
         // We enumerate through all the physical devices to find the appropriate one
         let physical_devices = match unsafe { instance.enumerate_physical_devices() } {
             Ok(devices) => devices,
@@ -275,7 +275,8 @@ impl Device {
 
 
         // Create the DeviceCreateInfo with all this
-        let device_info = populate_device_info(&instance, physical_device, physical_device_index, &device_name, &queue_infos, &p_device_extensions, &p_device_layers, &device_features)?;
+        let vk_device_features: vk::PhysicalDeviceFeatures = device_features.into();
+        let device_info = populate_device_info(&instance, physical_device, physical_device_index, &device_name, &queue_infos, &p_device_extensions, &p_device_layers, &vk_device_features)?;
 
         // Use that to create the device
         debug!("Initializing device...");
@@ -343,7 +344,7 @@ impl Device {
     /// 
     /// # Returns
     /// The index of the chosen GPU if we could find one, or, either if we did not find one or we failed otherwise, an Error detailing what went wrong.
-    pub fn auto_select(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<usize, Error> {
+    pub fn auto_select(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &DeviceFeatures) -> Result<usize, Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -367,7 +368,8 @@ impl Device {
             };
 
             // Check if this device is supported
-            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_err() { continue; }
+            let vk_device_features: vk::PhysicalDeviceFeatures = device_features.into();
+            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &vk_device_features).is_err() { continue; }
 
             // Select it as best if the first or has a better CPU disconnectedness score
             let device_ranking = DeviceKind::from(device_properties.device_type).score();
@@ -393,7 +395,7 @@ impl Device {
     /// 
     /// # Returns
     /// Two vectors of (index, name, kind) tuples describing each GPU on success (0 = supported, 1 = unsupported), or else an Error describing the failure on a failure.
-    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &vk::PhysicalDeviceFeatures) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
+    pub fn list(instance: Rc<Instance>, device_extensions: &[&str], device_layers: &[&str], device_features: &DeviceFeatures) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
@@ -422,7 +424,8 @@ impl Device {
             let device_mem_props: vk::PhysicalDeviceMemoryProperties = unsafe { instance.get_physical_device_memory_properties(*physical_device) };
 
             // Determine to which list to add it
-            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &device_features).is_ok() {
+            let vk_device_features: vk::PhysicalDeviceFeatures = device_features.into();
+            if supports(&instance, *physical_device, i, &device_name, &p_device_extensions, &p_device_layers, &vk_device_features).is_ok() {
                 supported_devices.push(DeviceInfo {
                     index : i,
                     name  : device_name,

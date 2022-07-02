@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   26 Jun 2022, 13:06:11
+ *   02 Jul 2022, 14:05:27
  * Auto updated?
  *   Yes
  *
@@ -17,13 +17,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
-use ash::vk;
 use log::debug;
 use semver::Version;
 use winit::event_loop::EventLoop;
 
 use game_ecs::Ecs;
-use game_vk::auxillary::DeviceInfo;
+use game_vk::auxillary::{DeviceExtension, DeviceFeatures, DeviceInfo};
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
@@ -43,7 +42,7 @@ const INSTANCE_EXTENSIONS: &[&str] = &[];
 const INSTANCE_LAYERS: &[&str] = &[];
 
 /// The list of device extensions we want to enable.
-const DEVICE_EXTENSIONS: &[&str] = &[ "VK_KHR_swapchain" ];
+const DEVICE_EXTENSIONS: &[&str] = &[ DeviceExtension::Swapchain.as_str() ];
 
 /// The list of device layers we want to enable.
 const DEVICE_LAYERS: &[&str] = &[];
@@ -51,7 +50,7 @@ const DEVICE_LAYERS: &[&str] = &[];
 // Constants that are lazily loaded
 lazy_static!{
     /// The list of device features we want to enable.
-    static ref DEVICE_FEATURES: vk::PhysicalDeviceFeatures = Default::default();
+    static ref DEVICE_FEATURES: DeviceFeatures = Default::default();
 }
 
 
