@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:18:26
  * Last edited:
- *   27 Jun 2022, 18:47:49
+ *   02 Jul 2022, 10:31:20
  * Auto updated?
  *   Yes
  *
@@ -90,7 +90,7 @@ impl MemoryBlock {
             found_candidate = true;
 
             // Call the other factory method for this device type
-            match Self::allocate_on_type(device, DeviceMemoryType::from(i as u32), reqs.size) {
+            match Self::allocate_on_type(device.clone(), DeviceMemoryType::from(i as u32), reqs.size) {
                 // If it's an out-of-memory error, then we try the next type
                 Err(Error::OutOfMemoryError{ .. }) => { continue; }
 

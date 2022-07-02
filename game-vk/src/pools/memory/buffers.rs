@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   26 Jun 2022, 13:04:52
+ *   02 Jul 2022, 10:30:30
  * Auto updated?
  *   Yes
  *
@@ -14,7 +14,6 @@
 
 use std::ptr;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use ash::vk;
 
@@ -22,7 +21,7 @@ pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::vec_as_ptr;
 use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
 use crate::device::Device;
-use crate::pools::memory::spec::MemoryPool;
+use crate::pools::memory::spec::{GpuPtr, MemoryPool};
 
 
 /***** POPULATE FUNCTIONS *****/
@@ -72,7 +71,7 @@ pub struct Buffer {
     /// - `0`: The MemoryPool where this memory area was allocated.
     /// - `1`: The block of device memory itself.
     /// - `2`: The offset of the device memory (used for deallocation).
-    memory  : Option<(Arc<RwLock<dyn MemoryPool>>, vk::DeviceMemory, usize)>,
+    memory  : Option<(Rc<dyn MemoryPool>, vk::DeviceMemory, GpuPtr)>,
 
     /// The usage flags for this Buffer.
     usage_flags  : BufferUsageFlags,
@@ -147,34 +146,29 @@ impl Buffer {
     /// 
     /// # Errors
     /// This function errors if either the new memory could not be reserved or it could not be bound.
-    pub fn bind(&mut self, pool: Arc<RwLock<dyn MemoryPool>>) -> Result<(), Error> {
+    pub fn bind(&mut self, mut pool: Rc<dyn MemoryPool>) -> Result<(), Error> {
         // If present, deallocate old area first
-        if let Some((pool, _, pointer)) = self.memory.take() {
-            // Get a lock first
-            let mut lock: RwLockWriteGuard<_> = match pool.write() {
-                Ok(lock) => lock,
-                Err(err) => { return Err(Error::PoolLockError{ err: format!("{}", err) }); }
-            };
+        if let Some((mut pool, _, pointer)) = self.memory.take() {
+            // Get a muteable version first
+            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get a muteable pool");
 
             // Free the area
-            lock.free(pointer);
+            pool.free(pointer);
         }
+        // Allocate some bit in the
 
         // Allocate some bit in the pool
-        let (memory, pointer): (vk::DeviceMemory, usize) = {
-            // Get a lock first
-            let mut lock: RwLockWriteGuard<_> = match pool.write() {
-                Ok(lock) => lock,
-                Err(err) => { return Err(Error::PoolLockError{ err: format!("{}", err) }); }
-            };
+        let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
+            // Get a muteable version first
+            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get a muteable pool");
 
             // Reserve the area
-            lock.allocate(&self.mem_req, self.mem_props)?
+            pool.allocate(&self.mem_req, self.mem_props)?
         };
 
         // Bind the memory
         unsafe {
-            if let Err(err) = self.device.bind_buffer_memory(self.buffer, memory, pointer as vk::DeviceSize) {
+            if let Err(err) = self.device.bind_buffer_memory(self.buffer, memory, pointer.into()) {
                 return Err(Error::BufferBindError{ err });
             }
         };
@@ -194,15 +188,12 @@ impl Buffer {
     #[inline]
     pub fn release(&mut self) -> Result<(), Error> {
         // Only free if there is something to be freed
-        if let Some((pool, _, pointer)) = self.memory.take() {
-            // Get a lock
-            let mut lock: RwLockWriteGuard<_> = match pool.write() {
-                Ok(lock) => lock,
-                Err(err) => { return Err(Error::PoolLockError{ err: format!("{}", err) }); }
-            };
+        if let Some((mut pool, _, pointer)) = self.memory.take() {
+            // Get a muteable version
+            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get muteable pool");
 
             // Free the pointer
-            lock.free(pointer);
+            pool.free(pointer);
         }
 
         // Done

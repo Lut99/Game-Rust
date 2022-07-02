@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   27 Jun 2022, 18:28:51
+ *   02 Jul 2022, 10:40:52
  * Auto updated?
  *   Yes
  *
@@ -3140,7 +3140,7 @@ impl From<BlendFactor> for vk::BlendFactor {
 #[derive(Clone, Copy, Debug)]
 pub enum BlendOp {
     /// Add the proper fractions of the colours together:
-    /// ```
+    /// ```math
     /// Rd = Rs * FCs + Rd * FCd
     /// Gd = Gs * FCs + Gd * FCd
     /// Bd = Bs * FCs + Bd * FCd
@@ -3149,7 +3149,7 @@ pub enum BlendOp {
     /// (`Xs` is the source channel, `Xd` is the destination channel, `FCx` is the source or destination colour fraction and `FAx` is the source or destination alpha fraction)
     Add,
     /// Subtract the proper fractions of the colours from each other:
-    /// ```
+    /// ```math
     /// Rd = Rs * FCs - Rd * FCd
     /// Gd = Gs * FCs - Gd * FCd
     /// Bd = Bs * FCs - Bd * FCd
@@ -3158,7 +3158,7 @@ pub enum BlendOp {
     /// (`Xs` is the source channel, `Xd` is the destination channel, `FCx` is the source or destination colour fraction and `FAx` is the source or destination alpha fraction)
     Sub,
     /// Subtract the proper fractions of the colours from each other:
-    /// ```
+    /// ```math
     /// Rd = Rd * FCd - Rs * FCs
     /// Gd = Gd * FCd - Gs * FCs
     /// Bd = Bd * FCd - Bs * FCs
@@ -3168,7 +3168,7 @@ pub enum BlendOp {
     SubRev,
 
     /// Take the minimal value of the colours (ignoring fractions):
-    /// ```
+    /// ```math
     /// Rd = min(Rs, Rd)
     /// Gd = min(Gs, Gd)
     /// Bd = min(Bs, Bd)
@@ -3177,7 +3177,7 @@ pub enum BlendOp {
     /// (`Xs` is the source channel and `Xd` is the destination channel)
     Min,
     /// Take the maximum value of the colours (ignoring fractions):
-    /// ```
+    /// ```math
     /// Rd = max(Rs, Rd)
     /// Gd = max(Gs, Gd)
     /// Bd = max(Bs, Bd)
@@ -3526,7 +3526,7 @@ impl From<vk::MemoryRequirements> for MemoryRequirements {
     fn from(value: vk::MemoryRequirements) -> Self {
         Self {
             size  : value.size as usize,
-            align : value.alignment as usize,
+            align : value.alignment as u8,
             types : value.memory_type_bits.into(),
         }
     }

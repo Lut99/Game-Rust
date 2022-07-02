@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 18:04:08
  * Last edited:
- *   29 Jun 2022, 19:20:13
+ *   02 Jul 2022, 10:34:22
  * Auto updated?
  *   Yes
  *
@@ -20,6 +20,7 @@ use std::rc::Rc;
 use std::slice;
 
 use ash::vk;
+use log::warn;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::auxillary::{DeviceMemoryType, MemoryPropertyFlags, MemoryRequirements};
@@ -181,7 +182,7 @@ impl LinearPool {
             device,
             block : None,
 
-            pointer : GpuPtr::ZERO,
+            pointer : GpuPtr::default(),
             capacity,
         })
     }
@@ -262,11 +263,13 @@ impl MemoryPool for LinearPool {
     /// # Panics
     /// This function may panic if the given pointer was never allocated with this pool.
     #[inline]
-    fn free(&mut self, _pointer: GpuPtr) {}
+    fn free(&mut self, _pointer: GpuPtr) {
+        warn!("Calling `LinearPool::free()` has no effect");
+    }
 
     /// Resets the memory pool back to its initial, empty state.
     #[inline]
-    fn reset(&mut self) { self.pointer = GpuPtr::ZERO; }
+    fn reset(&mut self) { self.pointer = GpuPtr::default(); }
 
 
 
@@ -344,7 +347,7 @@ impl MemoryPool for BlockPool {
         // Now, check if we have simply the space to add it after the last block.
         {
             // Compute the aligned pointer based on the last block
-            let block_end: GpuPtr = self.last.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::ZERO);
+            let block_end: GpuPtr = self.last.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::default());
             let pointer = block_end.align(reqs.align);
 
             // Check the size
@@ -356,7 +359,6 @@ impl MemoryPool for BlockPool {
                 }
                 self.last = Some(new);
                 self.size += reqs.size;
-                if pointer > GpuPtr::from(0xFFFFFFFFFFFF as u64) { panic!("Pointer '{:?}' is too large for a GpuPtr", pointer); }
                 return Ok((self.block.vk(), pointer));
             }
         }
@@ -368,7 +370,7 @@ impl MemoryPool for BlockPool {
             let block: &mut Rc<UsedBlock> = this.unwrap();
 
             // Check if there is space to insert the block before this one
-            let block_end: GpuPtr = block.prev.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::ZERO);
+            let block_end: GpuPtr = block.prev.as_ref().map(|b| b.offset + b.size).unwrap_or(GpuPtr::default());
             let pointer = block_end.align(reqs.align);
             if reqs.size <= usize::from(block.offset) - usize::from(pointer) {
                 // There is; add a new block before this one
@@ -378,7 +380,6 @@ impl MemoryPool for BlockPool {
                     self.first = Some(new);
                 }
                 self.size += reqs.size;
-                if pointer > GpuPtr::from(0xFFFFFFFFFFFF as u64) { panic!("Pointer '{:?}' is too large for a GpuPtr", pointer); }
                 return Ok((self.block.vk(), pointer));
             }
 
@@ -401,6 +402,9 @@ impl MemoryPool for BlockPool {
     /// This function may panic if the given pointer was never allocated with this pool.
     #[inline]
     fn free(&mut self, pointer: GpuPtr) {
+        // Get a type/pool-agnositc version of the pointer
+        let pointer = pointer.agnostic();
+
         // Search for the block with the given pointer
         let mut this: Option<&mut Rc<UsedBlock>> = self.first.as_mut();
         while this.is_some() {
@@ -485,8 +489,8 @@ impl MetaPool {
         let device_types: &[vk::MemoryType] = unsafe { slice::from_raw_parts(device_props.memory_types.as_ptr(), device_props.memory_type_count as usize) };
 
         // Deduce both the list and the total capacity
-        let types: Vec<MemoryType> = Vec::with_capacity(device_types.len());
-        let capacity: usize = 0;
+        let mut types: Vec<MemoryType> = Vec::with_capacity(device_types.len());
+        let mut capacity: usize = 0;
         for (i, mem_type) in device_types.into_iter().enumerate() {
             capacity += device_heaps[mem_type.heap_index as usize].size as usize;
             types.push(MemoryType {
@@ -535,13 +539,13 @@ impl MemoryPool for MetaPool {
     /// This function errors if the MemoryPool failed to allocate new memory.
     fn allocate(&mut self, reqs: &MemoryRequirements, props: MemoryPropertyFlags) -> Result<(vk::DeviceMemory, GpuPtr), Error> {
         // Preparation: construct a list of types that favours those we have already allocated from
-        let memory_types: Vec<&mut MemoryType> = Vec::with_capacity(self.types.len());
+        let mut memory_types: Vec<&mut MemoryType> = Vec::with_capacity(self.types.len());
+        let mut unused_types: Vec<&mut MemoryType> = Vec::with_capacity(self.types.len());
         for mem_type in &mut self.types {
             if !mem_type.pools.is_empty() { memory_types.push(mem_type); }
+            else                          { unused_types.push(mem_type); }
         }
-        for mem_type in &mut self.types {
-            if  mem_type.pools.is_empty() { memory_types.push(mem_type); }
-        }
+        memory_types.append(&mut unused_types);
 
         // 1. Iterate over the blocks to find if any existing block suits us
         for mem_type in memory_types {
@@ -577,7 +581,7 @@ impl MemoryPool for MetaPool {
                 };
 
                 // Allocate new memory on this block (which we assume succeeds)
-                let new_pool: Rc<BlockPool> = BlockPool::new(self.device.clone(), new_block);
+                let mut new_pool: Rc<BlockPool> = BlockPool::new(self.device.clone(), new_block);
                 let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
                     // Get the muteable pool lock on the pool
                     let new_pool: &mut BlockPool = Rc::get_mut(&mut new_pool).expect("Could not get muteable BlockPool");
