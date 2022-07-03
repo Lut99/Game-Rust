@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:35:56
  * Last edited:
- *   07 May 2022, 18:12:22
+ *   03 Jul 2022, 14:56:26
  * Auto updated?
  *   Yes
  *
@@ -28,6 +28,10 @@ pub enum TriangleError {
     VkPipelineCreateError{ err: game_vk::pipeline::Error },
     /// Failed to create a Framebuffer
     FramebufferCreateError{ err: game_vk::framebuffer::Error },
+    /// Could not allocate a buffer
+    BufferCreateError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
+    /// Could not allocate memory for a new buffer
+    BufferAllocateError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
     /// Could not allocate a new CommandBuffer
     CommandBufferAllocateError{ err: game_vk::pools::command::Error },
     /// Could not end a command buffer (because something else went wrong).
@@ -45,6 +49,8 @@ impl Display for TriangleError {
             RenderPassCreateError{ err }      => write!(f, "Failed to create RenderPass: {}", err),
             VkPipelineCreateError{ err }      => write!(f, "Failed to create Vulkan Pipeline: {}", err),
             FramebufferCreateError{ err }     => write!(f, "Failed to create Framebuffer: {}", err),
+            BufferCreateError{ what, err }    => write!(f, "Failed to create {} buffer: {}", what, err),
+            BufferAllocateError{ what, err }  => write!(f, "Could not allocate memory for {} buffer: {}", what, err),
             CommandBufferAllocateError{ err } => write!(f, "Could not allocate a new CommandBuffer for the Triangle pipeline: {}", err),
             CommandBufferRecordError{ err }   => write!(f, "Could not record a new CommandBuffer for the Triangle pipeline: {}", err),
             

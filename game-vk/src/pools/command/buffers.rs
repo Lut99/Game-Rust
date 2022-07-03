@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:36
  * Last edited:
- *   14 May 2022, 12:50:35
+ *   03 Jul 2022, 16:43:58
  * Auto updated?
  *   Yes
  *
@@ -14,13 +14,13 @@
 
 use std::ptr;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use ash::vk;
 
 pub use crate::pools::errors::CommandPoolError as Error;
 use crate::log_destroy;
-use crate::auxillary::{BindPoint, CommandBufferUsageFlags, Rect2D};
+use crate::auxillary::{BindPoint, CommandBufferFlags, CommandBufferUsageFlags, CommandBufferLevel, Rect2D};
 use crate::device::Device;
 use crate::pipeline::Pipeline;
 use crate::render_pass::RenderPass;
@@ -84,17 +84,124 @@ fn populate_render_pass_begin_info(render_pass: vk::RenderPass, framebuffer: vk:
 /// The CommandBuffer is used to record various GPU commands in.
 pub struct CommandBuffer {
     /// The parent CommandPool where this buffer was allocated from.
-    pub(crate) device  : Rc<Device>,
+    device  : Rc<Device>,
     /// The parent CommandPool where this buffer was allocated from.
-    pub(crate) pool    : Arc<RwLock<CommandPool>>,
-    /// The parent VkCommandPool where this buffer was allocated from.
-    pub(crate) vk_pool : vk::CommandPool,
+    pool    : Arc<RwLock<CommandPool>>,
 
+    /// The parent VkCommandPool where this buffer was allocated from.
+    vk_pool : vk::CommandPool,
     /// The VkCommandBuffer around which we wrap.
-    pub(crate) buffer : vk::CommandBuffer,
+    buffer  : vk::CommandBuffer,
 }
 
 impl CommandBuffer {
+    /// Constructor for the CommandBuffer.
+    /// 
+    /// This function always allocates primary CommandBuffers. To allocate secondary CommandBuffers, check `CommandBuffer::secondary()`.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device where to allocate the CommandBuffer on.
+    /// - `pool`: The CommandPool where to allocate the Buffer from.
+    /// - `index`: The QueueFamilyIndex for which we want to allocate this CommandBuffer.
+    /// - `flags`: Any flags that are relevant when allocating CommandBuffers.
+    /// 
+    /// # Returns
+    /// A new instance of the CommandBuffer, already wrapped in an Rc-pointer.
+    /// 
+    /// # Errors
+    /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
+    pub fn new(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
+        // Allocate a new vk::CommandBuffer
+        let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
+            // Get a lock on the pool
+            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+
+            // Do the allocation
+            lock.allocate(index, flags, CommandBufferLevel::Primary)?
+        };
+
+        // Wrap it in a struct of ourselves and done
+        Ok(Rc::new(Self {
+            device,
+            pool,
+
+            vk_pool,
+            buffer,
+        }))
+    }
+
+    /// Constructor for the CommandBuffer, which allocates it as a secondary CommandBuffer.
+    /// 
+    /// To allocate primary CommandBuffers, check `CommandBuffer::new()`.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device where to allocate the CommandBuffer on.
+    /// - `pool`: The CommandPool where to allocate the Buffer from.
+    /// - `index`: The QueueFamilyIndex for which we want to allocate this CommandBuffer.
+    /// - `flags`: Any flags that are relevant when allocating CommandBuffers.
+    /// 
+    /// # Returns
+    /// A new instance of the CommandBuffer, already wrapped in an Rc-pointer.
+    /// 
+    /// # Errors
+    /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
+    pub fn secondary(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
+        // Allocate a new vk::CommandBuffer
+        let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
+            // Get a lock on the pool
+            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+
+            // Do the allocation
+            lock.allocate(index, flags, CommandBufferLevel::Secondary)?
+        };
+
+        // Wrap it in a struct of ourselves and done
+        Ok(Rc::new(Self {
+            device,
+            pool,
+
+            vk_pool,
+            buffer,
+        }))
+    }
+
+    /// Factory method that creates N CommandBuffers at a time.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device where to allocate the CommandBuffers on.
+    /// - `pool`: The CommandPool where to allocate the buffers from.
+    /// - `count`: The number of new CommandBuffers to allocate.
+    /// - `index`: The QueueFamilyIndex for which we want to allocate these CommandBuffers.
+    /// - `flags`: Any flags that are relevant when allocating CommandBuffers.
+    /// - `level`: The CommandBufferLevel of all the allocated CommandBuffers.
+    /// 
+    /// # Returns
+    /// A Vector with `count` new instances of the CommandBuffer, already wrapped in an Rc-pointer.
+    /// 
+    /// # Errors
+    /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
+    pub fn multiple(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, count: usize, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<Rc<Self>>, Error> {
+        // Allocate N new vk::CommandBuffers
+        let buffers: Vec<(vk::CommandPool, vk::CommandBuffer)> = {
+            // Get a lock on the pool
+            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+
+            // Do the allocation
+            lock.n_allocate(count as u32, index, flags, CommandBufferLevel::Secondary)?
+        };
+
+        // Map the instances and done
+        Ok(buffers.into_iter().map(|(p, b)| Rc::new(Self {
+            device : device.clone(),
+            pool   : pool.clone(),
+
+            vk_pool : p,
+            buffer  : b,
+        })).collect())
+    }
+
+
+
     /// Prepares the CommandBuffer for recording.
     /// 
     /// # Arguments

@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   02 Jul 2022, 11:15:57
+ *   03 Jul 2022, 16:59:53
  * Auto updated?
  *   Yes
  *
@@ -12,16 +12,21 @@
  *   Contains the interfaces and definitions for the MemoryPools.
 **/
 
+use std::ffi::c_void;
 use std::fmt::{Debug, Formatter, Result as FResult};
 use std::ops::{Add, AddAssign};
+use std::ptr;
 use std::rc::Rc;
+use std::slice;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use log::warn;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::auxillary::{MemoryPropertyFlags, MemoryRequirements};
+use crate::auxillary::{BufferUsageFlags, CommandBufferFlags, CommandBufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
 use crate::device::Device;
+use crate::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 
 
 /***** UNIT TESTS *****/
@@ -199,6 +204,44 @@ macro_rules! assert_ptr_overflow {
             else { warn!("Given pointer value '{:#X}' ({}) overflows for an 48-bit integer", $ptr, $ptr); }
         }
     };
+}
+
+
+
+
+/***** POPULATE FUNCTIONS *****/
+/// Populates the given VkBufferCopy struct.
+/// 
+/// # Arguments
+/// - `src_offset`: The offset of the region in the source buffer.
+/// - `dst_offset`: The offset of the region in the destination buffer.
+/// - `size`: The size of the region (in bytes).
+#[inline]
+fn populate_buffer_copy(src_offset: vk::DeviceSize, dst_offset: vk::DeviceSize, size: vk::DeviceSize) -> vk::BufferCopy {
+    vk::BufferCopy {
+        src_offset,
+        dst_offset,
+        size,
+    }
+}
+
+/// Populates a new VkMappedMemoryRange struct with the given values.
+/// 
+/// # Arguments
+/// - `memory`: The VkDeviceMemory where the range to flush is mapped to.
+/// - `offset`: The offset of the range to flush.
+/// - `size`: The size of the range to flush.
+#[inline]
+fn populate_mapped_memory_range(memory: vk::DeviceMemory, offset: vk::DeviceSize, size: vk::DeviceSize) -> vk::MappedMemoryRange {
+    vk::MappedMemoryRange {
+        s_type : vk::StructureType::MAPPED_MEMORY_RANGE,
+        p_next : ptr::null(),
+
+        // Set the range properties
+        memory,
+        offset,
+        size,
+    }
 }
 
 
@@ -522,3 +565,236 @@ pub trait MemoryPool {
     /// Returns the total space in the pool.
     fn capacity(&self) -> usize;
 }
+
+
+
+
+
+/// The Buffer trait, which unifies the interface to various types of Buffers.
+pub trait Buffer {
+    /// Returns the Device where the Buffer lives.
+    fn device(&self) -> &Rc<Device>;
+    
+    /// Returns the MemoryPool where the Buffer's memory is allocated.
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>>;
+
+
+
+    /// Returns the Vulkan vk::Buffer which we wrap.
+    fn vk(&self) -> vk::Buffer;
+
+    /// Returns the Vulkan vk::DeviceMemory which we also wrap.
+    fn vk_mem(&self) -> vk::DeviceMemory;
+
+    /// Returns the offset of this Buffer in the DeviceMemory.
+    fn vk_offset(&self) -> vk::DeviceSize;
+
+
+
+    /// Returns the usage flags for this Buffer.
+    fn usage(&self) -> BufferUsageFlags;
+
+    /// Returns the usage flags for this Buffer.
+    fn sharing_mode(&self) -> &SharingMode;
+
+    /// Returns the memory requirements for this Buffer.
+    fn requirements(&self) -> &MemoryRequirements;
+
+    /// Returns the memory properties of the memory underlying this Buffer.
+    fn properties(&self) -> MemoryPropertyFlags;
+
+    /// Returns the actually allocated size of the buffer.
+    fn capacity(&self) -> usize;
+}
+
+
+
+/// The TransferBuffer trait implements functions for a Buffer that may transfer data to or from it on the GPU.
+pub trait TransferBuffer: Buffer {
+    /// Schedules a copy of a part of this Buffer's contents to the given Buffer.
+    /// 
+    /// Note that the command buffer is not yet submitted; that should be done manually.
+    /// 
+    /// # Arguments
+    /// - `cmd`: The CommandBuffer on which the memory transfer is scheduled.
+    /// - `target`: The Buffer to write this Buffer's contents to.
+    /// - `src_offset`: The offset (in bytes) of the range in the _source_ buffer which we should actually copy.
+    /// - `dst_offset`: The offset (in bytes) of the range in the _destination_ buffer which we should actually copy.
+    /// - `size`: The size (in bytes) of the range which we should actually copy.
+    /// 
+    /// # Returns
+    /// This function returns nothing on success, except that the CommandBuffer has been appropriately recorded.
+    /// 
+    /// # Errors
+    /// This function may error if the transfer somehow failed.
+    /// 
+    /// # Panics
+    /// This function panics if the given Buffer is not large enough.
+    fn schedule_copyto_range(&self, cmd: &Rc<CommandBuffer>, target: &Rc<dyn TransferBuffer>, src_offset: usize, dst_offset: usize, size: usize) {
+        // Prepare the region to copy
+        let buffer_copy: vk::BufferCopy = populate_buffer_copy(src_offset as vk::DeviceSize, dst_offset as vk::DeviceSize, size as vk::DeviceSize);
+
+        // Schedule the copy on the command buffer
+        self.device().cmd_copy_buffer(cmd.vk(), self.vk(), target.vk(), &[ buffer_copy ]);
+    }
+
+    /// Copies a part of this Buffer's contents to the given Buffer.
+    /// 
+    /// # Arguments
+    /// - `pool`: The CommandPool that is used to get command buffer(s) to transfer the memory around. The resulting buffers will be recorded and submitted, and the thread then blocks until the copy is complete.
+    /// - `target`: The Buffer to write this Buffer's contents to.
+    /// - `src_offset`: The offset (in bytes) of the range in the _source_ buffer which we should actually copy.
+    /// - `dst_offset`: The offset (in bytes) of the range in the _destination_ buffer which we should actually copy.
+    /// - `size`: The size (in bytes) of the range which we should actually copy.
+    /// 
+    /// # Returns
+    /// This function returns nothing on success, except that the target's Buffer's contents will have changed.
+    /// 
+    /// # Errors
+    /// This function may error if the transfer somehow failed.
+    /// 
+    /// # Panics
+    /// This function panics if the given Buffer is not large enough.
+    fn copyto_range(&self, pool: &Arc<RwLock<CommandPool>>, target: &Rc<dyn TransferBuffer>, src_offset: usize, dst_offset: usize, size: usize) -> Result<(), Error> {
+        // Allocate a new command buffer
+        let cmd: Rc<CommandBuffer> = match CommandBuffer::new(self.device().clone(), pool.clone(), self.device().families().memory, CommandBufferFlags::TRANSIENT) {
+            Ok(cmd)  => cmd,
+            Err(err) => { return Err(Error::CommandBufferError{ what: "transfer", err }); }
+        };
+
+        // Schedule the copy
+        cmd.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        self.schedule_copyto_range(&cmd, target, src_offset, dst_offset, size);
+        cmd.end();
+
+        // Submit the command buffer and wait until it is completed
+        self.device().queues().memory.submit(&cmd, &[], &[], None);
+        self.device().queues().memory.drain();
+
+        // Done
+        Ok(())
+    }
+
+
+
+    /// Schedules a copy of this Buffer's (entire) contents to the given Buffer.
+    /// 
+    /// Note that the command buffer is not yet submitted; that should be done manually.
+    /// 
+    /// # Arguments
+    /// - `cmd`: The CommandBuffer on which the memory transfer is scheduled.
+    /// - `target`: The Buffer to write this Buffer's contents to.
+    /// 
+    /// # Returns
+    /// This function returns nothing on success, except that the CommandBuffer has been appropriately recorded.
+    /// 
+    /// # Errors
+    /// This function may error if the transfer somehow failed.
+    /// 
+    /// # Panics
+    /// This function panics if the given Buffer is not large enough.
+    #[inline]
+    fn schedule_copyto(&self, cmd: &Rc<CommandBuffer>, target: &Rc<dyn TransferBuffer>) {
+        // Call the `schedule_copyto_range()` with the entire range
+        self.schedule_copyto_range(cmd, target, 0, 0, self.capacity())
+    }
+
+    /// Copies this Buffer's (entire) contents to the given Buffer.
+    /// 
+    /// # Arguments
+    /// - `pool`: The CommandPool that is used to get command buffer(s) to transfer the memory around. The resulting buffers will be recorded and submitted, and the thread then blocks until the copy is complete.
+    /// - `target`: The Buffer to write this Buffer's contents to.
+    /// 
+    /// # Returns
+    /// This function returns nothing on success, except that the target's Buffer's contents will have changed.
+    /// 
+    /// # Errors
+    /// This function may error if the transfer somehow failed.
+    /// 
+    /// # Panics
+    /// This function panics if the given Buffer is not large enough.
+    #[inline]
+    fn copyto(&self, pool: &Arc<RwLock<CommandPool>>, target: &Rc<dyn TransferBuffer>) -> Result<(), Error> {
+        // Call the `copyto_range()` with the entire range
+        self.copyto_range(pool, target, 0, 0, self.capacity())
+    }
+}
+
+
+
+/// The HostBuffer trait implements functions for a Buffer that are possible when the Buffer memory is host-visible.
+pub trait HostBuffer: Buffer {
+    /// Maps the Buffer memory to host memory.
+    /// 
+    /// # Returns
+    /// A pointer to the new Host-memory area.
+    /// 
+    /// # Errors
+    /// This function may error if we failed to map the Buffer memory.
+    #[inline]
+    fn map(&self) -> Result<*mut c_void, Error> {
+        // Simply call the map function
+        match self.device().map_memory(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize, vk::MemoryMapFlags::empty()) {
+            Ok(ptr)  => Ok(ptr),
+            Err(err) => Err(Error::BufferMapError{ err }),
+        }
+    }
+
+    /// Maps the Buffer memory to host memory.
+    /// 
+    /// This variant already casts the pointer to a slice of the given object type.
+    /// 
+    /// # Arguments
+    /// - `size`: The number of elements we already expect to be allocated in the range.
+    /// 
+    /// # Returns
+    /// A slice to the new Host-memory area.
+    /// 
+    /// # Errors
+    /// This function may error if we failed to map the Buffer memory.
+    /// 
+    /// # Panics
+    /// This function may panic if the size overflows the mapped memory area's size.
+    fn map_slice<T>(&self, size: usize) -> Result<&mut [T], Error> {
+        // Check if the size does not overflow
+        if size * std::mem::size_of::<T>() > self.capacity() { panic!("A buffer of {} bytes is too small to fit {} elements of {} bytes each ({} bytes total)", self.capacity(), size, std::mem::size_of::<T>(), size * std::mem::size_of::<T>()); }
+
+        // Simply call the map function
+        Ok(unsafe { slice::from_raw_parts_mut(self.map()? as *mut T, size) })
+    }
+
+    /// Flushes the host-mapped memory area.
+    /// 
+    /// Note that, if the underlying memory is actually coherent, this function does nothing significant.
+    /// 
+    /// # Errors
+    /// This function may error if there was not enough host memory to perform the flush.
+    /// 
+    /// # Panics
+    /// This function may panic if the memory was not actually mapped.
+    #[inline]
+    fn flush(&self) -> Result<(), Error> {
+        // Call the flush function
+        match self.device().flush_mapped_memory_ranges(&[
+            populate_mapped_memory_range(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize),
+        ]) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::BufferFlushError{ err }),
+        }
+    }
+
+    /// Unmaps the Buffer's memory area.
+    /// 
+    /// # Panics
+    /// This function may panic if the memory was not actually mapped.
+    #[inline]
+    fn unmap(&self) {
+        // Simply call unmap
+        unsafe { self.device().unmap_memory(self.vk_mem()); }
+    }
+}
+
+
+
+/// The LocalBuffer trait implements functions for a Buffer that lives solely on the GPU-side.
+pub trait LocalBuffer: Buffer {}

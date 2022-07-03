@@ -4,7 +4,7 @@
  * Created:
  *   01 May 2022, 11:50:19
  * Last edited:
- *   01 May 2022, 11:53:37
+ *   03 Jul 2022, 14:47:20
  * Auto updated?
  *   Yes
  *
@@ -18,11 +18,10 @@
 
 
 /***** LAYOUT *****/
-// The output colour of the fragment shader
-layout(location = 0) out vec4 outColour;
-
 // The colour from the vertex shader passed to us
-layout(location = 0) in vec3 fragColour;
+layout(location = 0) in vec3 frag_colour;
+// The output colour of the fragment shader
+layout(location = 0) out vec4 out_colour;
 
 
 
@@ -30,5 +29,6 @@ layout(location = 0) in vec3 fragColour;
 
 /***** ENTRYPOINT *****/
 void main() {
-    outColour = vec4(fragColour, 1.0);
+    // Simply pass, after some dimensional rescaling
+    out_colour = vec4(frag_colour, 1.0);
 }

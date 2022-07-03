@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   03 Jul 2022, 11:13:12
+ *   03 Jul 2022, 17:18:31
  * Auto updated?
  *   Yes
  *
@@ -14,6 +14,7 @@
 
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use ash::vk;
 
@@ -21,7 +22,7 @@ pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::vec_as_ptr;
 use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
 use crate::device::Device;
-use crate::pools::memory::spec::{GpuPtr, MemoryPool};
+use crate::pools::memory::spec::{Buffer, GpuPtr, LocalBuffer, MemoryPool, TransferBuffer};
 
 
 /***** POPULATE FUNCTIONS *****/
@@ -57,183 +58,299 @@ fn populate_buffer_info(usage_flags: vk::BufferUsageFlags, sharing_mode: vk::Sha
 
 
 
+/***** HELPER FUNCTIONS *****/
+/// Creates & allocates a new vk::Buffer object.
+fn create_buffer(device: &Rc<Device>, pool: &Arc<RwLock<dyn MemoryPool>>, usage_flags: BufferUsageFlags, sharing_mode: &SharingMode, mem_props: MemoryPropertyFlags, capacity: usize) -> Result<(vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements), Error> {
+    // Split the sharing mode
+    let (vk_sharing_mode, vk_queue_family_indices) = sharing_mode.clone().into();
+
+    // First, create a new Buffer object from the usage flags
+    let buffer_info = populate_buffer_info(
+        usage_flags.into(),
+        vk_sharing_mode, &vk_queue_family_indices.unwrap_or(Vec::new()),
+        capacity as vk::DeviceSize,
+    );
+
+    // Create the Buffer
+    let buffer: vk::Buffer = unsafe {
+        match device.create_buffer(&buffer_info, None) {
+            Ok(buffer) => buffer,
+            Err(err)   => { return Err(Error::BufferCreateError{ err }); }
+        }
+    };
+
+    // Get the buffer memory type requirements
+    let requirements: MemoryRequirements = unsafe { device.get_buffer_memory_requirements(buffer) }.into();
+
+    // Allocate the memory in the pool
+    let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
+        // Get a lock on the pool first
+        let mut lock: RwLockWriteGuard<dyn MemoryPool> = pool.write().expect("Could not get write lock on MemoryPool");
+
+        // Reserve the area
+        lock.allocate(&requirements, mem_props)?
+    };
+
+    // Bind the memory
+    unsafe {
+        if let Err(err) = device.bind_buffer_memory(buffer, memory, pointer.into()) {
+            return Err(Error::BufferBindError{ err });
+        }
+    };
+
+    // Done! Return the relevant bits as a typle
+    Ok((buffer, memory, pointer, requirements))
+}
+
+
+
+
+
 /***** LIBRARY *****/
-/// An allocated piece of memory in the MemoryPool.
-pub struct Buffer {
+/// The StagingBuffer is used to transfer memory to other Buffers.
+pub struct StagingBuffer {
     /// The Device where the Buffer lives.
     device : Rc<Device>,
+    /// The MemoryPool where the Buffer lives.
+    pool   : Arc<RwLock<dyn MemoryPool>>,
 
     /// The VkBuffer object we wrap.
     buffer  : vk::Buffer,
     /// The bound memory area for this buffer.
-    /// 
-    /// # Layout
-    /// - `0`: The MemoryPool where this memory area was allocated.
-    /// - `1`: The block of device memory itself.
-    /// - `2`: The offset of the device memory (used for deallocation).
-    memory  : Option<(Rc<dyn MemoryPool>, vk::DeviceMemory, GpuPtr)>,
+    memory  : vk::DeviceMemory,
+    /// The offset in that memory area for this buffer.
+    ptr     : GpuPtr,
 
-    /// The usage flags for this Buffer.
-    usage_flags  : BufferUsageFlags,
+    /// The size (in bytes) of this Buffer.
+    capacity     : usize,
     /// The sharing mode that determines which queue families have access to this Buffer.
     sharing_mode : SharingMode,
     /// The memory requirements of this Buffer.
     mem_req      : MemoryRequirements,
-    /// The memory properties of the memory backing this Buffer.
-    mem_props    : MemoryPropertyFlags,
-    /// The size (in bytes) of this Buffer.
-    capacity     : usize,
 }
 
-impl Buffer {
-    /// Constructor for the Buffer.
+impl StagingBuffer {
+    /// The usage flags for the StagingBuffer
+    const USAGE_FLAGS: BufferUsageFlags  = BufferUsageFlags::TRANSFER_SRC;
+    /// The memory property flags for the StagingBuffer
+    const MEM_PROPS: MemoryPropertyFlags = MemoryPropertyFlags::HOST_VISIBLE;
+
+
+
+    /// Constructor for the StagingBuffer.
     /// 
     /// # Arguments
-    /// - `usage_flags`: The BufferUsageFlags that determine how this buffer will/may be used.
-    /// - `mem_props`: Any memory properties of this Buffer. Used when deciding how to allocate.
-    /// - `size`: The size of the buffer, in bytes. The actually allocated size may be larger due to alignment etc.
+    /// - `device`: The Device where the Buffer-part of the Buffer (i.e., the non-content part) will live.
+    /// - `pool`: The MemoryPool where the Buffer-part of the Buffer (i.e., the content part) will live.
+    /// - `capacity`: The size of the buffer, in bytes. The actually allocated size may be larger due to alignment etc.
+    /// - `sharing_mode`: The mode of sharing the Buffer across queues.
     /// 
     /// # Errors
     /// This function may error if the buffer creation in the Vulkan backend failed.
-    pub fn new(device: Rc<Device>, usage_flags: BufferUsageFlags, sharing_mode: SharingMode, mem_props: MemoryPropertyFlags, size: usize) -> Result<Rc<Self>, Error> {
-        // Split the sharing mode
-        let (vk_sharing_mode, vk_queue_family_indices) = sharing_mode.clone().into();
+    pub fn new(device: Rc<Device>, pool: Arc<RwLock<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
+        // Create a buffer in the helper function
+        let (buffer, memory, ptr, mem_req): (vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements) = create_buffer(
+            &device, &pool,
+            Self::USAGE_FLAGS,
+            &sharing_mode,
+            Self::MEM_PROPS,
+            capacity,
+        )?;
 
-        // First, create a new Buffer object from the usage flags
-        let buffer_info = populate_buffer_info(
-            usage_flags.into(),
-            vk_sharing_mode, &vk_queue_family_indices.unwrap_or(Vec::new()),
-            size as vk::DeviceSize,
-        );
-
-        // Create the Buffer
-        let buffer: vk::Buffer = unsafe {
-            match device.create_buffer(&buffer_info, None) {
-                Ok(buffer) => buffer,
-                Err(err)   => { return Err(Error::BufferCreateError{ err }); }
-            }
-        };
-
-        // Get the buffer memory type requirements
-        let requirements: vk::MemoryRequirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-
-        // For now, we leave it at this; return the buffer
+        // Wrap it in ourselves as well as all other properties; done
         Ok(Rc::new(Self {
             device,
+            pool,
 
             buffer,
-            memory : None,
+            memory,
+            ptr,
 
-            usage_flags,
+            capacity,
             sharing_mode,
-            mem_req : requirements.into(),
-            mem_props,
-            capacity: size,
+            mem_req,
         }))
     }
+}
 
-
-
-    /// Allocates a new piece of memory on the given pool and binds it to the internal Buffer.
-    /// 
-    /// Note that the Vulkan spec does not seem to require that the bound memory lives on the same GPU as this, so for now, this is not a requirement.
-    /// 
-    /// # Arguments
-    /// - `pool`: A MemoryPool that we use to allocate the new memory for this Buffer.
-    /// 
-    /// # Results
-    /// Nothing explicitly, but does set the memory area for this Buffer. Can override an already existing area, which will be deallocated.
-    /// 
-    /// # Errors
-    /// This function errors if either the new memory could not be reserved or it could not be bound.
-    pub fn bind(&mut self, mut pool: Rc<dyn MemoryPool>) -> Result<(), Error> {
-        // If present, deallocate old area first
-        if let Some((mut pool, _, pointer)) = self.memory.take() {
-            // Get a muteable version first
-            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get a muteable pool");
-
-            // Free the area
-            pool.free(pointer);
-        }
-
-        // Allocate some bit in the pool
-        let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
-            // Get a muteable version first
-            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get a muteable pool");
-
-            // Reserve the area
-            pool.allocate(&self.mem_req, self.mem_props)?
-        };
-
-        // Bind the memory
-        unsafe {
-            if let Err(err) = self.device.bind_buffer_memory(self.buffer, memory, pointer.into()) {
-                return Err(Error::BufferBindError{ err });
-            }
-        };
-
-        // Update the internal memory area and pool
-        self.memory = Some((pool, memory, pointer));
-        Ok(())
-    }
-
-    /// Frees the memory that is backing this Buffer.
-    /// 
-    /// # Returns
-    /// Nothing explicitly, but does free the backend memory. Call `Buffer::bind()` before using the Buffer again.
-    /// 
-    /// # Errors
-    /// This function may error if the pool lock was poisoned.
+impl Buffer for StagingBuffer {
+    /// Returns the Device where the Buffer lives.
     #[inline]
-    pub fn release(&mut self) -> Result<(), Error> {
-        // Only free if there is something to be freed
-        if let Some((mut pool, _, pointer)) = self.memory.take() {
-            // Get a muteable version
-            let pool: &mut dyn MemoryPool = Rc::get_mut(&mut pool).expect("Could not get muteable pool");
-
-            // Free the pointer
-            pool.free(pointer);
-        }
-
-        // Done
-        Ok(())
-    }
-
-    /// Doesn't free the internal memory, but does simply drop it as being associated with this Buffer.
+    fn device(&self) -> &Rc<Device> { &self.device }
+    
+    /// Returns the MemoryPool where the Buffer's memory is allocated.
     #[inline]
-    pub fn drop(&mut self) {
-        self.memory = None;
-    }
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>> { &self.pool }
+
+
+
+    /// Returns the Vulkan vk::Buffer which we wrap.
+    #[inline]
+    fn vk(&self) -> vk::Buffer { self.buffer }
+
+    /// Returns the Vulkan vk::DeviceMemory which we also wrap.
+    #[inline]
+    fn vk_mem(&self) -> vk::DeviceMemory { self.memory }
+
+    /// Returns the offset of this Buffer in the DeviceMemory.
+    #[inline]
+    fn vk_offset(&self) -> vk::DeviceSize { self.ptr.into() }
 
 
 
     /// Returns the usage flags for this Buffer.
     #[inline]
-    pub fn usage(&self) -> BufferUsageFlags { self.usage_flags }
+    fn usage(&self) -> BufferUsageFlags { Self::USAGE_FLAGS }
 
     /// Returns the usage flags for this Buffer.
     #[inline]
-    pub fn sharing_mode(&self) -> &SharingMode { &self.sharing_mode }
+    fn sharing_mode(&self) -> &SharingMode { &self.sharing_mode }
 
     /// Returns the memory requirements for this Buffer.
     #[inline]
-    pub fn requirements(&self) -> &MemoryRequirements { &self.mem_req }
+    fn requirements(&self) -> &MemoryRequirements { &self.mem_req }
 
     /// Returns the memory properties of the memory underlying this Buffer.
     #[inline]
-    pub fn properties(&self) -> MemoryPropertyFlags { self.mem_props }
+    fn properties(&self) -> MemoryPropertyFlags { Self::MEM_PROPS }
 
-    /// Returns the allocated size of the buffer.
-    /// 
-    /// Note that the actual allocate size may vary; check `Buffer::requirements().size` for the actual allocated size.
+    /// Returns the actually allocated size of the buffer.
     #[inline]
-    pub fn capacity(&self) -> usize { self.capacity }
+    fn capacity(&self) -> usize { self.capacity }
 }
 
-impl Drop for Buffer {
+impl TransferBuffer for StagingBuffer {}
+
+impl Drop for StagingBuffer {
     #[inline]
     fn drop(&mut self) {
-        // Simply call release
-        self.release().unwrap_or_else(|err| panic!("Failed to free Buffer memory: {}", err));
+        // Lock the pool
+        self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
+    }
+}
+
+
+
+/// The VertexBuffer is used to transfer vertices to the GPU.
+pub struct VertexBuffer {
+    /// The Device where the Buffer lives.
+    device : Rc<Device>,
+    /// The MemoryPool where the Buffer lives.
+    pool   : Arc<RwLock<dyn MemoryPool>>,
+
+    /// The VkBuffer object we wrap.
+    buffer  : vk::Buffer,
+    /// The bound memory area for this buffer.
+    memory  : vk::DeviceMemory,
+    /// The offset in that memory area for this buffer.
+    ptr     : GpuPtr,
+
+    /// The size (in bytes) of this Buffer.
+    capacity     : usize,
+    /// The sharing mode that determines which queue families have access to this Buffer.
+    sharing_mode : SharingMode,
+    /// The memory requirements of this Buffer.
+    mem_req      : MemoryRequirements,
+}
+
+impl VertexBuffer {
+    /// The usage flags for the VertexBuffer
+    const USAGE_FLAGS: BufferUsageFlags  = BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST;
+    /// The memory property flags for the VertexBuffer
+    const MEM_PROPS: MemoryPropertyFlags = MemoryPropertyFlags::DEVICE_LOCAL;
+
+
+
+    /// Constructor for the VertexBuffer.
+    /// 
+    /// # Arguments
+    /// - `device`: The Device where the Buffer-part of the Buffer (i.e., the non-content part) will live.
+    /// - `pool`: The MemoryPool where the Buffer-part of the Buffer (i.e., the content part) will live.
+    /// - `capacity`: The size of the buffer, in bytes. The actually allocated size may be larger due to alignment etc.
+    /// - `sharing_mode`: The mode of sharing the Buffer across queues.
+    /// 
+    /// # Errors
+    /// This function may error if the buffer creation in the Vulkan backend failed.
+    pub fn new(device: Rc<Device>, pool: Arc<RwLock<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
+        // Create a buffer in the helper function
+        let (buffer, memory, ptr, mem_req): (vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements) = create_buffer(
+            &device, &pool,
+            Self::USAGE_FLAGS,
+            &sharing_mode,
+            Self::MEM_PROPS,
+            capacity,
+        )?;
+
+        // Wrap it in ourselves as well as all other properties; done
+        Ok(Rc::new(Self {
+            device,
+            pool,
+
+            buffer,
+            memory,
+            ptr,
+
+            capacity,
+            sharing_mode,
+            mem_req,
+        }))
+    }
+}
+
+impl Buffer for VertexBuffer {
+    /// Returns the Device where the Buffer lives.
+    #[inline]
+    fn device(&self) -> &Rc<Device> { &self.device }
+    
+    /// Returns the MemoryPool where the Buffer's memory is allocated.
+    #[inline]
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>> { &self.pool }
+
+
+
+    /// Returns the Vulkan vk::Buffer which we wrap.
+    #[inline]
+    fn vk(&self) -> vk::Buffer { self.buffer }
+
+    /// Returns the Vulkan vk::DeviceMemory which we also wrap.
+    #[inline]
+    fn vk_mem(&self) -> vk::DeviceMemory { self.memory }
+
+    /// Returns the offset of this Buffer in the DeviceMemory.
+    #[inline]
+    fn vk_offset(&self) -> vk::DeviceSize { self.ptr.into() }
+
+
+
+    /// Returns the usage flags for this Buffer.
+    #[inline]
+    fn usage(&self) -> BufferUsageFlags { Self::USAGE_FLAGS }
+
+    /// Returns the usage flags for this Buffer.
+    #[inline]
+    fn sharing_mode(&self) -> &SharingMode { &self.sharing_mode }
+
+    /// Returns the memory requirements for this Buffer.
+    #[inline]
+    fn requirements(&self) -> &MemoryRequirements { &self.mem_req }
+
+    /// Returns the memory properties of the memory underlying this Buffer.
+    #[inline]
+    fn properties(&self) -> MemoryPropertyFlags { Self::MEM_PROPS }
+
+    /// Returns the actually allocated size of the buffer.
+    #[inline]
+    fn capacity(&self) -> usize { self.capacity }
+}
+
+impl LocalBuffer for VertexBuffer {}
+
+impl TransferBuffer for VertexBuffer {}
+
+impl Drop for VertexBuffer {
+    #[inline]
+    fn drop(&mut self) {
+        // Lock the pool
+        self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
     }
 }

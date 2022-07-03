@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:16:04
  * Last edited:
- *   03 Jul 2022, 11:14:10
+ *   03 Jul 2022, 17:17:29
  * Auto updated?
  *   Yes
  *
@@ -23,6 +23,6 @@ pub mod buffers;
 
 
 // Bring some stuff into the module scope
-pub use buffers::Buffer;
+pub use buffers::{StagingBuffer, VertexBuffer};
 pub use spec::MemoryPool;
 pub use pools::{Error, BlockPool, LinearPool, MetaPool};

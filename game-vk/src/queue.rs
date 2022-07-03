@@ -4,7 +4,7 @@
  * Created:
  *   06 May 2022, 18:28:29
  * Last edited:
- *   14 May 2022, 13:08:36
+ *   03 Jul 2022, 16:35:15
  * Auto updated?
  *   Yes
  *
@@ -122,7 +122,7 @@ impl Queue {
     /// 
     /// # Errors
     /// This function errors if we fail to submit the queue.
-    pub fn submit(&self, command_buffer: &Rc<CommandBuffer>, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Error> {
+    pub fn submit(&self, command_buffer: &Rc<CommandBuffer>, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: Option<&Rc<Fence>>) -> Result<(), Error> {
         // Cast the semaphores and generate a list of wait stages
         let vk_wait_semaphores: Vec<vk::Semaphore>      = wait_semaphores.iter().map(|sem| sem.vk()).collect();
         let vk_wait_stages: Vec<vk::PipelineStageFlags> = (0..wait_semaphores.len()).map(|_| PipelineStage::COLOUR_ATTACHMENT_OUTPUT.into()).collect();
@@ -133,9 +133,9 @@ impl Queue {
         let submit_info = populate_submit_info(&vk_command_buffers, &vk_wait_semaphores, &vk_wait_stages, &vk_done_semaphores);
 
         // Submit!
-        if let Err(err) = done_fence.reset() { return Err(Error::FenceResetError{ err }); }
+        if let Some(done_fence) = done_fence { if let Err(err) = done_fence.reset() { return Err(Error::FenceResetError{ err }); } }
         unsafe {
-            match self.device.queue_submit(self.queue, &[submit_info], done_fence.vk()) {
+            match self.device.queue_submit(self.queue, &[submit_info], done_fence.map(|f| f.vk()).unwrap_or(vk::Fence::null())) {
                 Ok(_)    => Ok(()),
                 Err(err) => Err(Error::SubmitError{ err }),
             }

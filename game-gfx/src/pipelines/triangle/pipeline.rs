@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   03 Jul 2022, 11:20:38
+ *   03 Jul 2022, 14:59:03
  * Auto updated?
  *   Yes
  *
@@ -19,7 +19,7 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 
-use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, BufferUsageFlags, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageFormat, ImageLayout, MemoryPropertyFlags, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SharingMode, SubpassDescription, VertexInputState, ViewportState};
+use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, BufferUsageFlags, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageFormat, ImageLayout, MemoryPropertyFlags, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SharingMode, SubpassDescription, VertexBinding, VertexInputRate, VertexInputState, ViewportState};
 use game_vk::device::Device;
 use game_vk::shader::Shader;
 use game_vk::layout::PipelineLayout;
@@ -32,8 +32,29 @@ use game_vk::framebuffer::Framebuffer;
 use game_vk::sync::{Fence, Semaphore};
 
 pub use crate::pipelines::errors::TriangleError as Error;
-use crate::pipelines::triangle::Shaders;
+use crate::pipelines::triangle::{Shaders, Vertex};
 use crate::spec::{RenderPipeline, RenderTarget};
+
+
+/***** CONSTANTS *****/
+/// The raw vertex data we'd like to send to the GPU.
+const VERTICES: [Vertex; 3] = [
+    Vertex {
+        pos    : [0.0, -0.5],
+        colour : [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        pos    : [0.5, 0.5],
+        colour : [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        pos    : [-0.5, 0.5],
+        colour : [0.0, 0.0, 1.0],
+    },
+];
+
+
+
 
 
 /***** HELPER FUNCTIONS *****/
@@ -89,8 +110,14 @@ fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass
         .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("vertex.spv")))
         .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("fragment.spv")))
         .vertex_input(VertexInputState {
-            attributes : vec![],
-            bindings   : vec![],
+            attributes : Vertex::vk_attributes(),
+            bindings   : vec![
+                VertexBinding {
+                    binding : 0,
+                    stride  : Vertex::vk_size(),
+                    rate    : VertexInputRate::Vertex,
+                }
+            ],
         })
         .viewport(ViewportState {
             viewport : Rect2D::from_raw( Offset2D::new(0.0, 0.0), Extent2D::new(extent.w as f32, extent.h as f32) ),
@@ -140,6 +167,47 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
 
     // Done
     Ok(framebuffers)
+}
+
+/// Creates, allocates and populates the vertex buffer.
+/// 
+/// # Arguments
+/// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
+/// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
+/// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
+fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<dyn MemoryPool>, command_pool: &Arc<RwLock<CommandPool>>) -> Result<Buffer, Error> {
+    // Create the Vertex buffer object
+    let vertices: Rc<Buffer> = match Buffer::new(
+        device.clone(),
+        BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST, SharingMode::Exclusive, MemoryPropertyFlags::DEVICE_LOCAL,
+        std::mem::size_of_val(&VERTICES),
+    ) {
+        Ok(vertices) => vertices,
+        Err(err)     => { return Err(Error::BufferCreateError{ what: "vertex", err }); }
+    };
+
+    // Create the staging buffer
+    let staging: Rc<Buffer> = match Buffer::new(
+        device.clone(),
+        BufferUsageFlags::TRANSFER_SRC, SharingMode::Exclusive, MemoryPropertyFlags::HOST_VISIBLE,
+        std::mem::size_of_val(&VERTICES),
+    ) {
+        Ok(staging) => staging,
+        Err(err)    => { return Err(Error::BufferCreateError{ what: "staging", err }); }
+    };
+
+    // Allocate memory for both
+    if let Err(err) = vertices.bind(memory_pool.clone()) {
+        return Err(Error::BufferAllocateError{ what: "vertex", err });
+    }
+    if let Err(err) = staging.bind(memory_pool.clone()) {
+        return Err(Error::BufferAllocateError{ what: "staging", err });
+    }
+
+    // Populate the staging buffer
+    
+
+    // Copy the staging to the normal buffer
 }
 
 /// Records the commands buffers for the TrianglePipeline.
@@ -239,8 +307,8 @@ impl Pipeline {
         // Create the framebuffers for this target
         let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
-        // // Prepare the triangle buffer
-        // let vertices = Buffer::new(device.clone(), BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST, SharingMode::Exclusive, MemoryPropertyFlags::DEVICE_LOCAL, )
+        // Prepare the triangle buffer
+        let vertex_buffer: Buffer = create_vertex_buffer(&device, &mut memory_pool)?;
 
         // Record one command buffer per framebuffer
         let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &extent)?;

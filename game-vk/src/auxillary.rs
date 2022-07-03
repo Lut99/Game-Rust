@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   02 Jul 2022, 14:04:22
+ *   03 Jul 2022, 17:27:26
  * Auto updated?
  *   Yes
  *
@@ -1093,11 +1093,11 @@ pub struct ShaderStage(u16);
 
 impl ShaderStage {
     /// A ShaderStage that hits all stages
-    pub const ALL: Self   = Self(0xFFFF);
+    pub const ALL: Self          = Self(0xFFFF);
     /// A ShaderStage that hits all graphics stages
-    pub const ALL_GRAPHICS: Self   = Self(0x001F);
+    pub const ALL_GRAPHICS: Self = Self(0x001F);
     /// An empty ShaderStage
-    pub const EMPTY: Self = Self(0x0000);
+    pub const EMPTY: Self        = Self(0x0000);
 
     /// The Vertex stage
     pub const VERTEX: Self                 = Self(0x0001);
@@ -1112,6 +1112,15 @@ impl ShaderStage {
     /// The Compute stage
     pub const COMPUTE: Self                = Self(0x0020);
 
+
+    /// Creates a ShaderStage from a raw value.
+    /// 
+    /// # Arguments
+    /// - `value`: The raw flags value. Note that this is the ShaderStage raw, _not_ the Vulkan raw.
+    /// 
+    /// # Returns
+    /// A new ShaderStage with the raw flags set.
+    pub const fn raw(value: u16) -> Self { Self(value) }
 
     /// Returns whether the given ShaderStage is a subset of this one.
     /// 
@@ -2120,6 +2129,8 @@ impl From<&SubpassDependency> for vk::SubpassDependency {
 /// Defines the possible layouts for an attribute
 #[derive(Clone, Copy, Debug)]
 pub enum AttributeLayout {
+    /// A two-dimensional vector of 32-bit floating-point numbers
+    Float2,
     /// A three-dimensional vector of 32-bit floating-point numbers
     Float3,
 }
@@ -2129,6 +2140,7 @@ impl TryFrom<vk::Format> for AttributeLayout {
 
     fn try_from(value: vk::Format) -> Result<Self, Self::Error> {
         match value {
+            vk::Format::R32G32_SFLOAT    => Ok(AttributeLayout::Float2),
             vk::Format::R32G32B32_SFLOAT => Ok(AttributeLayout::Float3),
             value                        => Err(AttributeLayoutError::IllegalFormatValue{ value }),
         }
@@ -2138,6 +2150,7 @@ impl TryFrom<vk::Format> for AttributeLayout {
 impl From<AttributeLayout> for vk::Format {
     fn from(value: AttributeLayout) -> Self {
         match value {
+            AttributeLayout::Float2 => vk::Format::R32G32_SFLOAT,
             AttributeLayout::Float3 => vk::Format::R32G32B32_SFLOAT,
         }
     }
@@ -2237,7 +2250,7 @@ impl From<VertexInputRate> for vk::VertexInputRate {
 
 
 
-/// Defines how a single binding (i.e., vector to a ) looks like.
+/// Defines how a single binding (i.e., list of vectors) looks like.
 #[derive(Clone, Debug)]
 pub struct VertexBinding {
     /// The binding index of this buffer
@@ -4024,6 +4037,16 @@ impl BufferUsageFlags {
     /// The buffer may be used for indirect draw commands (various applications).
     pub const INDIRECT_BUFFER: Self = Self(0x0100);
 
+
+
+    /// Creates a BufferUsageFlags from a raw value.
+    /// 
+    /// # Arguments
+    /// - `value`: The raw flags value. Note that this is the BufferUsageFlags raw, _not_ the Vulkan raw.
+    /// 
+    /// # Returns
+    /// A new BufferUsageFlags with the raw flags set.
+    pub const fn raw(value: u16) -> Self { Self(value) }
 
     /// Checks if this BufferUsageFlags is a superset of the given one. For example, if this is `DEVICE_LOCAL | HOST_VISIBLE` and the given one is `DEVICE_LOCAL`, returns true.
     #[inline]

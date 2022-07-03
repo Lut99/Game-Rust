@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   25 Jun 2022, 18:36:11
+ *   03 Jul 2022, 16:59:21
  * Auto updated?
  *   Yes
  *
@@ -31,12 +31,17 @@ pub enum MemoryPoolError {
     /// The given memory pointer was not one matching a block to free.
     UnknownPointer{ ptr: usize },
 
+    /// Could not allocate a CommandBuffer for some purpose.
+    CommandBufferError{ what: &'static str, err: CommandPoolError },
+
     /// Failed to create a new VkBuffer object.
     BufferCreateError{ err: ash::vk::Result },
     /// Failed to bind a buffer to allocated memory.
     BufferBindError{ err: ash::vk::Result },
-    /// Failed to acquire a lock on the memory pool.
-    PoolLockError{ err: String },
+    /// Failed to map a buffer's memory to host memory.
+    BufferMapError{ err: ash::vk::Result },
+    /// Failed to flush a buffer's mapped memory area.
+    BufferFlushError{ err: ash::vk::Result },
 }
 
 impl Display for MemoryPoolError {
@@ -49,9 +54,12 @@ impl Display for MemoryPoolError {
             OutOfMemoryError{ req_size }                        => write!(f, "Could not allocate new block of {} bytes", req_size),
             UnknownPointer{ ptr }                               => write!(f, "Pointer '{:#X}' does not point to an allocated block", ptr),
 
+            CommandBufferError{ what, err } => write!(f, "Could not create a {} command buffer: {}", what, err),
+
             BufferCreateError{ err } => write!(f, "Could not create Buffer: {}", err),
             BufferBindError{ err }   => write!(f, "Could not bind Buffer to memory: {}", err),
-            PoolLockError{ err }     => write!(f, "Could not get a write lock on the MemoryPool: {}", err),
+            BufferMapError{ err }    => write!(f, "Could not map Buffer memory to host memory: {}", err),
+            BufferFlushError{ err }  => write!(f, "Could not flush Buffer mapped memory area: {}", err),
         }
     }
 }

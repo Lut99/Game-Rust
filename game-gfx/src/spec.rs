@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   03 Jul 2022, 11:31:23
+ *   03 Jul 2022, 14:41:02
  * Auto updated?
  *   Yes
  *
@@ -17,7 +17,7 @@ use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 
 use game_utl::traits::AsAny;
-use game_vk::auxillary::{Extent2D, ImageFormat};
+use game_vk::auxillary::{Extent2D, ImageFormat, VertexAttribute};
 use game_vk::image;
 use game_vk::sync::{Fence, Semaphore};
 
@@ -57,19 +57,6 @@ impl Display for RenderPipelineId {
             Triangle => write!(f, "Triangle"),
         }
     }
-}
-
-
-
-
-
-/***** VERTEX TRAIT *****/
-/// Defines a common interface for Vertices that may be rendered by a GPU.
-pub trait Vertex: Sized {
-    /// Returns the descriptions that list the binding points for this Vertex.
-    /// 
-    /// # Returns
-    /// A list of 
 }
 
 
