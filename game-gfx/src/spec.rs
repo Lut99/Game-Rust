@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   29 May 2022, 17:49:06
+ *   03 Jul 2022, 11:31:23
  * Auto updated?
  *   Yes
  *
@@ -57,6 +57,19 @@ impl Display for RenderPipelineId {
             Triangle => write!(f, "Triangle"),
         }
     }
+}
+
+
+
+
+
+/***** VERTEX TRAIT *****/
+/// Defines a common interface for Vertices that may be rendered by a GPU.
+pub trait Vertex: Sized {
+    /// Returns the descriptions that list the binding points for this Vertex.
+    /// 
+    /// # Returns
+    /// A list of 
 }
 
 

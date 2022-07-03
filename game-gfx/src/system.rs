@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   02 Jul 2022, 14:05:27
+ *   03 Jul 2022, 11:16:32
  * Auto updated?
  *   Yes
  *
@@ -26,6 +26,7 @@ use game_vk::auxillary::{DeviceExtension, DeviceFeatures, DeviceInfo};
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
+use game_vk::pools::memory::MetaPool;
 use game_vk::sync::{Fence, Semaphore};
 
 pub use crate::errors::RenderSystemError as Error;
@@ -138,7 +139,7 @@ impl RenderSystem {
         };
 
         // Allocate the memory pools on the GPU
-        // let pool = LinearPool::new(device.clone());
+        let memory_pool = MetaPool::new(device.clone(), 4096);
 
         // Allocate the pools on the GPU
         let command_pool = match CommandPool::new(device.clone()) {
@@ -159,7 +160,7 @@ impl RenderSystem {
     
         // Initiate the render pipelines
         let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
-        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), command_pool.clone()) {
+        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), memory_pool.clone(), command_pool.clone()) {
             Ok(pipeline) => Box::new(pipeline),
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err: Box::new(err) }); }
         });

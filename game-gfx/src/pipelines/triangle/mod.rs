@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:34:49
  * Last edited:
- *   01 May 2022, 11:58:18
+ *   03 Jul 2022, 11:21:23
  * Auto updated?
  *   Yes
  *
@@ -12,6 +12,8 @@
  *   Entrypoint to the triangle module within the pipelines module.
 **/
 
+/// Specifies the vertex definition for this pipeline
+pub mod vertex;
 /// Implements the pipeline
 pub mod pipeline;
 

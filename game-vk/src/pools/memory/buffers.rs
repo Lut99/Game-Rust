@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   02 Jul 2022, 10:30:30
+ *   03 Jul 2022, 11:13:12
  * Auto updated?
  *   Yes
  *
@@ -155,7 +155,6 @@ impl Buffer {
             // Free the area
             pool.free(pointer);
         }
-        // Allocate some bit in the
 
         // Allocate some bit in the pool
         let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
@@ -198,6 +197,12 @@ impl Buffer {
 
         // Done
         Ok(())
+    }
+
+    /// Doesn't free the internal memory, but does simply drop it as being associated with this Buffer.
+    #[inline]
+    pub fn drop(&mut self) {
+        self.memory = None;
     }
 
 

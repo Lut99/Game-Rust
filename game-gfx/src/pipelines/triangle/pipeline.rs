@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   14 May 2022, 14:19:25
+ *   03 Jul 2022, 11:20:38
  * Auto updated?
  *   Yes
  *
@@ -19,12 +19,13 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 
-use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageFormat, ImageLayout, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SubpassDescription, VertexInputState, ViewportState};
+use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, BufferUsageFlags, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageFormat, ImageLayout, MemoryPropertyFlags, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SharingMode, SubpassDescription, VertexInputState, ViewportState};
 use game_vk::device::Device;
 use game_vk::shader::Shader;
 use game_vk::layout::PipelineLayout;
 use game_vk::render_pass::{RenderPass, RenderPassBuilder};
 use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
+use game_vk::pools::memory::{Buffer, MemoryPool};
 use game_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 use game_vk::image;
 use game_vk::framebuffer::Framebuffer;
@@ -193,6 +194,8 @@ pub struct Pipeline {
     device       : Rc<Device>,
     /// The PipelineLayout that defines the resource layout of the pipeline.
     layout       : Rc<PipelineLayout>,
+    /// The MemoryPool from which we may draw memory.
+    memory_pool  : Rc<dyn MemoryPool>,
     /// The CommandPool from which we may allocate buffers.
     command_pool : Arc<RwLock<CommandPool>>,
 
@@ -219,7 +222,7 @@ impl Pipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
+    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, memory_pool: Rc<dyn MemoryPool>, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
         // Build the pipeline layout
         let layout = match PipelineLayout::new(device.clone(), &[]) {
             Ok(layout) => layout,
@@ -236,6 +239,9 @@ impl Pipeline {
         // Create the framebuffers for this target
         let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
+        // // Prepare the triangle buffer
+        // let vertices = Buffer::new(device.clone(), BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST, SharingMode::Exclusive, MemoryPropertyFlags::DEVICE_LOCAL, )
+
         // Record one command buffer per framebuffer
         let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &extent)?;
 
@@ -243,6 +249,7 @@ impl Pipeline {
         Ok(Self {
             device,
             layout,
+            memory_pool,
             command_pool,
 
             pipeline,
