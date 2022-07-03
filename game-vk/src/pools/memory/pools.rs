@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 18:04:08
  * Last edited:
- *   02 Jul 2022, 15:14:11
+ *   03 Jul 2022, 11:11:20
  * Auto updated?
  *   Yes
  *
@@ -231,6 +231,98 @@ mod tests {
         // This _two_ succeed again
         let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
         let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+    }
+
+    /// Tests the metapool's allocation algorithm
+    #[test]
+    fn test_meta_pool() {
+        // Initialize an instance and a device
+        let instance = Instance::new(
+            format!("{}_test_block_pool", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            format!("{}_test_block_pool_engine", file!()),
+            Version::parse(env!("CARGO_PKG_VERSION")).expect("Could not parse CARGO version"),
+            INSTANCE_EXTENSIONS,
+            INSTANCE_LAYERS,
+        ).expect("Failed to initialize Instance");
+        let device = Device::new(
+            instance.clone(),
+            Device::auto_select(
+                instance.clone(),
+                &DEVICE_EXTENSIONS,
+                &DEVICE_LAYERS,
+                &DEVICE_FEATURES,
+            ).expect("Could not find a suitable GPU for tests"),
+            &DEVICE_EXTENSIONS,
+            &DEVICE_LAYERS,
+            &DEVICE_FEATURES,
+        ).expect("Failed to initialize Device");
+
+        // Create a MetaPool on said device
+        let mut pool = MetaPool::new(device.clone(), 2048);
+        let mpool: &mut MetaPool = Rc::get_mut(&mut pool).expect("Could not get muteable meta pool");
+        // Allocate four non-aligned blocks of 128 bytes
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 128));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 256));
+
+        // Create another to check it overflow correctly
+        let mut pool = MetaPool::new(device.clone(), 2048);
+        let mpool: &mut MetaPool = Rc::get_mut(&mut pool).expect("Could not get muteable meta pool");
+        // Allocate a block that's always too large
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: usize::MAX, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+            Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
+            Err(Error::OutOfMemoryError{ .. }) => {},
+            Err(err)                           => { panic!("Memory allocation failed: {}", err); },
+        }
+
+        // A block to check alignment
+        let mut pool = MetaPool::new(device.clone(), 2048);
+        let mpool: &mut MetaPool = Rc::get_mut(&mut pool).expect("Could not get muteable meta pool");
+        // Allocate the first block with  weird size
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        // Allocate one that needs to be aligned
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 136));
+        // One with even bigger alignment
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 272));
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 400));
+
+        // If we now reset this pool, we should then be able to allocate new blocks
+        mpool.reset();
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        assert_eq!(pointer, GpuPtr::new(0, 0, 0));
+
+        // Finally we do a pool to check if it properly frees
+        let mut pool = MetaPool::new(device.clone(), 2048);
+        let mpool: &mut MetaPool = Rc::get_mut(&mut pool).expect("Could not get muteable meta pool");
+        // Allocate three blocks of 128 bytes
+        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        // Free the second
+        mpool.free(pointer2);
+        // Where we expect the new pointer to be allocated we don't know, but we should be able to allocate at least two
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fifth block");
+        // Free the third now
+        mpool.free(pointer3);
+        // This _two_ succeed again
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+
+        // It can also allocate multiple blocks of memory
+        // NOTE: Might want to remove this, especially the last one
+        let mut pool = MetaPool::new(device.clone(), 2048);
+        let mpool: &mut MetaPool = Rc::get_mut(&mut pool).expect("Could not get muteable meta pool");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::HOST_COHERENT).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::DEVICE_LOCAL).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::from(2) }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
     }
 }
 
