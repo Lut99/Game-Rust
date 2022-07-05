@@ -9,6 +9,7 @@ authors = [ "Lut99" ]
 [dependencies]
 ash = { version = "0.37.0", features = ["loaded"] }
 log = "0.4.16"
+num-traits = "0.2.15"
 rust-embed = { version = "6.4.0" }
 semver = "1.0.6"
 winit = "0.26.1"

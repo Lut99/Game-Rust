@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   03 Jul 2022, 17:27:26
+ *   05 Jul 2022, 18:34:32
  * Auto updated?
  *   Yes
  *
@@ -46,6 +46,18 @@ macro_rules! log_destroy {
     ($self:ident,$type:path,$name:expr) => {
         log::debug!(concat!("Destroying ", stringify!($type), " '{}' ({:?})..."), $name, $self as *const $type)
     }
+}
+
+/// Macros that ORs together the given flags at constant-time
+#[macro_export]
+macro_rules! join_flags {
+    ($flag:ident, $value:expr) => {
+        $value
+    };
+
+    ($flag:ident, $lhs:expr, $rhs:expr, $($values:expr),*) => {
+        join_flags!($flag, ($lhs).as_raw() | ($rhs).as_raw(), $($values),*)
+    };
 }
 
 
