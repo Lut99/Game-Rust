@@ -4,7 +4,7 @@
  * Created:
  *   01 May 2022, 11:47:41
  * Last edited:
- *   03 Jul 2022, 14:46:53
+ *   06 Jul 2022, 18:01:48
  * Auto updated?
  *   Yes
  *
@@ -18,9 +18,9 @@
 
 /***** LAYOUT *****/
 // The input vertex position
-layout(binding = 0, location = 0) in vec2 pos;
+layout(location = 0) in vec2 pos;
 // The input vertex colour
-layout(binding = 0, location = 1) in vec3 colour;
+layout(location = 1) in vec3 colour;
 
 // The vertex colour to pass to the fragment shader (since it doesn't know vertex indices)
 layout(location = 0) out vec3 frag_colour;

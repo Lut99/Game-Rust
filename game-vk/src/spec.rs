@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 18:16:49
  * Last edited:
- *   05 Jul 2022, 18:51:09
+ *   06 Jul 2022, 18:12:37
  * Auto updated?
  *   Yes
  *
@@ -12,17 +12,18 @@
  *   Defines traits and other public interfaces in the Vulkan crate.
 **/
 
-use std::cmp::{Eq, PartialEq};
+use std::cmp::PartialEq;
 use std::fmt::Debug;
-use std::ops::BitAnd;
+use std::ops::{BitAnd, BitOr, BitOrAssign};
 
 
 /***** LIBRARY *****/
 /// The Flags-trait is used to define a common interface for all the auxillary Vulkan flag structs.
-pub trait Flags<T>: Copy + Clone + Debug
-where
-    T: BitAnd<T> + Copy + Clone + Debug + Eq + PartialEq,
-{
+pub trait Flags: Copy + Clone + Debug {
+    /// Determines the type of the internal value where the flags are stored.
+    type RawType: BitAnd<Output = Self::RawType> + BitOr<Output = Self::RawType> + Copy + Clone + Debug + PartialEq;
+
+
     /// Constructor for the Flags object that creates it from a raw value.
     /// 
     /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
@@ -32,7 +33,7 @@ where
     /// 
     /// # Returns
     /// A new instance of Self with the flags set as in the raw value.
-    fn from_raw(value: T) -> Self;
+    fn from_raw(value: Self::RawType) -> Self;
 
     /// Returns the raw integer with the flags that is at the core of the Flags.
     /// 
@@ -40,7 +41,7 @@ where
     /// 
     /// # Returns
     /// The raw value at the heart of this Flags.
-    fn as_raw(&self) -> T;
+    fn as_raw(&self) -> Self::RawType;
 
 
 
@@ -53,4 +54,13 @@ where
     /// `true` if the given set is a subset of this one, or `false` otherwise.
     #[inline]
     fn check(&self, other: Self) -> bool { (self.as_raw() & other.as_raw()) == other.as_raw() }
+}
+
+impl<T: Flags> BitOr for T {
+    type Output = Self;
+
+    #[inline]
+    fn bitor(&self, other: &Self) -> Self::Output {
+        Self::from_raw(self.as_raw() | other.as_raw())
+    }
 }
