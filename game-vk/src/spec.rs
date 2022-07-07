@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 18:16:49
  * Last edited:
- *   06 Jul 2022, 18:12:37
+ *   07 Jul 2022, 18:14:32
  * Auto updated?
  *   Yes
  *
@@ -23,6 +23,10 @@ pub trait Flags: Copy + Clone + Debug {
     /// Determines the type of the internal value where the flags are stored.
     type RawType: BitAnd<Output = Self::RawType> + BitOr<Output = Self::RawType> + Copy + Clone + Debug + PartialEq;
 
+
+    /// Constructor for the Flags object that creates it without any flags initialized.
+    #[inline]
+    fn empty() -> Self { Self::from_raw(0) }
 
     /// Constructor for the Flags object that creates it from a raw value.
     /// 
@@ -60,7 +64,14 @@ impl<T: Flags> BitOr for T {
     type Output = Self;
 
     #[inline]
-    fn bitor(&self, other: &Self) -> Self::Output {
+    fn bitor(self, other: Self) -> Self::Output {
         Self::from_raw(self.as_raw() | other.as_raw())
+    }
+}
+
+impl<T: Flags> BitOrAssign for T {
+    #[inline]
+    fn bitor_assign(&mut self, other: Self) {
+        *self = self.bitor(other)
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   18 Apr 2022, 12:27:51
  * Last edited:
- *   05 Jul 2022, 18:34:32
+ *   07 Jul 2022, 18:08:24
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use std::str::FromStr;
 use ash::vk;
 
 pub use crate::errors::{AttributeLayoutError, ExtensionError, QueueError};
+use crate::spec::Flags;
 use crate::instance::Instance;
 
 
@@ -721,20 +722,47 @@ impl Display for HeapPropertyFlags {
     }
 }
 
-impl BitOr for HeapPropertyFlags {
-    type Output = Self;
+// impl BitOr for HeapPropertyFlags {
+//     type Output = Self;
 
-    #[inline]
-    fn bitor(self, other: Self) -> Self::Output {
-        Self(self.0 | other.0)
-    }
-}
+//     #[inline]
+//     fn bitor(self, other: Self) -> Self::Output {
+//         Self(self.0 | other.0)
+//     }
+// }
 
-impl BitOrAssign for HeapPropertyFlags {
+// impl BitOrAssign for HeapPropertyFlags {
+//     #[inline]
+//     fn bitor_assign(&mut self, other: Self) {
+//         self.0 |= other.0
+//     }
+// }
+
+impl Flags for HeapPropertyFlags {
+    /// Determines the type of the internal value where the flags are stored.
+    type RawType = u8;
+
+
+    /// Constructor for the Flags object that creates it from a raw value.
+    /// 
+    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
+    /// 
+    /// # Arguments
+    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
+    /// 
+    /// # Returns
+    /// A new instance of Self with the flags set as in the raw value.
     #[inline]
-    fn bitor_assign(&mut self, other: Self) {
-        self.0 |= other.0
-    }
+    fn from_raw(value: Self::RawType) -> Self { Self(value) }
+
+    /// Returns the raw integer with the flags that is at the core of the Flags.
+    /// 
+    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
+    /// 
+    /// # Returns
+    /// The raw value at the heart of this Flags.
+    #[inline]
+    fn as_raw(&self) -> Self::RawType { self.0 }
 }
 
 impl From<vk::MemoryHeapFlags> for HeapPropertyFlags {
