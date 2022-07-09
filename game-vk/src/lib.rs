@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:09:20
  * Last edited:
- *   09 Jul 2022, 10:53:17
+ *   09 Jul 2022, 12:21:05
  * Auto updated?
  *   Yes
  *
@@ -16,8 +16,6 @@
 pub mod errors;
 /// The module for extra traits and other interfaces.
 pub mod spec;
-/// The module for flags that are our representation of Vulkan flags.
-pub mod flags;
 /// The module for wrapper structs around Vulkan structs
 pub mod auxillary;
 /// The module for the instance
