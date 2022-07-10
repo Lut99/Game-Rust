@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:35:56
  * Last edited:
- *   03 Jul 2022, 14:56:26
+ *   10 Jul 2022, 14:43:44
  * Auto updated?
  *   Yes
  *
@@ -30,8 +30,12 @@ pub enum TriangleError {
     FramebufferCreateError{ err: game_vk::framebuffer::Error },
     /// Could not allocate a buffer
     BufferCreateError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
-    /// Could not allocate memory for a new buffer
-    BufferAllocateError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
+    /// Could not map the memory of a staging buffer
+    BufferMapError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
+    /// Could not flush a Buffer
+    BufferFlushError{ what: &'static str, err: game_vk::pools::errors::MemoryPoolError },
+    /// Failed to copy from one buffer to another.
+    BufferCopyError{ src: &'static str, dst: &'static str, err: game_vk::pools::errors::MemoryPoolError },
     /// Could not allocate a new CommandBuffer
     CommandBufferAllocateError{ err: game_vk::pools::command::Error },
     /// Could not end a command buffer (because something else went wrong).
@@ -50,7 +54,9 @@ impl Display for TriangleError {
             VkPipelineCreateError{ err }      => write!(f, "Failed to create Vulkan Pipeline: {}", err),
             FramebufferCreateError{ err }     => write!(f, "Failed to create Framebuffer: {}", err),
             BufferCreateError{ what, err }    => write!(f, "Failed to create {} buffer: {}", what, err),
-            BufferAllocateError{ what, err }  => write!(f, "Could not allocate memory for {} buffer: {}", what, err),
+            BufferMapError{ what, err }       => write!(f, "Could not map memory for {} buffer: {}", what, err),
+            BufferFlushError{ what, err }     => write!(f, "Could not flush host memory for {} buffer: {}", what, err),
+            BufferCopyError{ src, dst, err }  => write!(f, "Could not copy {} buffer to {} buffer: {}", src, dst, err),
             CommandBufferAllocateError{ err } => write!(f, "Could not allocate a new CommandBuffer for the Triangle pipeline: {}", err),
             CommandBufferRecordError{ err }   => write!(f, "Could not record a new CommandBuffer for the Triangle pipeline: {}", err),
             

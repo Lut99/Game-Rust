@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   03 Jul 2022, 11:16:32
+ *   10 Jul 2022, 14:27:56
  * Auto updated?
  *   Yes
  *
@@ -22,7 +22,8 @@ use semver::Version;
 use winit::event_loop::EventLoop;
 
 use game_ecs::Ecs;
-use game_vk::auxillary::{DeviceExtension, DeviceFeatures, DeviceInfo};
+use game_vk::auxillary::enums::DeviceExtension;
+use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo};
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;

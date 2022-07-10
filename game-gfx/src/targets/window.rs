@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   14 May 2022, 14:42:47
+ *   10 Jul 2022, 15:07:50
  * Auto updated?
  *   Yes
  *
@@ -22,7 +22,8 @@ use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::window::{Window as WWindow, WindowBuilder, WindowId};
 
-use game_vk::auxillary::{Extent2D, ImageAspect, ImageFormat, ImageViewKind};
+use game_vk::auxillary::enums::{ImageAspect, ImageFormat, ImageViewKind};
+use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;

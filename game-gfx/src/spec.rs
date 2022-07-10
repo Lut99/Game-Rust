@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   03 Jul 2022, 14:41:02
+ *   10 Jul 2022, 14:29:59
  * Auto updated?
  *   Yes
  *
@@ -17,7 +17,8 @@ use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 
 use game_utl::traits::AsAny;
-use game_vk::auxillary::{Extent2D, ImageFormat, VertexAttribute};
+use game_vk::auxillary::enums::ImageFormat;
+use game_vk::auxillary::structs::Extent2D;
 use game_vk::image;
 use game_vk::sync::{Fence, Semaphore};
 

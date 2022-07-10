@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:36
  * Last edited:
- *   10 Jul 2022, 13:46:51
+ *   10 Jul 2022, 15:06:11
  * Auto updated?
  *   Yes
  *
@@ -27,6 +27,7 @@ use crate::device::Device;
 use crate::pipeline::Pipeline;
 use crate::render_pass::RenderPass;
 use crate::framebuffer::Framebuffer;
+use crate::pools::memory::{Buffer, VertexBuffer};
 use crate::pools::command::Pool as CommandPool;
 
 
@@ -263,9 +264,37 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function does not error directly, but may pass errors on to `CommandBuffer::end()`.
+    #[inline]
     pub fn bind_pipeline(&self, bind_point: BindPoint, pipeline: &Rc<Pipeline>) {
         unsafe {
             self.device.cmd_bind_pipeline(self.buffer, bind_point.into(), pipeline.vk());
+        }
+    }
+
+    /// Binds a single vertex buffer for the next `CommandBuffer::draw()`-call.
+    /// 
+    /// # Arguments
+    /// - `index`: The binding index for the given buffer.
+    /// - `vertex_buffer`: The VertexBuffers to bind.
+    #[inline]
+    pub fn bind_vertex_buffer(&self, index: usize, vertex_buffer: &Rc<VertexBuffer>) {
+        // Call the function
+        self.bind_vertex_buffers(index, &[ vertex_buffer ])
+    }
+
+    /// Binds a given list of vertex buffers for the next `CommandBuffer::draw()`-call.
+    /// 
+    /// # Arguments
+    /// - `index`: The first binding index for the given buffers.
+    /// - `vertex_buffesr`: The list of VertexBuffers to bind.
+    pub fn bind_vertex_buffers(&self, index: usize, vertex_buffers: &[&Rc<VertexBuffer>]) {
+        // Extract the required properties into two arrays
+        let buffers: Vec<vk::Buffer>     = vertex_buffers.iter().map(|b| b.vk()).collect();
+        let offsets: Vec<vk::DeviceSize> = vertex_buffers.iter().map(|b| b.vk_offset()).collect();
+
+        // Call the function
+        unsafe {
+            self.device.cmd_bind_vertex_buffers(self.buffer, index as u32, &buffers, &offsets);
         }
     }
 
@@ -279,6 +308,7 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function does not error directly, but may pass errors on to `CommandBuffer::end()`.
+    #[inline]
     pub fn draw(&self, n_vertices: u32, n_instances: u32, first_vertex: u32, first_instance: u32) {
         unsafe {
             self.device.cmd_draw(self.buffer, n_vertices, n_instances, first_vertex, first_instance);
@@ -289,6 +319,7 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function does not error directly, but may pass errors on to `CommandBuffer::end()`.
+    #[inline]
     pub fn end_render_pass(&self) {
         unsafe {
             self.device.cmd_end_render_pass(self.buffer);

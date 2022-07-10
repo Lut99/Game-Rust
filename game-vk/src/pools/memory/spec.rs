@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   10 Jul 2022, 13:58:12
+ *   10 Jul 2022, 16:03:42
  * Auto updated?
  *   Yes
  *
@@ -526,6 +526,91 @@ impl From<GpuPtr> for vk::DeviceSize {
 
 
 
+/// Represents a piece of mapped memory. When it goes out-of-scope, the memory is automatically unmapped.
+pub struct MappedMemory {
+    /// The device to which the mapped memory belongs.
+    device : Rc<Device>,
+
+    /// The device memory which we represent.
+    dmem : vk::DeviceMemory,
+    /// The offset in said memory.
+    doff : vk::DeviceSize,
+    /// The raw host memory which we represent.
+    hmem : *mut c_void,
+
+    /// The number of bytes that are mapped. Equals the size of the range in the device memory.
+    capacity : usize,
+}
+
+impl MappedMemory {
+    /// Flushes the mapper memory range.
+    /// 
+    /// # Errors
+    /// This function may error if the underlying Vulkan backend threw errors.
+    #[inline]
+    pub fn flush(&self) -> Result<(), Error> {
+        // Call the flush function
+        match unsafe{ self.device.flush_mapped_memory_ranges(&[
+            populate_mapped_memory_range(self.dmem, self.doff, vk::WHOLE_SIZE),
+        ]) } {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::BufferFlushError{ err }),
+        }
+    }
+
+
+
+    /// Returns the raw, internal pointer.
+    #[inline]
+    pub fn as_raw(&self) -> *const c_void { self.hmem as *const c_void }
+
+    /// Returns the raw, internal pointer but muteable.
+    #[inline]
+    pub fn as_raw_mut(&mut self) -> *mut c_void { self.hmem }
+    
+    /// Returns the host memory as a slice of the given type.
+    /// 
+    /// # Arguments
+    /// - `size`: The expected size of the slice.
+    /// 
+    /// # Panics
+    /// This function will panic if the given size of the slice is too large.
+    #[inline]
+    pub fn as_slice<T: Sized>(&self, size: usize) -> &[T] {
+        // Sanity check that the size is large enough
+        if size * std::mem::size_of::<T>() > self.capacity { panic!("Mapped memory range of {} bytes cannot accomodate slice of {} {} ({} bytes each, {} bytes total)", self.capacity, size, std::any::type_name::<T>(), std::mem::size_of::<T>(), size * std::mem::size_of::<T>()); }
+
+        // Cast to a slice
+        unsafe { slice::from_raw_parts(self.hmem as *const T, size) }
+    }
+
+    /// Returns the host memory as a slice of the given type but muteable.
+    /// 
+    /// # Arguments
+    /// - `size`: The expected size of the slice.
+    /// 
+    /// # Panics
+    /// This function will panic if the given size of the slice is too large.
+    #[inline]
+    pub fn as_slice_mut<T: Sized>(&self, size: usize) -> &mut [T] {
+        // Sanity check that the size is large enough
+        if size * std::mem::size_of::<T>() > self.capacity { panic!("Mapped memory range of {} bytes cannot accomodate slice of {} {} ({} bytes each, {} bytes total)", self.capacity, size, std::any::type_name::<T>(), std::mem::size_of::<T>(), size * std::mem::size_of::<T>()); }
+
+        // Cast to a slice
+        unsafe { slice::from_raw_parts_mut(self.hmem as *mut T, size) }
+    }
+}
+
+impl Drop for MappedMemory {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe { self.device.unmap_memory(self.dmem); }
+    }
+}
+
+
+
+
 
 /// The MemoryPool trait which we use to define common access to a MemoryPool.
 pub trait MemoryPool {
@@ -729,70 +814,29 @@ pub trait HostBuffer: Buffer {
     /// Maps the Buffer memory to host memory.
     /// 
     /// # Returns
-    /// A pointer to the new Host-memory area.
+    /// A MappedMemory struct which manages the mapped memory area.
     /// 
     /// # Errors
     /// This function may error if we failed to map the Buffer memory.
-    #[inline]
-    fn map(&self) -> Result<*mut c_void, Error> {
+    fn map(&self) -> Result<MappedMemory, Error> {
+        // Get the coherent atom size of the device
+        let coherent_size: vk::DeviceSize = unsafe {
+            self.device().instance().get_physical_device_properties(self.device().physical_device())
+        }.limits.non_coherent_atom_size;
+
         // Simply call the map function
-        match unsafe{ self.device().map_memory(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize, vk::MemoryMapFlags::empty()) } {
-            Ok(ptr)  => Ok(ptr),
+        match unsafe{ self.device().map_memory(self.vk_mem(), self.vk_offset(), GpuPtr::from(self.capacity()).align(coherent_size as u8).into(), vk::MemoryMapFlags::empty()) } {
+            Ok(ptr) => Ok(MappedMemory {
+                device : self.device().clone(),
+
+                dmem : self.vk_mem(),
+                doff : self.vk_offset(),
+                hmem : ptr,
+
+                capacity : self.capacity(),
+            }),
             Err(err) => Err(Error::BufferMapError{ err }),
         }
-    }
-
-    /// Maps the Buffer memory to host memory.
-    /// 
-    /// This variant already casts the pointer to a slice of the given object type.
-    /// 
-    /// # Arguments
-    /// - `size`: The number of elements we already expect to be allocated in the range.
-    /// 
-    /// # Returns
-    /// A slice to the new Host-memory area.
-    /// 
-    /// # Errors
-    /// This function may error if we failed to map the Buffer memory.
-    /// 
-    /// # Panics
-    /// This function may panic if the size overflows the mapped memory area's size.
-    fn map_slice<T>(&self, size: usize) -> Result<&mut [T], Error> {
-        // Check if the size does not overflow
-        if size * std::mem::size_of::<T>() > self.capacity() { panic!("A buffer of {} bytes is too small to fit {} elements of {} bytes each ({} bytes total)", self.capacity(), size, std::mem::size_of::<T>(), size * std::mem::size_of::<T>()); }
-
-        // Simply call the map function
-        Ok(unsafe { slice::from_raw_parts_mut(self.map()? as *mut T, size) })
-    }
-
-    /// Flushes the host-mapped memory area.
-    /// 
-    /// Note that, if the underlying memory is actually coherent, this function does nothing significant.
-    /// 
-    /// # Errors
-    /// This function may error if there was not enough host memory to perform the flush.
-    /// 
-    /// # Panics
-    /// This function may panic if the memory was not actually mapped.
-    #[inline]
-    fn flush(&self) -> Result<(), Error> {
-        // Call the flush function
-        match unsafe{ self.device().flush_mapped_memory_ranges(&[
-            populate_mapped_memory_range(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize),
-        ]) } {
-            Ok(_)    => Ok(()),
-            Err(err) => Err(Error::BufferFlushError{ err }),
-        }
-    }
-
-    /// Unmaps the Buffer's memory area.
-    /// 
-    /// # Panics
-    /// This function may panic if the memory was not actually mapped.
-    #[inline]
-    fn unmap(&self) {
-        // Simply call unmap
-        unsafe { self.device().unmap_memory(self.vk_mem()); }
     }
 }
 

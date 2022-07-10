@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   10 Jul 2022, 13:51:45
+ *   10 Jul 2022, 16:06:34
  * Auto updated?
  *   Yes
  *
@@ -19,12 +19,12 @@ use std::sync::{Arc, RwLock, RwLockWriteGuard};
 use ash::vk;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::vec_as_ptr;
+use crate::{log_destroy, vec_as_ptr};
 use crate::auxillary::enums::SharingMode;
 use crate::auxillary::flags::{BufferUsageFlags, MemoryPropertyFlags};
 use crate::auxillary::structs::MemoryRequirements;
 use crate::device::Device;
-use crate::pools::memory::spec::{Buffer, GpuPtr, LocalBuffer, MemoryPool, TransferBuffer};
+use crate::pools::memory::spec::{Buffer, GpuPtr, HostBuffer, LocalBuffer, MemoryPool, TransferBuffer};
 
 
 /***** POPULATE FUNCTIONS *****/
@@ -221,12 +221,18 @@ impl Buffer for StagingBuffer {
     fn capacity(&self) -> usize { self.capacity }
 }
 
+impl HostBuffer for StagingBuffer {}
+
 impl TransferBuffer for StagingBuffer {}
 
 impl Drop for StagingBuffer {
     #[inline]
     fn drop(&mut self) {
-        // Lock the pool
+        log_destroy!(self, StagingBuffer);
+
+        // Destroy the buffer
+        unsafe { self.device.destroy_buffer(self.buffer, None); }
+        // Lock the pool to free the memory
         self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
     }
 }
@@ -352,7 +358,11 @@ impl TransferBuffer for VertexBuffer {}
 impl Drop for VertexBuffer {
     #[inline]
     fn drop(&mut self) {
-        // Lock the pool
+        log_destroy!(self, VertexBuffer);
+
+        // Destroy the buffer
+        unsafe { self.device.destroy_buffer(self.buffer, None); }
+        // Lock the pool to free the memory
         self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
     }
 }

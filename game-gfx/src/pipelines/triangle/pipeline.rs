@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   03 Jul 2022, 14:59:03
+ *   10 Jul 2022, 15:33:23
  * Auto updated?
  *   Yes
  *
@@ -19,13 +19,16 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 
-use game_vk::auxillary::{AttachmentDescription, AttachmentLoadOp, AttachmentRef, AttachmentStoreOp, BindPoint, BufferUsageFlags, CommandBufferFlags, CommandBufferLevel, CommandBufferUsageFlags, CullMode, DrawMode, Extent2D, FrontFace, ImageFormat, ImageLayout, MemoryPropertyFlags, Offset2D, RasterizerState, Rect2D, SampleCount, ShaderStage, SharingMode, SubpassDescription, VertexBinding, VertexInputRate, VertexInputState, ViewportState};
+use game_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
+use game_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
+use game_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
 use game_vk::device::Device;
 use game_vk::shader::Shader;
 use game_vk::layout::PipelineLayout;
 use game_vk::render_pass::{RenderPass, RenderPassBuilder};
 use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
-use game_vk::pools::memory::{Buffer, MemoryPool};
+use game_vk::pools::memory::prelude::*;
+use game_vk::pools::memory::{MappedMemory, StagingBuffer, VertexBuffer};
 use game_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 use game_vk::image;
 use game_vk::framebuffer::Framebuffer;
@@ -175,39 +178,45 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
 /// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
 /// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
-fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<dyn MemoryPool>, command_pool: &Arc<RwLock<CommandPool>>) -> Result<Buffer, Error> {
+fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Arc<RwLock<dyn MemoryPool>>, command_pool: &Arc<RwLock<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
-    let vertices: Rc<Buffer> = match Buffer::new(
+    let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
         device.clone(),
-        BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST, SharingMode::Exclusive, MemoryPropertyFlags::DEVICE_LOCAL,
+        memory_pool.clone(),
         std::mem::size_of_val(&VERTICES),
+        SharingMode::Exclusive,
     ) {
         Ok(vertices) => vertices,
         Err(err)     => { return Err(Error::BufferCreateError{ what: "vertex", err }); }
     };
 
     // Create the staging buffer
-    let staging: Rc<Buffer> = match Buffer::new(
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new(
         device.clone(),
-        BufferUsageFlags::TRANSFER_SRC, SharingMode::Exclusive, MemoryPropertyFlags::HOST_VISIBLE,
+        memory_pool.clone(),
         std::mem::size_of_val(&VERTICES),
+        SharingMode::Exclusive,
     ) {
         Ok(staging) => staging,
-        Err(err)    => { return Err(Error::BufferCreateError{ what: "staging", err }); }
+        Err(err)    => { return Err(Error::BufferCreateError{ what: "vertex staging", err }); }
     };
 
-    // Allocate memory for both
-    if let Err(err) = vertices.bind(memory_pool.clone()) {
-        return Err(Error::BufferAllocateError{ what: "vertex", err });
-    }
-    if let Err(err) = staging.bind(memory_pool.clone()) {
-        return Err(Error::BufferAllocateError{ what: "staging", err });
-    }
-
     // Populate the staging buffer
-    
+    {
+        let mapped: MappedMemory = match staging.map() {
+            Ok(mapped) => mapped,
+            Err(err)   => { return Err(Error::BufferMapError{ what: "vertex staging", err }); }
+        };
+        mapped.as_slice_mut::<Vertex>(3).clone_from_slice(&VERTICES);
+        if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ what: "vertex staging", err }); }
+    }
 
     // Copy the staging to the normal buffer
+    let tvertices: Rc<dyn TransferBuffer> = vertices.clone();
+    if let Err(err) = staging.copyto(command_pool, &tvertices) { return Err(Error::BufferCopyError{ src: "vertex staging", dst: "vertex", err }); }
+
+    // Done
+    Ok(vertices)
 }
 
 /// Records the commands buffers for the TrianglePipeline.
@@ -219,15 +228,17 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<dyn MemoryPool>, c
 /// - `pipeline`: The Pipeline that we want to run in this buffer.
 /// - `framebuffers`: The Framebuffers for which to record CommandBuffers.
 /// - `extent`: The portion of the Framebuffer to render to.
-fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
+fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], vertex_buffer: &Rc<VertexBuffer>, extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
     // Record one command buffer per framebuffer
     let mut command_buffers: Vec<Rc<CommandBuffer>> = Vec::with_capacity(framebuffers.len());
     for framebuffer in framebuffers {
-        // Start recording the command buffer
-        let cmd: Rc<CommandBuffer> = match CommandPool::allocate(pool, device.families().graphics, CommandBufferFlags::EMPTY, CommandBufferLevel::Primary) {
+        // Allocate the command buffer
+        let cmd: Rc<CommandBuffer> = match CommandBuffer::new(device.clone(), pool.clone(), device.families().graphics, CommandBufferFlags::empty()) {
             Ok(cmd)  => cmd,
             Err(err) => { return Err(Error::CommandBufferAllocateError{ err }); }
         };
+
+        // Start recording the command buffer
         if let Err(err) = cmd.begin(CommandBufferUsageFlags::SIMULTANEOUS_USE) {
             return Err(Error::CommandBufferRecordError{ err });
         };
@@ -235,6 +246,7 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, 
         // Record the render pass with a single draw
         cmd.begin_render_pass(&render_pass, framebuffer, Rect2D::from_raw(Offset2D::new(0, 0), extent.clone()), &[[0.0, 0.0, 0.0, 1.0]]);
         cmd.bind_pipeline(BindPoint::Graphics, &pipeline);
+        cmd.bind_vertex_buffer(0, vertex_buffer);
         cmd.draw(3, 1, 0, 0);
         cmd.end_render_pass();
 
@@ -263,7 +275,7 @@ pub struct Pipeline {
     /// The PipelineLayout that defines the resource layout of the pipeline.
     layout       : Rc<PipelineLayout>,
     /// The MemoryPool from which we may draw memory.
-    memory_pool  : Rc<dyn MemoryPool>,
+    memory_pool  : Arc<RwLock<dyn MemoryPool>>,
     /// The CommandPool from which we may allocate buffers.
     command_pool : Arc<RwLock<CommandPool>>,
 
@@ -271,6 +283,8 @@ pub struct Pipeline {
     pipeline        : Rc<VkPipeline>,
     /// The framebuffers for this pipeline.
     framebuffers    : Vec<Rc<Framebuffer>>,
+    /// The vertex buffer for this pipeline.
+    vertex_buffer   : Rc<VertexBuffer>,
     /// The command buffers for this pipeline.
     command_buffers : Vec<Rc<CommandBuffer>>,
 }
@@ -290,7 +304,7 @@ impl Pipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, memory_pool: Rc<dyn MemoryPool>, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
+    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
         // Build the pipeline layout
         let layout = match PipelineLayout::new(device.clone(), &[]) {
             Ok(layout) => layout,
@@ -308,10 +322,10 @@ impl Pipeline {
         let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
         // Prepare the triangle buffer
-        let vertex_buffer: Buffer = create_vertex_buffer(&device, &mut memory_pool)?;
+        let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
 
         // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &extent)?;
+        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
 
         // Done, store the pipeline
         Ok(Self {
@@ -322,6 +336,7 @@ impl Pipeline {
 
             pipeline,
             framebuffers,
+            vertex_buffer,
             command_buffers,
         })
     }
@@ -344,7 +359,7 @@ impl RenderPipeline for Pipeline {
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
     fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn error::Error>> {
         // We only need to submit our already-recorded command buffer
-        match self.device.queues().present.submit(&self.command_buffers[index], wait_semaphores, done_semaphores, done_fence) {
+        match self.device.queues().present.submit(&self.command_buffers[index], wait_semaphores, done_semaphores, Some(done_fence)) {
             Ok(_)    => Ok(()),
             Err(err) => Err(Box::new(Error::SubmitError{ err })),
         }
@@ -373,7 +388,7 @@ impl RenderPipeline for Pipeline {
         let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
 
         // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &extent)?;
+        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
 
         // Overwrite some internal shit
         self.pipeline        = pipeline;

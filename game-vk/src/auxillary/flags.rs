@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 10:44:36
  * Last edited:
- *   10 Jul 2022, 13:51:24
+ *   10 Jul 2022, 15:58:44
  * Auto updated?
  *   Yes
  *
@@ -45,6 +45,10 @@ macro_rules! flags_new {
             );+;
 
 
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
             #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
             #[inline]
             pub const fn empty() -> Self { Self(0) }
@@ -58,9 +62,17 @@ macro_rules! flags_new {
             pub const fn union(lhs: Self, rhs: Self) -> Self { Self(lhs.0 | rhs.0) }
 
 
+            #[doc = concat!("Checks if the flags are empty.\n\n#Returns\nReturns true iff this ", stringify!($name), " has no flags set.")]
+            #[inline]
+            pub const fn is_empty(&self) -> bool { self.0 == 0 }
+
             #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
             #[inline]
             pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
         impl Display for $name {
@@ -128,6 +140,10 @@ macro_rules! flags_new {
             );+;
 
 
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
             #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
             #[inline]
             pub const fn empty() -> Self { Self(0) }
@@ -144,6 +160,10 @@ macro_rules! flags_new {
             #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
             #[inline]
             pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
         impl BitOr for $name {
@@ -176,6 +196,10 @@ macro_rules! flags_new {
         pub struct $name($type);
 
         impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
             #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
             #[inline]
             pub const fn empty() -> Self { Self(0) }
@@ -192,6 +216,10 @@ macro_rules! flags_new {
             #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
             #[inline]
             pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
         impl Display for $name {
@@ -250,6 +278,10 @@ macro_rules! flags_new {
         pub struct $name($type);
 
         impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
             #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
             #[inline]
             pub const fn empty() -> Self { Self(0) }
@@ -266,6 +298,10 @@ macro_rules! flags_new {
             #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
             #[inline]
             pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
         impl BitOr for $name {
@@ -314,7 +350,7 @@ macro_rules! flags_from {
             fn from(value: &vk::$from) -> $to {
                 // Construct the resulting flag iteratively
                 let mut result: $to = $to::empty();
-                $(if (*value & $match).as_raw() != 0 { result |= $target });+
+                $(if ((*value) & $match).as_raw() != 0 { result |= $target });+
                 result
             }
         }
@@ -361,6 +397,15 @@ macro_rules! flags_single_new {
                 $(#[$fdoc $($fargs)*])*
                 pub const $fname: Self = Self($fval)
             );+;
+
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
         impl Display for $name {
@@ -412,6 +457,15 @@ macro_rules! flags_single_new {
                 $(#[$fdoc $($fargs)*])*
                 pub const $fname: Self = Self($fval)
             );+;
+
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
         }
 
 
@@ -446,6 +500,16 @@ macro_rules! flags_single_new {
         $(#[$doc $($args)*])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub struct $name($type);
+
+        impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
+        }
 
         impl Display for $name {
             #[inline]
@@ -484,6 +548,16 @@ macro_rules! flags_single_new {
         $(#[$doc $($args)*])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub struct $name($type);
+
+        impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it with the given raw flags.\n\nNote that this function should not be used with any other values returning from `", stringify!($name), "::as_raw()`.\n\n# Arguments\n- `value`: The raw value to based this ", stringify!($name), " upon.\n\n# Returns\nA new instance of `", stringify!($name), "` with the flags set as in the value.")]
+            #[inline]
+            pub const fn from_raw(value: $type) -> Self { Self(value) }
+
+            #[doc = concat!("Returns the raw integer that we use to represent the set of flags.\n\nNote that this raw number is _not_ guaranteed to be compatible with Vulkan; instead, use the `", stringify!($name), "::from()` function.\n\n#Returns\nThe raw integer carrying the flags.")]
+            #[inline]
+            pub const fn as_raw(&self) -> $type { self.0 }
+        }
 
 
 
@@ -1069,7 +1143,17 @@ flags_new!(
         /// The buffer may be used for indirect draw commands (various applications).
         INDIRECT_BUFFER = 0x0100,
     },
-    {},
+    {
+        TRANSFER_SRC         => "Transfer (source)",
+        TRANSFER_DST         => "Transfer (destination)",
+        UNIFORM_TEXEL_BUFFER => "Uniform texel buffer",
+        STORAGE_TEXEL_BUFFER => "Storage texel buffer",
+        UNIFORM_BUFFER       => "Uniform buffer",
+        STORAGE_BUFFER       => "Storage buffer",
+        INDEX_BUFFER         => "Index buffer",
+        VERTEX_BUFFER        => "Vertex buffer",
+        INDIRECT_BUFFER      => "Indirect buffer",
+    },
 );
 
 flags_from!(vk::BufferUsageFlags, BufferUsageFlags,
@@ -1079,4 +1163,7 @@ flags_from!(vk::BufferUsageFlags, BufferUsageFlags,
     vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER => BufferUsageFlags::STORAGE_TEXEL_BUFFER,
     vk::BufferUsageFlags::UNIFORM_BUFFER       => BufferUsageFlags::UNIFORM_BUFFER,
     vk::BufferUsageFlags::STORAGE_BUFFER       => BufferUsageFlags::STORAGE_BUFFER,
+    vk::BufferUsageFlags::INDEX_BUFFER         => BufferUsageFlags::INDEX_BUFFER,
+    vk::BufferUsageFlags::VERTEX_BUFFER        => BufferUsageFlags::VERTEX_BUFFER,
+    vk::BufferUsageFlags::INDIRECT_BUFFER      => BufferUsageFlags::INDIRECT_BUFFER,
 );

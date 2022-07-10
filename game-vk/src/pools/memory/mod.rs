@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:16:04
  * Last edited:
- *   03 Jul 2022, 17:17:29
+ *   10 Jul 2022, 15:32:47
  * Auto updated?
  *   Yes
  *
@@ -22,7 +22,12 @@ pub mod pools;
 pub mod buffers;
 
 
+// Define a prelude to import
+pub mod prelude {
+    pub use super::spec::{Buffer, HostBuffer, LocalBuffer, MemoryPool, TransferBuffer};
+}
+
 // Bring some stuff into the module scope
 pub use buffers::{StagingBuffer, VertexBuffer};
-pub use spec::MemoryPool;
+pub use spec::{Buffer, HostBuffer, LocalBuffer, MappedMemory, MemoryPool, TransferBuffer};
 pub use pools::{Error, BlockPool, LinearPool, MetaPool};
