@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:36
  * Last edited:
- *   03 Jul 2022, 16:43:58
+ *   10 Jul 2022, 13:46:51
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,9 @@ use ash::vk;
 
 pub use crate::pools::errors::CommandPoolError as Error;
 use crate::log_destroy;
-use crate::auxillary::{BindPoint, CommandBufferFlags, CommandBufferUsageFlags, CommandBufferLevel, Rect2D};
+use crate::auxillary::enums::{BindPoint, CommandBufferLevel};
+use crate::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags};
+use crate::auxillary::structs::Rect2D;
 use crate::device::Device;
 use crate::pipeline::Pipeline;
 use crate::render_pass::RenderPass;
@@ -114,7 +116,7 @@ impl CommandBuffer {
         // Allocate a new vk::CommandBuffer
         let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
             // Get a lock on the pool
-            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
 
             // Do the allocation
             lock.allocate(index, flags, CommandBufferLevel::Primary)?
@@ -149,7 +151,7 @@ impl CommandBuffer {
         // Allocate a new vk::CommandBuffer
         let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
             // Get a lock on the pool
-            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
 
             // Do the allocation
             lock.allocate(index, flags, CommandBufferLevel::Secondary)?
@@ -184,10 +186,10 @@ impl CommandBuffer {
         // Allocate N new vk::CommandBuffers
         let buffers: Vec<(vk::CommandPool, vk::CommandBuffer)> = {
             // Get a lock on the pool
-            let lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
 
             // Do the allocation
-            lock.n_allocate(count as u32, index, flags, CommandBufferLevel::Secondary)?
+            lock.n_allocate(count as u32, index, flags, level)?
         };
 
         // Map the instances and done

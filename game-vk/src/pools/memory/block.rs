@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:18:26
  * Last edited:
- *   02 Jul 2022, 14:46:54
+ *   10 Jul 2022, 13:27:48
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,8 @@ use std::slice;
 use ash::vk;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::auxillary::{DeviceMemoryType, MemoryPropertyFlags, MemoryRequirements};
+use crate::auxillary::flags::{DeviceMemoryType, MemoryPropertyFlags};
+use crate::auxillary::structs::MemoryRequirements;
 use crate::device::Device;
 
 
@@ -83,7 +84,7 @@ impl MemoryBlock {
         let device_types : &[vk::MemoryType] = unsafe { slice::from_raw_parts(device_props.memory_types.as_ptr(), device_props.memory_type_count as usize) };
         for i in 0..device_types.len() {
             // Check if this type is in the required ones
-            if !reqs.types.check(i as u32) { continue; }
+            if !reqs.types.check(i.into()) { continue; }
             // Check if this type satisfies the properties
             let mem_props = MemoryPropertyFlags::from(device_types[i].property_flags);
             if !mem_props.check(props) { continue; }

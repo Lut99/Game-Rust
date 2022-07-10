@@ -4,7 +4,7 @@
  * Created:
  *   06 May 2022, 18:28:29
  * Last edited:
- *   03 Jul 2022, 16:35:15
+ *   10 Jul 2022, 13:43:35
  * Auto updated?
  *   Yes
  *
@@ -18,7 +18,9 @@ use std::rc::Rc;
 use ash::vk;
 
 pub use crate::errors::QueueError as Error;
-use crate::auxillary::{PipelineStage, QueueFamilyInfo, QueueKind};
+use crate::auxillary::enums::QueueKind;
+use crate::auxillary::flags::PipelineStage;
+use crate::auxillary::structs::QueueFamilyInfo;
 use crate::pools::command::Buffer as CommandBuffer;
 use crate::sync::{Fence, Semaphore};
 

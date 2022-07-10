@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:45:56
  * Last edited:
- *   03 Jul 2022, 16:21:36
+ *   10 Jul 2022, 13:52:30
  * Auto updated?
  *   Yes
  *
@@ -21,7 +21,9 @@ use ash::vk;
 
 pub use crate::pools::errors::CommandPoolError as Error;
 use crate::log_destroy;
-use crate::auxillary::{CommandBufferFlags, CommandBufferLevel, QueueFamilyInfo};
+use crate::auxillary::enums::CommandBufferLevel;
+use crate::auxillary::flags::CommandBufferFlags;
+use crate::auxillary::structs::QueueFamilyInfo;
 use crate::device::Device;
 
 
@@ -129,7 +131,6 @@ impl CommandPool {
     /// It will panic if the given queue family index is not in the user queue families when this pool was created.
     pub fn allocate(&mut self, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<(vk::CommandPool, vk::CommandBuffer), Error> {
         // Insert a pool with these specs if it does not yet exist
-        let device = self.device.ash().clone();
         let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = self.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
         let pool = match pools.get(&flags) {
             Some(pool) => *pool,
@@ -185,7 +186,6 @@ impl CommandPool {
     /// It will panic if the given queue family index is not in the user queue families when this pool was created.
     pub fn n_allocate(&mut self, count: u32, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<(vk::CommandPool, vk::CommandBuffer)>, Error> {
         // Insert a pool with these specs if it does not yet exist
-        let device = self.device.ash().clone();
         let pools: &mut HashMap<CommandBufferFlags, vk::CommandPool> = self.pools.get_mut(&index).unwrap_or_else(|| panic!("Unknown queue family index '{}'", index));
         let pool = match pools.get(&flags) {
             Some(pool) => *pool,

@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 18:04:08
  * Last edited:
- *   03 Jul 2022, 15:27:13
+ *   10 Jul 2022, 13:33:15
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,8 @@ use log::warn;
 use game_utl::traits::DiscreetUnwrap;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::auxillary::{DeviceMemoryType, MemoryPropertyFlags, MemoryRequirements};
+use crate::auxillary::flags::{DeviceMemoryType, MemoryPropertyFlags};
+use crate::auxillary::structs::MemoryRequirements;
 use crate::device::Device;
 use crate::pools::memory::block::MemoryBlock;
 use crate::pools::memory::spec::{GpuPtr, MemoryPool};
@@ -36,7 +37,9 @@ use crate::pools::memory::spec::{GpuPtr, MemoryPool};
 mod tests {
     use std::sync::RwLockWriteGuard;
     use semver::Version;
-    use crate::auxillary::{DeviceFeatures, DeviceMemoryTypeFlags, InstanceLayer};
+    use crate::auxillary::enums::InstanceLayer;
+    use crate::auxillary::flags::DeviceMemoryTypeFlags;
+    use crate::auxillary::structs::DeviceFeatures;
     use crate::instance::Instance;
     use super::*;
 
@@ -80,27 +83,27 @@ mod tests {
         let pool = LinearPool::new(device.clone(), 512);
         let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
         // Allocate four non-aligned blocks of 128 bytes
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 128));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 256));
 
         // Create another to check it overflow correctly
         let pool = LinearPool::new(device.clone(), 512);
         let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
         // Allocate a block that's always too large
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
         // Next, allocate some blocks and then check out-of-bounds
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
@@ -110,25 +113,25 @@ mod tests {
         let pool = LinearPool::new(device.clone(), 512);
         let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
         // Allocate the first block with  weird size
-        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 136));
         // One with even bigger alignment
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 272));
         // This one should fail _because_ of its alignment
-        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 400));
 
         // If we now reset this pool, we should then be able to allocate new blocks
         mpool.reset();
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
     }
 
@@ -158,83 +161,83 @@ mod tests {
         ).expect("Failed to initialize Device");
 
         // Create a BlockPool on said device
-        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
         let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
         // Allocate four non-aligned blocks of 128 bytes
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 128));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 256));
 
         // Create another to check it overflow correctly
-        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
         let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
         // Allocate a block that's always too large
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
         // Next, allocate some blocks and then check out-of-bounds
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
 
         // A block to check alignment
-        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
         let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
         // Allocate the first block with  weird size
-        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 136));
         // One with even bigger alignment
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 272));
         // This one should fail _because_ of its alignment
-        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 32, size: 112, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 400));
 
         // If we now reset this pool, we should then be able to allocate new blocks
         mpool.reset();
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
 
         // Finally we do a pool to check if it properly frees
-        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Could not allocate block pool memory block"));
+        let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
         let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
         // Allocate three blocks of 128 bytes
-        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
-        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
-        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
+        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
+        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
         // Free the second
         mpool.free(pointer2);
         // Where we expect the new pointer to be allocated we don't know, but we should be able to allocate at least two
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fifth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fifth block");
         // Free the third now
         mpool.free(pointer3);
         // This one fails bc not enough space
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: 129, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
         }
         // This _two_ succeed again
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
     }
 
     /// Tests the metapool's allocation algorithm
@@ -266,18 +269,18 @@ mod tests {
         let pool = MetaPool::new(device.clone(), 2048);
         let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
         // Allocate four non-aligned blocks of 128 bytes
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 128));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 256, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 256));
 
         // Create another to check it overflow correctly
         let pool = MetaPool::new(device.clone(), 2048);
         let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
         // Allocate a block that's always too large
-        match mpool.allocate(&MemoryRequirements{ align: 1, size: usize::MAX, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY) {
+        match mpool.allocate(&MemoryRequirements{ align: 1, size: usize::MAX, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
             Err(Error::OutOfMemoryError{ .. }) => {},
             Err(err)                           => { panic!("Memory allocation failed: {}", err); },
@@ -287,46 +290,46 @@ mod tests {
         let pool = MetaPool::new(device.clone(), 2048);
         let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
         // Allocate the first block with  weird size
-        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
+        let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 4, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 136));
         // One with even bigger alignment
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 16, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 272));
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 112, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 400));
 
         // If we now reset this pool, we should then be able to allocate new blocks
         mpool.reset();
-        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
+        let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
 
         // Finally we do a pool to check if it properly frees
         let pool = MetaPool::new(device.clone(), 2048);
         let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
         // Allocate three blocks of 128 bytes
-        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate first block");
-        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate second block");
-        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
+        let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
+        let (_, pointer3) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
         // Free the second
         mpool.free(pointer2);
         // Where we expect the new pointer to be allocated we don't know, but we should be able to allocate at least two
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fifth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fifth block");
         // Free the third now
         mpool.free(pointer3);
         // This _two_ succeed again
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 37, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 4, size: 60, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate fourth block");
 
         // It can also allocate multiple blocks of memory
         // NOTE: Might want to remove this, especially the last one
         let pool = MetaPool::new(device.clone(), 2048);
         let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::HOST_COHERENT).expect("Failed to allocate first block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::ALL }, MemoryPropertyFlags::DEVICE_LOCAL).expect("Failed to allocate second block");
-        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::from(2) }, MemoryPropertyFlags::EMPTY).expect("Failed to allocate third block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::HOST_COHERENT).expect("Failed to allocate first block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::DEVICE_LOCAL).expect("Failed to allocate second block");
+        let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::from(2 as u32) }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
     }
 }
 
@@ -425,7 +428,7 @@ impl MemoryPool for LinearPool {
         let memory: vk::DeviceMemory = match self.block.as_ref() {
             Some(block) => {
                 // Make sure the requirements & properties are satisfied
-                if !reqs.types.check(block.mem_type()) { panic!("LinearPool is allocated for device memory type {}, but new allocation only supports {}", block.mem_type(), reqs.types); }
+                if !reqs.types.check(block.mem_type().into()) { panic!("LinearPool is allocated for device memory type {}, but new allocation only supports {}", block.mem_type(), reqs.types); }
                 if !block.mem_props().check(props) { panic!("LinearPool is allocated for device memory type {} which supports the properties {}, but new allocation requires {}", block.mem_type(), block.mem_props(), props); }
                 block.vk()
             },
@@ -546,7 +549,7 @@ impl MemoryPool for BlockPool {
     /// This function errors if the MemoryPool failed to allocate new memory.
     fn allocate(&mut self, reqs: &MemoryRequirements, props: MemoryPropertyFlags) -> Result<(vk::DeviceMemory, GpuPtr), Error> {
         // Make sure the requirements & properties are satisfied
-        if !reqs.types.check(self.block.mem_type()) { panic!("BlockPool is allocated for device memory type {}, but new allocation only supports {}", self.block.mem_type(), reqs.types); }
+        if !reqs.types.check(self.block.mem_type().into()) { panic!("BlockPool is allocated for device memory type {}, but new allocation only supports {}", self.block.mem_type(), reqs.types); }
         if !self.block.mem_props().check(props) { panic!("BlockPool is allocated for device memory type {} which supports the properties {}, but new allocation requires {}", self.block.mem_type(), self.block.mem_props(), props); }
 
         // Optimization: we can stop early if there is no more space
@@ -749,7 +752,7 @@ impl MemoryPool for MetaPool {
         // 1. Iterate over the blocks to find if any existing block suits us
         for mem_type in memory_types {
             // Skip if not in the allowed types or not supporting the correct properties
-            if !reqs.types.check(mem_type.index) { continue; }
+            if !reqs.types.check(mem_type.index.into()) { continue; }
             if !mem_type.props.check(props)      { continue; }
 
             // Now try to find a pool with enough space

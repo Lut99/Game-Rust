@@ -4,7 +4,7 @@
  * Created:
  *   05 May 2022, 10:44:39
  * Last edited:
- *   03 Jul 2022, 16:59:21
+ *   10 Jul 2022, 13:59:41
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
-use crate::auxillary::{DeviceMemoryType, DeviceMemoryTypeFlags, MemoryPropertyFlags};
+use crate::auxillary::flags::{DeviceMemoryType, DeviceMemoryTypeFlags, MemoryPropertyFlags};
 
 
 /***** ERRORS *****/
@@ -33,6 +33,14 @@ pub enum MemoryPoolError {
 
     /// Could not allocate a CommandBuffer for some purpose.
     CommandBufferError{ what: &'static str, err: CommandPoolError },
+    /// Could not start recording the temporary command buffer
+    CommandBufferRecordBeginError{ what: &'static str, err: CommandPoolError },
+    /// Could not finish recording the temporary command buffer
+    CommandBufferRecordEndError{ what: &'static str, err: CommandPoolError },
+    /// Failed to submit the command buffer
+    SubmitError{ what: &'static str, err: crate::queue::Error },
+    /// Failed to drain the transfer queue
+    DrainError{ err: crate::queue::Error },
 
     /// Failed to create a new VkBuffer object.
     BufferCreateError{ err: ash::vk::Result },
@@ -54,7 +62,11 @@ impl Display for MemoryPoolError {
             OutOfMemoryError{ req_size }                        => write!(f, "Could not allocate new block of {} bytes", req_size),
             UnknownPointer{ ptr }                               => write!(f, "Pointer '{:#X}' does not point to an allocated block", ptr),
 
-            CommandBufferError{ what, err } => write!(f, "Could not create a {} command buffer: {}", what, err),
+            CommandBufferError{ what, err }            => write!(f, "Could not create a {} command buffer: {}", what, err),
+            CommandBufferRecordBeginError{ what, err } => write!(f, "Could not start recording a {} command buffer: {}", what, err),
+            CommandBufferRecordEndError{ what, err }   => write!(f, "Could not record a {} command buffer: {}", what, err),
+            SubmitError{ what, err }                   => write!(f, "Could not submit {} command buffer to queue: {}", what, err),
+            DrainError{ err }                          => write!(f, "Failed to drain command queue: {}", err),
 
             BufferCreateError{ err } => write!(f, "Could not create Buffer: {}", err),
             BufferBindError{ err }   => write!(f, "Could not bind Buffer to memory: {}", err),

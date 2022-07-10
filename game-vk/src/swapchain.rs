@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   14 May 2022, 14:43:23
+ *   10 Jul 2022, 13:44:10
  * Auto updated?
  *   Yes
  *
@@ -23,7 +23,8 @@ use log::{debug, warn};
 
 pub use crate::errors::SwapchainError as Error;
 use crate::{log_destroy, vec_as_ptr};
-use crate::auxillary::{Extent2D, ImageFormat, SwapchainSupport};
+use crate::auxillary::enums::ImageFormat;
+use crate::auxillary::structs::{Extent2D, SwapchainSupport};
 use crate::device::Device;
 use crate::surface::Surface;
 use crate::image::Image;

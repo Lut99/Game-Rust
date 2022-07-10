@@ -4,7 +4,7 @@
  * Created:
  *   29 Apr 2022, 17:57:08
  * Last edited:
- *   14 May 2022, 12:40:29
+ *   10 Jul 2022, 13:43:50
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,7 @@ use log::debug;
 
 pub use crate::errors::RenderPassError as Error;
 use crate::log_destroy;
-use crate::auxillary::{AttachmentDescription, SubpassDependency, SubpassDescription};
+use crate::auxillary::structs::{AttachmentDescription, SubpassDependency, SubpassDescription};
 use crate::device::Device;
 
 

@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   02 Jul 2022, 11:46:18
+ *   10 Jul 2022, 13:34:45
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,8 @@ use game_utl::to_cstring;
 
 pub use crate::errors::DeviceError as Error;
 use crate::log_destroy;
-use crate::auxillary::{DeviceFeatures, DeviceInfo, DeviceKind, QueueFamilyInfo, QueueKind, SwapchainSupport};
+use crate::auxillary::enums::{DeviceKind, QueueKind};
+use crate::auxillary::structs::{DeviceFeatures, DeviceInfo, QueueFamilyInfo, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
 use crate::queue::Queues;

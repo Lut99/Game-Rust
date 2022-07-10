@@ -4,7 +4,7 @@
  * Created:
  *   27 Apr 2022, 11:57:55
  * Last edited:
- *   14 May 2022, 12:32:41
+ *   10 Jul 2022, 13:34:21
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,7 @@ use ash::vk;
 
 pub use crate::errors::DescriptorError as Error;
 use crate::log_destroy;
-use crate::auxillary::DescriptorBinding;
+use crate::auxillary::structs::DescriptorBinding;
 use crate::device::Device;
 
 

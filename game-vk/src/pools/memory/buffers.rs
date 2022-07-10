@@ -4,7 +4,7 @@
  * Created:
  *   25 Jun 2022, 16:17:19
  * Last edited:
- *   03 Jul 2022, 17:18:31
+ *   10 Jul 2022, 13:51:45
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,9 @@ use ash::vk;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
 use crate::vec_as_ptr;
-use crate::auxillary::{BufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
+use crate::auxillary::enums::SharingMode;
+use crate::auxillary::flags::{BufferUsageFlags, MemoryPropertyFlags};
+use crate::auxillary::structs::MemoryRequirements;
 use crate::device::Device;
 use crate::pools::memory::spec::{Buffer, GpuPtr, LocalBuffer, MemoryPool, TransferBuffer};
 
@@ -255,7 +257,7 @@ pub struct VertexBuffer {
 
 impl VertexBuffer {
     /// The usage flags for the VertexBuffer
-    const USAGE_FLAGS: BufferUsageFlags  = BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST;
+    const USAGE_FLAGS: BufferUsageFlags  = BufferUsageFlags::union(BufferUsageFlags::VERTEX_BUFFER, BufferUsageFlags::TRANSFER_DST);
     /// The memory property flags for the VertexBuffer
     const MEM_PROPS: MemoryPropertyFlags = MemoryPropertyFlags::DEVICE_LOCAL;
 

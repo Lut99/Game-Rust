@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 12:22:50
  * Last edited:
- *   09 Jul 2022, 12:51:02
+ *   10 Jul 2022, 13:39:07
  * Auto updated?
  *   Yes
  *
@@ -23,8 +23,29 @@ use ash::vk;
 
 use crate::errors::QueueError;
 use crate::vec_as_ptr;
-use crate::auxillary::enums::{AccessFlags, AttachmentLoadOp, AttachmentStoreOp, AttributeLayout, BindPoint, BlendFactor, BlendOp, CompareOp, ColourMask, CullMode, DependencyFlags, DescriptorKind, DeviceKind, DrawMode, FrontFace, HeapPropertyFlags, ImageFormat, ImageLayout, LogicOp, MemoryPropertyFlags, SampleCount, StencilOp, QueueKind, VertexInputRate, VertexTopology};
-use crate::auxillary::flags::ShaderStage;
+use crate::auxillary::enums::{
+    AttachmentLoadOp, AttachmentStoreOp, AttributeLayout,
+    BindPoint, BlendFactor, BlendOp,
+    CompareOp, ComponentSwizzle, CullMode,
+    DescriptorKind, DeviceKind, DrawMode,
+    FrontFace,
+    ImageFormat, ImageLayout,
+    LogicOp,
+    MemoryAllocatorKind,
+    SampleCount, SharingMode, StencilOp,
+    QueueKind,
+    VertexInputRate, VertexTopology,
+};
+use crate::auxillary::flags::{
+    AccessFlags,
+    BufferUsageFlags,
+    ColourComponentFlags,
+    DependencyFlags, DeviceMemoryTypeFlags,
+    HeapPropertyFlags,
+    MemoryPropertyFlags,
+    PipelineStage,
+    ShaderStage,
+};
 use crate::instance::Instance;
 
 
@@ -1686,7 +1707,7 @@ pub struct AttachmentBlendState {
     pub alpha_op  : BlendOp,
 
     /// A mask that specifies which channels are available for writing the blend.
-    pub write_mask : ColourMask,
+    pub write_mask : ColourComponentFlags,
 }
 
 impl From<vk::PipelineColorBlendAttachmentState> for AttachmentBlendState {
@@ -1812,5 +1833,113 @@ impl Into<(vk::PipelineColorBlendStateCreateInfo, Vec<vk::PipelineColorBlendAtta
 
         // Done, return both it and the memory
         (result, attachments)
+    }
+}
+
+
+
+/***** MEMORY POOLS *****/
+/// Defines the memory requirements of a buffer or image.
+#[derive(Clone, Debug)]
+pub struct MemoryRequirements {
+    /// The minimum size of the required memory block.
+    pub size  : usize,
+    /// The alignment (in bytes) of the start of the required memory block. Must be a multiple of two.
+    pub align : u8,
+    /// The device memory types that are supported by the buffer or image for this particular usage.
+    pub types : DeviceMemoryTypeFlags,
+}
+
+impl From<vk::MemoryRequirements> for MemoryRequirements {
+    #[inline]
+    fn from(value: vk::MemoryRequirements) -> Self {
+        Self {
+            size  : value.size as usize,
+            align : value.alignment as u8,
+            types : value.memory_type_bits.into(),
+        }
+    }
+}
+
+impl From<MemoryRequirements> for vk::MemoryRequirements {
+    #[inline]
+    fn from(value: MemoryRequirements) -> Self {
+        Self {
+            size             : value.size as vk::DeviceSize,
+            alignment        : value.align as vk::DeviceSize,
+            memory_type_bits : value.types.into(),
+        }
+    }
+}
+
+
+
+/// An auxillary struct that describes the memory requirements and properties of a given Buffer.
+#[derive(Clone, Debug)]
+pub struct BufferAllocateInfo {
+    /// The usage flags of this Buffer
+    pub usage_flags  : BufferUsageFlags,
+    /// The sharing mode that determines how this Buffer may be accessed.
+    pub sharing_mode : SharingMode,
+
+    /// The size of the buffer, in bytes. Note that the resulting *actual* size may be slightly more based on alignment requirements.
+    pub size         : usize,
+    /// The additional properties that we require of the memory behind this buffer.
+    pub memory_props : MemoryPropertyFlags,
+
+    /// The type of allocator to use for this buffer.
+    pub allocator : MemoryAllocatorKind,
+}
+
+
+
+
+
+/***** IMAGES *****/
+/// Defines any potential re-mapping of an image's channels.
+#[derive(Debug, Clone)]
+pub struct ComponentMapping {
+    /// The mapping of the red channel
+    pub red   : ComponentSwizzle,
+    /// The mapping of the green channel
+    pub green : ComponentSwizzle,
+    /// The mapping of the blue channel
+    pub blue  : ComponentSwizzle,
+    /// The mapping of the alpha channel
+    pub alpha : ComponentSwizzle,
+}
+
+impl Default for ComponentMapping {
+    fn default() -> Self {
+        Self {
+            red   : ComponentSwizzle::Identity,
+            green : ComponentSwizzle::Identity,
+            blue  : ComponentSwizzle::Identity,
+            alpha : ComponentSwizzle::Identity,
+        }
+    }
+}
+
+impl From<vk::ComponentMapping> for ComponentMapping {
+    #[inline]
+    fn from(value: vk::ComponentMapping) -> Self {
+        Self {
+            red   : value.r.into(),
+            green : value.g.into(),
+            blue  : value.b.into(),
+            alpha : value.a.into(),
+        }
+    }
+}
+
+impl From<ComponentMapping> for vk::ComponentMapping {
+    #[inline]
+    fn from(value: ComponentMapping) -> Self {
+        Self {
+            r : value.red.into(),
+            g : value.green.into(),
+            b : value.blue.into(),
+            a : value.alpha.into(),
+        }
     }
 }

@@ -4,7 +4,7 @@
  * Created:
  *   03 May 2022, 18:20:39
  * Last edited:
- *   14 May 2022, 12:36:20
+ *   10 Jul 2022, 13:34:53
  * Auto updated?
  *   Yes
  *
@@ -20,7 +20,7 @@ use ash::vk;
 
 pub use crate::errors::FramebufferError as Error;
 use crate::log_destroy;
-use crate::auxillary::Extent2D;
+use crate::auxillary::structs::Extent2D;
 use crate::device::Device;
 use crate::render_pass::RenderPass;
 use crate::image;

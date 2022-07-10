@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 10:44:36
  * Last edited:
- *   09 Jul 2022, 12:38:08
+ *   10 Jul 2022, 13:51:24
  * Auto updated?
  *   Yes
  *
@@ -15,18 +15,55 @@
 
 use std::cmp::PartialEq;
 use std::fmt::{Debug, Display};
-use std::ops::{BitAnd, BitOr, BitOrAssign, Not};
+use std::ops::{BitOr, BitOrAssign};
 
 use ash::vk;
-use num_traits::{NumCast, Unsigned};
 
 
 /***** HELPER MACROS *****/
-/// Wrapper macro to shortcut the Display trait for flags
-#[macro_export]
-macro_rules! flags_display {
-    ($flag:ident, $($match:path => $code:literal $(,)?),+) => {
-        impl Display for $flag {
+/// Macro that generates the base Flags implementation based on the given Flags values.
+macro_rules! flags_new {
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident),
+        { $(
+            $(#[$fdoc:ident $($fargs:tt)*])*
+            $fname:ident = $fval:expr $(,)?
+        ),+ },
+        { $(
+            $dmatch:ident => $dresult:literal $(,)?
+        ),+ } $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            $(
+                $(#[$fdoc $($fargs)*])*
+                pub const $fname: Self = Self($fval)
+            );+;
+
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
+            #[inline]
+            pub const fn empty() -> Self { Self(0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to a full set.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set.")]
+            #[inline]
+            pub const fn all() -> Self { Self(!0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it as a set with the given given Flags combined.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set in the union of both given sets.")]
+            #[inline]
+            pub const fn union(lhs: Self, rhs: Self) -> Self { Self(lhs.0 | rhs.0) }
+
+
+            #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
+            #[inline]
+            pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+        }
+
+        impl Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 // Construct a list
                 let mut first = true;
@@ -39,9 +76,9 @@ macro_rules! flags_display {
                         else { write!(f, ", ")?; }
 
                         // Write the name of this property
-                        match $flag(self.0 & i) {
-                            $($match => { write!(f, $code)?; }),+
-                            val => { panic!(concat!("Encountered illegal ", stringify!($flag), " value '{}'"), val.0); }
+                        match $name(self.0 & i) {
+                            $($name::$dmatch => { write!(f, $dresult)?; }),+
+                            value            => { panic!(concat!("Encountered illegal ", stringify!($name), " value '{}'"), value.0); }
                         }
                     }
 
@@ -53,18 +90,231 @@ macro_rules! flags_display {
                 Ok(())
             }
         }
-    }
+
+        impl BitOr for $name {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, other: Self) -> Self::Output {
+                Self(self.0 | other.0)
+            }
+        }
+
+        impl BitOrAssign for $name {
+            #[inline]
+            fn bitor_assign(&mut self, other: Self) {
+                self.0 |= other.0
+            }
+        }
+    };
+
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident),
+        { $(
+            $(#[$fdoc:ident $($fargs:tt)*])*
+            $fname:ident = $fval:expr $(,)?
+        ),+ },
+        {} $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            $(
+                $(#[$fdoc $($fargs)*])*
+                pub const $fname: Self = Self($fval)
+            );+;
+
+
+            #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
+            #[inline]
+            pub const fn empty() -> Self { Self(0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to a full set.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set.")]
+            #[inline]
+            pub const fn all() -> Self { Self(!0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it as a set with the given given Flags combined.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set in the union of both given sets.")]
+            #[inline]
+            pub const fn union(lhs: Self, rhs: Self) -> Self { Self(lhs.0 | rhs.0) }
+
+
+            #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
+            #[inline]
+            pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+        }
+
+        impl BitOr for $name {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, other: Self) -> Self::Output {
+                Self(self.0 | other.0)
+            }
+        }
+
+        impl BitOrAssign for $name {
+            #[inline]
+            fn bitor_assign(&mut self, other: Self) {
+                self.0 |= other.0
+            }
+        }
+    };
+
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident),
+        {},
+        { $(
+            $dmatch:ident => $dresult:literal $(,)?
+        ),+ } $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
+            #[inline]
+            pub const fn empty() -> Self { Self(0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it to a full set.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set.")]
+            #[inline]
+            pub const fn all() -> Self { Self(!0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it as a set with the given given Flags combined.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set in the union of both given sets.")]
+            #[inline]
+            pub const fn union(lhs: Self, rhs: Self) -> Self { Self(lhs.0 | rhs.0) }
+
+
+            #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
+            #[inline]
+            pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+        }
+
+        impl Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                // Construct a list
+                let mut first = true;
+                let mut i     = 0x1;
+                while i != 0 {
+                    // Check if this property is enabled
+                    if self.0 & i != 0 {
+                        // Write the comma if necessary
+                        if first { first = false; }
+                        else { write!(f, ", ")?; }
+
+                        // Write the name of this property
+                        match $name(self.0 & i) {
+                            $($name::$dmatch => { write!(f, $dresult)?; }),+
+                            value            => { panic!(concat!("Encountered illegal ", stringify!($name), " value '{}'"), value.0); }
+                        }
+                    }
+
+                    // Increment the i
+                    i = i << 1;
+                }
+
+                // Done
+                Ok(())
+            }
+        }
+
+        impl BitOr for $name {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, other: Self) -> Self::Output {
+                Self(self.0 | other.0)
+            }
+        }
+
+        impl BitOrAssign for $name {
+            #[inline]
+            fn bitor_assign(&mut self, other: Self) {
+                self.0 |= other.0
+            }
+        }
+    };
+
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident),
+        {},
+        {} $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to empty (no flags set).\n\n# Returns\nA new instance of `", stringify!($name), "` with no flags set.")]
+            #[inline]
+            pub const fn empty() -> Self { Self(0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), " class, which initializes it to a full set.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set.")]
+            #[inline]
+            pub const fn all() -> Self { Self(!0) }
+
+            #[doc = concat!("Constructor for the ", stringify!($name), ", which initializes it as a set with the given given Flags combined.\n\n# Returns\nA new instance of `", stringify!($name), "` with all flags set in the union of both given sets.")]
+            #[inline]
+            pub const fn union(lhs: Self, rhs: Self) -> Self { Self(lhs.0 | rhs.0) }
+
+
+            #[doc = concat!("Checks if the given ", stringify!($name), " is a subset of this one.\n\n#Arguments\n- `other`: The other set of flags to check.\n\n#Returns\nReturns true iff this ", stringify!($name), " has at least the same bits set as the given one.")]
+            #[inline]
+            pub const fn check(&self, other: Self) -> bool { (self.0 & other.0) == other.0 }
+        }
+
+        impl BitOr for $name {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, other: Self) -> Self::Output {
+                Self(self.0 | other.0)
+            }
+        }
+
+        impl BitOrAssign for $name {
+            #[inline]
+            fn bitor_assign(&mut self, other: Self) {
+                self.0 |= other.0
+            }
+        }
+    };
 }
 
-/// Wrapper macro to shortcut the From trait for flags
-#[macro_export]
+/// Macro that generates from-function for a flag that derives from a Vulkan value.
 macro_rules! flags_from {
+    (vk::$from:ident, $to:ident, $($match:ident => $target:ident $(,)?),+) => {
+        flags_from!(vk::$from, $to, $(vk::$from::$match => $to::$target),+);
+    };
+
+    (vk::$from:ident, $to:ident, $($match:path => $target:ident $(,)?),+) => {
+        flags_from!(vk::$from, $to, $($match => $to::$target),+);
+    };
+
+    (vk::$from:ident, $to:ident, $($match:ident => $target:path $(,)?),+) => {
+        flags_from!(vk::$from, $to, $(vk::$from::$match => $target),+);
+    };
+
     (vk::$from:ident, $to:ident, $($match:path => $target:path $(,)?),+) => {
         impl From<vk::$from> for $to {
             fn from(value: vk::$from) -> $to {
                 // Construct the resulting flag iteratively
                 let mut result: $to = $to::empty();
                 $(if (value & $match).as_raw() != 0 { result |= $target });+
+                result
+            }
+        }
+
+        impl From<&vk::$from> for $to {
+            fn from(value: &vk::$from) -> $to {
+                // Construct the resulting flag iteratively
+                let mut result: $to = $to::empty();
+                $(if (*value & $match).as_raw() != 0 { result |= $target });+
                 result
             }
         }
@@ -77,96 +327,300 @@ macro_rules! flags_from {
                 result
             }
         }
+
+        impl From<&$to> for vk::$from {
+            fn from(value: &$to) -> vk::$from {
+                // Construct the resulting flag iteratively
+                let mut result: vk::$from = vk::$from::empty();
+                $(if value.check($target) { result |= $match });+
+                result
+            }
+        }
     };
 }
 
-/// Macros that ORs together the given flags at constant-time
-#[macro_export]
-macro_rules! join_flags {
-    ($flag:ident, $value:expr) => {
-        $flag::from_raw($value)
+/// Macro that generates both a base 'single-flag' struct and a 'collection-of-flags' struct.
+macro_rules! flags_single_new {
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident), $name_flags:ident,
+        { $(
+            $(#[$fdoc:ident $($fargs:tt)*])*
+            $fname:ident = $fval:expr $(,)?
+        ),+ },
+        { $(
+            $dmatch:ident => $dresult:literal $(,)?
+        ),+ } $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            $(
+                $(#[$fdoc $($fargs)*])*
+                pub const $fname: Self = Self($fval)
+            );+;
+        }
+
+        impl Display for $name {
+            #[inline]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match *self {
+                    $($name::$dmatch => { write!(f, $dresult) }),+
+                    _                => { write!(f, "???") }
+                }
+            }
+        }
+
+
+
+        flags_new!(
+            $name_flags($type),
+            { $(
+                #[doc = concat!("Defines a set of ", stringify!($name), " flags.")]
+                $fname = $fval
+            ),+ },
+            { $(
+                $dmatch => $dresult
+            ),+ },
+        );
+
+        impl From<$name> for $name_flags {
+            #[inline]
+            fn from(value: $name) -> $name_flags {
+                $name_flags(value.0)
+            }
+        }
     };
 
-    ($flag:ident, $lhs:expr, $rhs:expr, $($values:expr),*) => {
-        join_flags!($flag, ($lhs).as_raw() | ($rhs).as_raw(), $($values),*)
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident), $name_flags:ident,
+        { $(
+            $(#[$fdoc:ident $($fargs:tt)*])*
+            $fname:ident = $fval:expr $(,)?
+        ),+ },
+        {} $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl $name {
+            $(
+                $(#[$fdoc $($fargs)*])*
+                pub const $fname: Self = Self($fval)
+            );+;
+        }
+
+
+
+        flags_new!(
+            $name_flags($type),
+            { $(
+                #[doc = concat!("Defines a set of ", stringify!($name), " flags.")]
+                $fname = $fval
+            ),+ },
+            { $(
+                $dmatch => $dresult
+            ),+ },
+        );
+
+        impl From<$name> for $name_flags {
+            #[inline]
+            fn from(value: $name) -> $name_flags {
+                $name_flags(value.0)
+            }
+        }
+    };
+
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident), $name_flags:ident,
+        {},
+        { $(
+            $dmatch:ident => $dresult:literal $(,)?
+        ),+ } $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+        impl Display for $name {
+            #[inline]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $($name::$dmatch => { write!(f, $dresult)?; }),+,
+                    value            => { write!(f, "???")?; }
+                }
+            }
+        }
+
+
+
+        flags_new!(
+            $name_flags($type),
+            {},
+            { $(
+                $dmatch => $dresult
+            ),+ },
+        );
+
+        impl From<$name> for $name_flags {
+            #[inline]
+            fn from(value: $name) -> $name_flags {
+                $name_flags(value.0)
+            }
+        }
+    };
+
+    (
+        $(#[$doc:ident $($args:tt)*])*
+        $name:ident ($type:ident), $name_flags:ident,
+        {},
+        {} $(,)?
+    ) => {
+        $(#[$doc $($args)*])*
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub struct $name($type);
+
+
+
+        flags_new!(
+            $name_flags($type),
+            {},
+            {},
+        );
+
+        impl From<$name> for $name_flags {
+            #[inline]
+            fn from(value: $name) -> $name_flags {
+                $name_flags(value.0)
+            }
+        }
     };
 }
 
+/// Macro that generates from-function for both a base 'single-flag' struct and a 'collection-of-flags' struct that derives from a Vulkan value.
+macro_rules! flags_single_from {
+    (vk::$from:ident, $to:ident,$to_flags:ident,  $($match:ident => $target:ident $(,)?),+) => {
+        flags_single_from!(vk::$from, $to, $to_flags, $(vk::$from::$match => $target),+);
+    };
+
+    (vk::$from:ident, $to:ident, $to_flags:ident, $($match:path => $target:ident $(,)?),+) => {
+        impl From<vk::$from> for $to {
+            #[inline]
+            fn from(value: vk::$from) -> $to {
+                match value {
+                    $($match => $to::$target),+,
+                    value               => { panic!(concat!("Encountered illegal value '{}' for ", stringify!(vk::$from)), value.as_raw()); }
+                }
+            }
+        }
+
+        impl From<&vk::$from> for $to {
+            #[inline]
+            fn from(value: &vk::$from) -> $to {
+                match *value {
+                    $($match => $to::$target),+,
+                    value               => { panic!(concat!("Encountered illegal value '{}' for ", stringify!(vk::$from)), value.as_raw()); }
+                }
+            }
+        }
+
+        impl From<$to> for vk::$from {
+            #[inline]
+            fn from(value: $to) -> vk::$from {
+                match value {
+                    $($to::$target => $match),+,
+                    value          => { panic!(concat!("Encountered illegal value '{}' for ", stringify!($to)), value.0); }
+                }
+            }
+        }
+
+        impl From<&$to> for vk::$from {
+            #[inline]
+            fn from(value: &$to) -> vk::$from {
+                match *value {
+                    $($to::$target => $match),+,
+                    value          => { panic!(concat!("Encountered illegal value '{}' for ", stringify!($to)), value.0); }
+                }
+            }
+        }
 
 
 
+        impl From<vk::$from> for $to_flags {
+            fn from(value: vk::$from) -> $to_flags {
+                // Construct the resulting flag iteratively
+                let mut result: $to_flags = $to_flags::empty();
+                $(if (value & $match).as_raw() != 0 { result |= $to_flags::$target });+
+                result
+            }
+        }
 
-/***** HELPER TRAIT *****/
-/// Provides a uniform interface to all flags.
-pub trait Flags: Clone + Copy + Debug + Eq + PartialEq {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType: BitAnd<Output = Self::RawType> + BitOr<Output = Self::RawType> + Not<Output = Self::RawType> + NumCast + PartialEq + Unsigned;
+        impl From<&vk::$from> for $to_flags {
+            fn from(value: &vk::$from) -> $to_flags {
+                // Construct the resulting flag iteratively
+                let mut result: $to_flags = $to_flags::empty();
+                $(if (*value & $match).as_raw() != 0 { result |= $to_flags::$target });+
+                result
+            }
+        }
 
+        impl From<$to_flags> for vk::$from {
+            fn from(value: $to_flags) -> vk::$from {
+                // Construct the resulting flag iteratively
+                let mut result: vk::$from = vk::$from::empty();
+                $(if value.check($to_flags::$target) { result |= $match });+
+                result
+            }
+        }
 
-    /// Constructor for the Flags object that creates it without any flags initialized.
-    /// 
-    /// # Returns
-    /// A new instance of Self with no flags set.
-    #[inline]
-    fn empty() -> Self { Self::from_raw(num_traits::cast::cast::<u8, Self::RawType>(0).unwrap()) }
-
-    /// Constructor for the Flags object that creates it with all flags initialized.
-    /// 
-    /// # Returns
-    /// A new instance of Self with all flags set.
-    #[inline]
-    fn all() -> Self { Self::from_raw(!num_traits::cast::cast::<u8, Self::RawType>(0).unwrap()) }
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    fn from_raw(value: Self::RawType) -> Self;
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    fn as_raw(&self) -> Self::RawType;
-
-
-
-    /// Returns true iff no flags are set.
-    #[inline]
-    fn is_empty(&self) -> bool { *self == Self::empty() }
-
-    /// Checks if the given argument is a subset of this set of flags.
-    /// 
-    /// # Arguments
-    /// - `other`: The other `Flags` that might be a subset of this Flags.
-    /// 
-    /// # Returns
-    /// `true` if the given set is a subset of this one, or `false` otherwise.
-    #[inline]
-    fn check(&self, other: Self) -> bool { (self.as_raw() & other.as_raw()) == other.as_raw() }
+        impl From<&$to_flags> for vk::$from {
+            fn from(value: &$to_flags) -> vk::$from {
+                // Construct the resulting flag iteratively
+                let mut result: vk::$from = vk::$from::empty();
+                $(if value.check($to_flags::$target) { result |= $match });+
+                result
+            }
+        }
+    };
 }
 
-impl<T: Flags> BitOr for T {
-    type Output = Self;
+/// Macro that generates from-function for both a base 'single-flag' struct and a 'collection-of-flags' struct that derives from a primitive 'raw' value.
+macro_rules! flags_single_from_raw {
+    ($from:ident, $to:ident($type:ident), $to_flags:ident) => {
+        impl From<$from> for $to {
+            #[inline]
+            fn from(value: $from) -> $to {
+                Self(value as $type)
+            }
+        }
 
-    #[inline]
-    fn bitor(self, other: Self) -> Self::Output {
-        Self::from_raw(self.as_raw() | other.as_raw())
-    }
-}
+        impl From<$to> for $from {
+            #[inline]
+            fn from(value: $to) -> $from {
+                value.0 as $from
+            }
+        }
 
-impl<T: Flags> BitOrAssign for T {
-    #[inline]
-    fn bitor_assign(&mut self, other: Self) {
-        *self = self.bitor(other)
-    }
+
+
+        impl From<$from> for $to_flags {
+            #[inline]
+            fn from(value: $from) -> $to_flags {
+                Self(value as $type)
+            }
+        }
+
+        impl From<$to_flags> for $from {
+            fn from(value: $to_flags) -> $from {
+                value.0 as $from
+            }
+        }
+    };
 }
 
 
@@ -174,53 +628,25 @@ impl<T: Flags> BitOrAssign for T {
 
 
 /***** DEVICES *****/
-/// Contains information about what a device heap supports, exactly.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HeapPropertyFlags(u8);
-
-impl HeapPropertyFlags {
-    /// The heap corresponds to device-local memory.
-    pub const DEVICE_LOCAL: Self = Self(0x01);
-    /// In the case of a multi-instance logical device, this heap has a per-device instance. That means that (by default) every allocation will be replicated to each heap.
-    pub const MULTI_INSTANCE: Self = Self(0x02);
-}
-
-impl Flags for HeapPropertyFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u8;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(HeapPropertyFlags,
-    HeapPropertyFlags::DEVICE_LOCAL   => "DEVICE_LOCAL",
-    HeapPropertyFlags::MULTI_INSTANCE => "MULTI_INSTANCE",
+flags_new!(
+    /// Contains information about what a device heap supports, exactly.
+    HeapPropertyFlags(u8),
+    {
+        /// The heap corresponds to device-local memory.
+        DEVICE_LOCAL   = 0x01,
+        /// In the case of a multi-instance logical device, this heap has a per-device instance. That means that (by default) every allocation will be replicated to each heap.
+        MULTI_INSTANCE = 0x02,
+    },
+    {
+        DEVICE_LOCAL   => "DEVICE_LOCAL",
+        MULTI_INSTANCE => "MULTI_INSTANCE",
+    },
 );
 
 flags_from!(vk::MemoryHeapFlags, HeapPropertyFlags, 
-    vk::MemoryHeapFlags::DEVICE_LOCAL       => HeapPropertyFlags::DEVICE_LOCAL,
-    vk::MemoryHeapFlags::MULTI_INSTANCE     => HeapPropertyFlags::MULTI_INSTANCE,
-    vk::MemoryHeapFlags::MULTI_INSTANCE_KHR => HeapPropertyFlags::MULTI_INSTANCE,
+    DEVICE_LOCAL       => DEVICE_LOCAL,
+    MULTI_INSTANCE     => MULTI_INSTANCE,
+    MULTI_INSTANCE_KHR => MULTI_INSTANCE,
 );
 
 
@@ -228,297 +654,141 @@ flags_from!(vk::MemoryHeapFlags, HeapPropertyFlags,
 
 
 /***** SHADERS *****/
-/// The ShaderStage is where a shader or a resource lives.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ShaderStage(u16);
+flags_single_new!(
+    /// The ShaderStage enumerates possible stages where shaders live.
+    ShaderStage(u16), ShaderStageFlags,
+    {
+        /// The Vertex stage
+        VERTEX                  = 0x0001,
+        /// The control stage of the Tesselation stage
+        TESSELLATION_CONTROL    = 0x0002,
+        /// The evaluation stage of the Tesselation stage
+        TESSELLATION_EVALUATION = 0x0004,
+        /// The Geometry stage
+        GEOMETRY                = 0x0008,
+        /// The Fragment stage
+        FRAGMENT                = 0x0010,
+        /// The Compute stage
+        COMPUTE                 = 0x0020,
+    },
+    {
+        VERTEX                  => "Vertex",
+        TESSELLATION_CONTROL    => "Tesselation (control)",
+        TESSELLATION_EVALUATION => "Tesselation (evaluation)",
+        GEOMETRY                => "Geometry",
+        FRAGMENT                => "Fragment",
+        COMPUTE                 => "Compute",
+    },
+);
 
-impl ShaderStage {
-    /// A ShaderStage that hits all stages
-    pub const ALL: Self          = Self(0xFFFF);
-    /// A ShaderStage that hits all graphics stages
-    pub const ALL_GRAPHICS: Self = Self(0x001F);
-    /// An empty ShaderStage
-    pub const EMPTY: Self        = Self(0x0000);
-
-    /// The Vertex stage
-    pub const VERTEX: Self                 = Self(0x0001);
-    /// The control stage of the Tesselation stage
-    pub const TESSELLATION_CONTROL: Self    = Self(0x0002);
-    /// The evaluation stage of the Tesselation stage
-    pub const TESSELLATION_EVALUATION: Self = Self(0x0004);
-    /// The Geometry stage
-    pub const GEOMETRY: Self               = Self(0x0008);
-    /// The Fragment stage
-    pub const FRAGMENT: Self               = Self(0x0010);
-    /// The Compute stage
-    pub const COMPUTE: Self                = Self(0x0020);
-
-
-    /// Creates a ShaderStage from a raw value.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw flags value. Note that this is the ShaderStage raw, _not_ the Vulkan raw.
-    /// 
-    /// # Returns
-    /// A new ShaderStage with the raw flags set.
-    pub const fn raw(value: u16) -> Self { Self(value) }
-
-    /// Returns whether the given ShaderStage is a subset of this one.
-    /// 
-    /// # Arguments
-    /// - `value`: The ShaderStage that should be a subset of this one. For example, if value is Self::VERTEX, then returns true if the Vertex shader stage was enabled in this ShaderStage.
-    #[inline]
-    pub fn check(&self, other: ShaderStage) -> bool { (self.0 & other.0) == other.0 }
-}
-
-impl BitOr for ShaderStage {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for ShaderStage {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl Display for ShaderStage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        // Construct a list of shader stages
-        let mut stages = Vec::with_capacity(1);
-        for value in &[ShaderStage::VERTEX, ShaderStage::TESSELLATION_CONTROL, ShaderStage::TESSELLATION_EVALUATION, ShaderStage::GEOMETRY, ShaderStage::FRAGMENT, ShaderStage::COMPUTE] {
-            if self.check(*value) { stages.push(value); }
-        }
-
-        // Use that to construct a string list
-        for i in 0..stages.len() {
-            // Write the grammar
-            if i > 0 && i < stages.len() - 1 { write!(f, ", ")?; }
-            else if i > 0 { write!(f, " and ")?; }
-
-            // Write the stage
-            let stage = stages[i];
-            if stage == &ShaderStage::VERTEX { write!(f, "Vertex")?; }
-            else if stage == &ShaderStage::TESSELLATION_CONTROL { write!(f, "Tesselation (control)")?; }
-            else if stage == &ShaderStage::TESSELLATION_EVALUATION { write!(f, "Tesselation (evaluation)")?; }
-            else if stage == &ShaderStage::GEOMETRY { write!(f, "Geometry")?; }
-            else if stage == &ShaderStage::FRAGMENT { write!(f, "Fragment")?; }
-            else if stage == &ShaderStage::COMPUTE { write!(f, "Compute")?; }
-        }
-
-        // Done
-        Ok(())
-    }
-}
-
-impl From<vk::ShaderStageFlags> for ShaderStage {
-    #[inline]
-    fn from(value: vk::ShaderStageFlags) -> Self {
-        // Use the reference version
-        Self::from(&value)
-    }
-}
-
-impl From<&vk::ShaderStageFlags> for ShaderStage {
-    #[inline]
-    fn from(value: &vk::ShaderStageFlags) -> Self {
-        // Construct it manually for portability
-        let mut result = ShaderStage::EMPTY;
-        if (*value & vk::ShaderStageFlags::VERTEX).as_raw() != 0 { result |= ShaderStage::VERTEX; }
-        if (*value & vk::ShaderStageFlags::TESSELLATION_CONTROL).as_raw() != 0 { result |= ShaderStage::TESSELLATION_CONTROL; }
-        if (*value & vk::ShaderStageFlags::TESSELLATION_EVALUATION).as_raw() != 0 { result |= ShaderStage::TESSELLATION_EVALUATION; }
-        if (*value & vk::ShaderStageFlags::GEOMETRY).as_raw() != 0 { result |= ShaderStage::GEOMETRY; }
-        if (*value & vk::ShaderStageFlags::FRAGMENT).as_raw() != 0 { result |= ShaderStage::FRAGMENT; }
-        if (*value & vk::ShaderStageFlags::COMPUTE).as_raw() != 0 { result |= ShaderStage::COMPUTE; }
-
-        // Return it
-        result
-    }
-}
-
-impl From<ShaderStage> for vk::ShaderStageFlags {
-    fn from(value: ShaderStage) -> Self {
-        // Use the reference version
-        Self::from(&value)
-    }
-}
-
-impl From<&ShaderStage> for vk::ShaderStageFlags {
-    fn from(value: &ShaderStage) -> Self {
-        // Construct it manually due to private constructors ;(
-        let mut result = vk::ShaderStageFlags::empty();
-        if value.check(ShaderStage::VERTEX) { result |= vk::ShaderStageFlags::VERTEX; }
-        if value.check(ShaderStage::TESSELLATION_CONTROL) { result |= vk::ShaderStageFlags::TESSELLATION_CONTROL; }
-        if value.check(ShaderStage::TESSELLATION_EVALUATION) { result |= vk::ShaderStageFlags::TESSELLATION_EVALUATION; }
-        if value.check(ShaderStage::GEOMETRY) { result |= vk::ShaderStageFlags::GEOMETRY; }
-        if value.check(ShaderStage::FRAGMENT) { result |= vk::ShaderStageFlags::FRAGMENT; }
-        if value.check(ShaderStage::COMPUTE) { result |= vk::ShaderStageFlags::COMPUTE; }
-
-        // Return it
-        result
-    }
-}
+flags_single_from!(vk::ShaderStageFlags, ShaderStage, ShaderStageFlags,
+    VERTEX                  => VERTEX,
+    TESSELLATION_CONTROL    => TESSELLATION_CONTROL,
+    TESSELLATION_EVALUATION => TESSELLATION_EVALUATION,
+    GEOMETRY                => GEOMETRY,
+    FRAGMENT                => FRAGMENT,
+    COMPUTE                 => COMPUTE,
+);
 
 
 
 
 
 /***** RENDER PASSES *****/
-/// Defines kinds of operations that are relevant for synchronization.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct AccessFlags(u32);
-
-impl AccessFlags {
-    /// Defines an operation that reads during the DRAW_INDIRECT pipeline stage(?)
-    pub const INDIRECT_COMMAND_READ: Self = Self(0x00001);
-    /// Defines a read operation in the index buffer.
-    pub const INDEX_READ: Self = Self(0x00002);
-    /// Defines a read operation of a vertex attribute in the vertex buffer.
-    pub const VERTEX_ATTRIBUTE_READ: Self = Self(0x00004);
-    /// Defines a read operation of a uniform buffer.
-    pub const UNIFORM_READ: Self = Self(0x00008);
-    /// Defines a read operation of an input attachment.
-    pub const INPUT_ATTACHMENT_READ: Self = Self(0x00010);
-    /// Defines a read operation in a shader.
-    pub const SHADER_READ: Self = Self(0x00020);
-    /// Defines a write operation in a shader.
-    pub const SHADER_WRITE: Self = Self(0x00040);
-    /// Defines a read operation from a colour attachment.
-    pub const COLOUR_ATTACHMENT_READ: Self = Self(0x00080);
-    /// Defines a write operation from a colour attachment.
-    pub const COLOUR_ATTACHMENT_WRITE: Self = Self(0x00100);
-    /// Defines a read operation from a depth stencil.
-    pub const DEPTH_STENCIL_READ: Self = Self(0x00200);
-    /// Defines a write operation from a depth stencil.
-    pub const DEPTH_STENCIL_WRITE: Self = Self(0x00400);
-    /// Defines a read operation during the transferring of buffers or images.
-    pub const TRANSFER_READ: Self = Self(0x00800);
-    /// Defines a write operation during the transferring of buffers or images.
-    pub const TRANSFER_WRITE: Self = Self(0x01000);
-    /// Defines a read operation performed by the host (I assume on GPU resources in shared memory).
-    pub const HOST_READ: Self = Self(0x02000);
-    /// Defines a write operation performed by the host (I assume on GPU resources in shared memory).
-    pub const HOST_WRITE: Self = Self(0x04000);
-    /// Defines _any_ read operation.
-    pub const MEMORY_READ: Self  = Self(0x08000);
-    /// Defines _any_ write operation.
-    pub const MEMORY_WRITE: Self = Self(0x10000);
-}
-
-impl Flags for AccessFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u32;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(AccessFlags,
-    AccessFlags::INDIRECT_COMMAND_READ   => "INDIRECT_COMMAND_READ",
-    AccessFlags::INDEX_READ              => "INDEX_READ",
-    AccessFlags::VERTEX_ATTRIBUTE_READ   => "VERTEX_ATTRIBUTE_READ",
-    AccessFlags::UNIFORM_READ            => "UNIFORM_READ",
-    AccessFlags::INPUT_ATTACHMENT_READ   => "INPUT_ATTACHMENT_READ",
-    AccessFlags::SHADER_READ             => "SHADER_READ",
-    AccessFlags::SHADER_WRITE            => "SHADER_WRITE",
-    AccessFlags::COLOUR_ATTACHMENT_READ  => "COLOUR_ATTACHMENT_READ",
-    AccessFlags::COLOUR_ATTACHMENT_WRITE => "COLOUR_ATTACHMENT_WRITE",
-    AccessFlags::TRANSFER_READ           => "TRANSFER_READ",
-    AccessFlags::TRANSFER_WRITE          => "TRANSFER_WRITE",
-    AccessFlags::HOST_READ               => "HOST_READ",
-    AccessFlags::HOST_WRITE              => "HOST_WRITE",
-    AccessFlags::MEMORY_READ             => "MEMORY_READ",
-    AccessFlags::MEMORY_WRITE            => "MEMORY_WRITE",
+flags_new!(
+    /// Defines kinds of operations that are relevant for synchronization.
+    AccessFlags(u32),
+    {
+        /// Defines an operation that reads during the DRAW_INDIRECT pipeline stage(?)
+        INDIRECT_COMMAND_READ   = 0x00001,
+        /// Defines a read operation in the index buffer.
+        INDEX_READ              = 0x00002,
+        /// Defines a read operation of a vertex attribute in the vertex buffer.
+        VERTEX_ATTRIBUTE_READ   = 0x00004,
+        /// Defines a read operation of a uniform buffer.
+        UNIFORM_READ            = 0x00008,
+        /// Defines a read operation of an input attachment.
+        INPUT_ATTACHMENT_READ   = 0x00010,
+        /// Defines a read operation in a shader.
+        SHADER_READ             = 0x00020,
+        /// Defines a write operation in a shader.
+        SHADER_WRITE            = 0x00040,
+        /// Defines a read operation from a colour attachment.
+        COLOUR_ATTACHMENT_READ  = 0x00080,
+        /// Defines a write operation from a colour attachment.
+        COLOUR_ATTACHMENT_WRITE = 0x00100,
+        /// Defines a read operation from a depth stencil.
+        DEPTH_STENCIL_READ      = 0x00200,
+        /// Defines a write operation from a depth stencil.
+        DEPTH_STENCIL_WRITE     = 0x00400,
+        /// Defines a read operation during the transferring of buffers or images.
+        TRANSFER_READ           = 0x00800,
+        /// Defines a write operation during the transferring of buffers or images.
+        TRANSFER_WRITE          = 0x01000,
+        /// Defines a read operation performed by the host (I assume on GPU resources in shared memory).
+        HOST_READ               = 0x02000,
+        /// Defines a write operation performed by the host (I assume on GPU resources in shared memory).
+        HOST_WRITE              = 0x04000,
+        /// Defines _any_ read operation.
+        MEMORY_READ             = 0x08000,
+        /// Defines _any_ write operation.
+        MEMORY_WRITE            = 0x10000,
+    },
+    {
+        INDIRECT_COMMAND_READ   => "INDIRECT_COMMAND_READ",
+        INDEX_READ              => "INDEX_READ",
+        VERTEX_ATTRIBUTE_READ   => "VERTEX_ATTRIBUTE_READ",
+        UNIFORM_READ            => "UNIFORM_READ",
+        INPUT_ATTACHMENT_READ   => "INPUT_ATTACHMENT_READ",
+        SHADER_READ             => "SHADER_READ",
+        SHADER_WRITE            => "SHADER_WRITE",
+        COLOUR_ATTACHMENT_READ  => "COLOUR_ATTACHMENT_READ",
+        COLOUR_ATTACHMENT_WRITE => "COLOUR_ATTACHMENT_WRITE",
+        TRANSFER_READ           => "TRANSFER_READ",
+        TRANSFER_WRITE          => "TRANSFER_WRITE",
+        HOST_READ               => "HOST_READ",
+        HOST_WRITE              => "HOST_WRITE",
+        MEMORY_READ             => "MEMORY_READ",
+        MEMORY_WRITE            => "MEMORY_WRITE",
+    },
 );
 
 flags_from!(vk::AccessFlags, AccessFlags,
-    vk::AccessFlags::INDIRECT_COMMAND_READ  => AccessFlags::INDIRECT_COMMAND_READ,
-    vk::AccessFlags::INDEX_READ             => AccessFlags::INDEX_READ,
-    vk::AccessFlags::VERTEX_ATTRIBUTE_READ  => AccessFlags::VERTEX_ATTRIBUTE_READ,
-    vk::AccessFlags::UNIFORM_READ           => AccessFlags::UNIFORM_READ,
-    vk::AccessFlags::INPUT_ATTACHMENT_READ  => AccessFlags::INPUT_ATTACHMENT_READ,
-    vk::AccessFlags::SHADER_READ            => AccessFlags::SHADER_READ,
-    vk::AccessFlags::SHADER_WRITE           => AccessFlags::SHADER_WRITE,
-    vk::AccessFlags::COLOR_ATTACHMENT_READ  => AccessFlags::COLOUR_ATTACHMENT_READ,
-    vk::AccessFlags::COLOR_ATTACHMENT_WRITE => AccessFlags::COLOUR_ATTACHMENT_WRITE,
-    vk::AccessFlags::TRANSFER_READ          => AccessFlags::TRANSFER_READ,
-    vk::AccessFlags::TRANSFER_WRITE         => AccessFlags::TRANSFER_WRITE,
-    vk::AccessFlags::HOST_READ              => AccessFlags::HOST_READ,
-    vk::AccessFlags::HOST_WRITE             => AccessFlags::HOST_WRITE,
-    vk::AccessFlags::MEMORY_READ            => AccessFlags::MEMORY_READ,
-    vk::AccessFlags::MEMORY_WRITE           => AccessFlags::MEMORY_WRITE,
+    INDIRECT_COMMAND_READ  => INDIRECT_COMMAND_READ,
+    INDEX_READ             => INDEX_READ,
+    VERTEX_ATTRIBUTE_READ  => VERTEX_ATTRIBUTE_READ,
+    UNIFORM_READ           => UNIFORM_READ,
+    INPUT_ATTACHMENT_READ  => INPUT_ATTACHMENT_READ,
+    SHADER_READ            => SHADER_READ,
+    SHADER_WRITE           => SHADER_WRITE,
+    COLOR_ATTACHMENT_READ  => COLOUR_ATTACHMENT_READ,
+    COLOR_ATTACHMENT_WRITE => COLOUR_ATTACHMENT_WRITE,
+    TRANSFER_READ          => TRANSFER_READ,
+    TRANSFER_WRITE         => TRANSFER_WRITE,
+    HOST_READ              => HOST_READ,
+    HOST_WRITE             => HOST_WRITE,
+    MEMORY_READ            => MEMORY_READ,
+    MEMORY_WRITE           => MEMORY_WRITE,
 );
 
 
 
-/// Defines the kind of dependency that we're defining.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DependencyFlags(u8);
-
-impl DependencyFlags {
-    /// The dependency is local to each framebuffer (must be given if the stages include framebuffers).
-    pub const FRAMEBUFFER_LOCAL: Self = Self(0x01);
-    /// Every subpass has more than one ImageView that needs dependencies (must be given if so).
-    pub const VIEW_LOCAL: Self = Self(0x02);
-    /// If the dependency is not local to a device, this flag should be given.
-    pub const NOT_DEVICE_LOCAL: Self = Self(0x04);
-}
-
-impl Flags for DependencyFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u8;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(DependencyFlags,
-    DependencyFlags::FRAMEBUFFER_LOCAL => "FRAMEBUFFER_LOCAL",
-    DependencyFlags::VIEW_LOCAL        => "VIEW_LOCAL",
-    DependencyFlags::NOT_DEVICE_LOCAL  => "NOT_DEVICE_LOCAL",
+flags_new!(
+    /// Defines the kind of dependency that we're defining.
+    DependencyFlags(u8),
+    {
+        /// The dependency is local to each framebuffer (must be given if the stages include framebuffers).
+        FRAMEBUFFER_LOCAL = 0x01,
+        /// Every subpass has more than one ImageView that needs dependencies (must be given if so).
+        VIEW_LOCAL        = 0x02,
+        /// If the dependency is not local to a device, this flag should be given.
+        NOT_DEVICE_LOCAL  = 0x04,
+    },
+    {
+        FRAMEBUFFER_LOCAL => "FRAMEBUFFER_LOCAL",
+        VIEW_LOCAL        => "VIEW_LOCAL",
+        NOT_DEVICE_LOCAL  => "NOT_DEVICE_LOCAL",
+    },
 );
 
 flags_from!(vk::DependencyFlags, DependencyFlags,
@@ -529,183 +799,110 @@ flags_from!(vk::DependencyFlags, DependencyFlags,
 
 
 
-/// The ShaderStage where a shader or a resource lives.
-#[derive(Clone, Copy, Debug)]
-pub struct PipelineStage(u32);
+flags_single_new!(
+    /// The ShaderStage where a shader or a resource lives.
+    PipelineStage(u32), PipelineStageFlags,
+    {
+        /// Defines the stage before anything of the pipeline is run.
+        TOP_OF_PIPE                    = 0x00001,
+        /// The indirect draw stage.
+        DRAW_INDIRECT                  = 0x00002,
+        /// The stage where vertices (and indices) are read.
+        VERTEX_INPUT                   = 0x00004,
+        /// The Vertex shader stage.
+        VERTEX_SHADER                  = 0x00008,
+        /// The control stage of the Tesselation shader stage.
+        TESSELLATION_CONTROL_SHADER    = 0x00010,
+        /// The evaluation stage of the Tesselation shader stage.
+        TESSELLATION_EVALUATION_SHADER = 0x00020,
+        /// The Geometry shader stage.
+        GEOMETRY_SHADER                = 0x00040,
+        /// The Fragment shader stage.
+        FRAGMENT_SHADER                = 0x00080,
+        /// The stage where early fragments tests (depth and stencil tests before fragment shading) are performed. This stage also performs subpass load operations for framebuffers with depth attachments.
+        EARLY_FRAGMENT_TESTS           = 0x00100,
+        /// The stage where late fragments tests (depth and stencil tests after fragment shading) are performed. This stage also performs subpass write operations for framebuffers with depth attachments.
+        LATE_FRAGMENT_TESTS            = 0x00200,
+        /// The stage where the fragments are written to the colour attachment (after blending).
+        COLOUR_ATTACHMENT_OUTPUT       = 0x00400,
+        /// The stage where any compute shaders may be processed.
+        COMPUTE_SHADER                 = 0x00800,
+        /// The stage where any data is transferred to and from buffers and images (all copy commands, blit, resolve and clear commands (except vkCmdClearAttachments).
+        TRANSFER                       = 0x01000,
+        /// Defines the stage after the entire pipeline has been completed.
+        BOTTOM_OF_PIPE                 = 0x02000,
+        /// A (pseudo-)stage where host access to a device is performed.
+        HOST                           = 0x04000,
+        /// Collection for all graphics-related stages.
+        ALL_GRAPHICS                   = 0x08000,
+        /// Collection for all commandbuffer-invoked stages _supported on the executing queue_.
+        ALL_COMMANDS                   = 0x10000,
+    },
+    {
+        TOP_OF_PIPE                    => "TOP_OF_PIPE",
+        DRAW_INDIRECT                  => "DRAW_INDIRECT",
+        VERTEX_INPUT                   => "VERTEX_INPUT",
+        VERTEX_SHADER                  => "VERTEX_SHADER",
+        TESSELLATION_CONTROL_SHADER    => "TESSELLATION_CONTROL_SHADER",
+        TESSELLATION_EVALUATION_SHADER => "TESSELLATION_EVALUATION_SHADER",
+        GEOMETRY_SHADER                => "GEOMETRY_SHADER",
+        FRAGMENT_SHADER                => "FRAGMENT_SHADER",
+        EARLY_FRAGMENT_TESTS           => "EARLY_FRAGMENT_TESTS",
+        LATE_FRAGMENT_TESTS            => "LATE_FRAGMENT_TESTS",
+        COLOUR_ATTACHMENT_OUTPUT       => "COLOUR_ATTACHMENT_OUTPUT",
+        COMPUTE_SHADER                 => "COMPUTE_SHADER",
+        TRANSFER                       => "TRANSFER",
+        BOTTOM_OF_PIPE                 => "BOTTOM_OF_PIPE",
+        HOST                           => "HOST",
+        ALL_GRAPHICS                   => "ALL_GRAPHICS",
+        ALL_COMMANDS                   => "ALL_COMMANDS",
+    },
+);
 
-impl PipelineStage {
-    /// An empty PipelineStage
-    pub const EMPTY: Self = Self(0x00000);
-    /// A PipelineStage that hits all stages
-    pub const ALL: Self   = Self(0xFFFFF);
-
-    /// Defines the stage before anything of the pipeline is run.
-    pub const TOP_OF_PIPE: Self = Self(0x00001);
-    /// The indirect draw stage.
-    pub const DRAW_INDIRECT: Self = Self(0x00002);
-    /// The stage where vertices (and indices) are read.
-    pub const VERTEX_INPUT: Self = Self(0x00004);
-    /// The Vertex shader stage.
-    pub const VERTEX_SHADER: Self = Self(0x00008);
-    /// The control stage of the Tesselation shader stage.
-    pub const TESSELLATION_CONTROL_SHADER: Self = Self(0x00010);
-    /// The evaluation stage of the Tesselation shader stage.
-    pub const TESSELLATION_EVALUATION_SHADER: Self = Self(0x00020);
-    /// The Geometry shader stage.
-    pub const GEOMETRY_SHADER: Self = Self(0x00040);
-    /// The Fragment shader stage.
-    pub const FRAGMENT_SHADER: Self = Self(0x00080);
-    /// The stage where early fragments tests (depth and stencil tests before fragment shading) are performed. This stage also performs subpass load operations for framebuffers with depth attachments.
-    pub const EARLY_FRAGMENT_TESTS: Self = Self(0x00100);
-    /// The stage where late fragments tests (depth and stencil tests after fragment shading) are performed. This stage also performs subpass write operations for framebuffers with depth attachments.
-    pub const LATE_FRAGMENT_TESTS: Self = Self(0x00200);
-    /// The stage where the fragments are written to the colour attachment (after blending).
-    pub const COLOUR_ATTACHMENT_OUTPUT: Self = Self(0x00400);
-    /// The stage where any compute shaders may be processed.
-    pub const COMPUTE_SHADER: Self = Self(0x00800);
-    /// The stage where any data is transferred to and from buffers and images (all copy commands, blit, resolve and clear commands (except vkCmdClearAttachments).
-    pub const TRANSFER: Self = Self(0x01000);
-    /// Defines the stage after the entire pipeline has been completed.
-    pub const BOTTOM_OF_PIPE: Self = Self(0x02000);
-    /// A (pseudo-)stage where host access to a device is performed.
-    pub const HOST: Self = Self(0x04000);
-    /// Collection for all graphics-related stages.
-    pub const ALL_GRAPHICS: Self = Self(0x08000);
-    /// Collection for all commandbuffer-invoked stages _supported on the executing queue_.
-    pub const ALL_COMMANDS: Self = Self(0x10000);
-
-
-    /// Returns whether the given PipelineStage is a subset of this one.
-    /// 
-    /// # Arguments
-    /// - `value`: The PipelineStage that should be a subset of this one. For example, if value is Self::VERTEX, then returns true if the Vertex shader stage was enabled in this PipelineStage.
-    #[inline]
-    pub fn check(&self, other: PipelineStage) -> bool { (self.0 & other.0) == other.0 }
-}
-
-impl BitOr for PipelineStage {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl BitOrAssign for PipelineStage {
-    #[inline]
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl From<vk::PipelineStageFlags> for PipelineStage {
-    #[inline]
-    fn from(value: vk::PipelineStageFlags) -> Self {
-        // Construct it manually for portability
-        let mut result = PipelineStage::EMPTY;
-        if (value & vk::PipelineStageFlags::TOP_OF_PIPE).as_raw() != 0 { result |= PipelineStage::TOP_OF_PIPE; }
-        if (value & vk::PipelineStageFlags::DRAW_INDIRECT).as_raw() != 0 { result |= PipelineStage::DRAW_INDIRECT; }
-        if (value & vk::PipelineStageFlags::VERTEX_INPUT).as_raw() != 0 { result |= PipelineStage::VERTEX_INPUT; }
-        if (value & vk::PipelineStageFlags::VERTEX_SHADER).as_raw() != 0 { result |= PipelineStage::VERTEX_SHADER; }
-        if (value & vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER).as_raw() != 0 { result |= PipelineStage::TESSELLATION_CONTROL_SHADER; }
-        if (value & vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER).as_raw() != 0 { result |= PipelineStage::TESSELLATION_EVALUATION_SHADER; }
-        if (value & vk::PipelineStageFlags::GEOMETRY_SHADER).as_raw() != 0 { result |= PipelineStage::GEOMETRY_SHADER; }
-        if (value & vk::PipelineStageFlags::FRAGMENT_SHADER).as_raw() != 0 { result |= PipelineStage::FRAGMENT_SHADER; }
-        if (value & vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS).as_raw() != 0 { result |= PipelineStage::EARLY_FRAGMENT_TESTS; }
-        if (value & vk::PipelineStageFlags::LATE_FRAGMENT_TESTS).as_raw() != 0 { result |= PipelineStage::LATE_FRAGMENT_TESTS; }
-        if (value & vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT).as_raw() != 0 { result |= PipelineStage::COLOUR_ATTACHMENT_OUTPUT; }
-        if (value & vk::PipelineStageFlags::COMPUTE_SHADER).as_raw() != 0 { result |= PipelineStage::COMPUTE_SHADER; }
-        if (value & vk::PipelineStageFlags::TRANSFER).as_raw() != 0 { result |= PipelineStage::TRANSFER; }
-        if (value & vk::PipelineStageFlags::BOTTOM_OF_PIPE).as_raw() != 0 { result |= PipelineStage::BOTTOM_OF_PIPE; }
-        if (value & vk::PipelineStageFlags::HOST).as_raw() != 0 { result |= PipelineStage::HOST; }
-        if (value & vk::PipelineStageFlags::ALL_GRAPHICS).as_raw() != 0 { result |= PipelineStage::ALL_GRAPHICS; }
-        if (value & vk::PipelineStageFlags::ALL_COMMANDS).as_raw() != 0 { result |= PipelineStage::ALL_COMMANDS; }
-
-        // Return it
-        result
-    }
-}
-
-impl From<PipelineStage> for vk::PipelineStageFlags {
-    fn from(value: PipelineStage) -> Self {
-        // Construct it manually due to private constructors ;(
-        let mut result = vk::PipelineStageFlags::empty();
-        if value.check(PipelineStage::TOP_OF_PIPE) { result |= vk::PipelineStageFlags::TOP_OF_PIPE; }
-        if value.check(PipelineStage::DRAW_INDIRECT) { result |= vk::PipelineStageFlags::DRAW_INDIRECT; }
-        if value.check(PipelineStage::VERTEX_INPUT) { result |= vk::PipelineStageFlags::VERTEX_INPUT; }
-        if value.check(PipelineStage::VERTEX_SHADER) { result |= vk::PipelineStageFlags::VERTEX_SHADER; }
-        if value.check(PipelineStage::TESSELLATION_CONTROL_SHADER) { result |= vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER; }
-        if value.check(PipelineStage::TESSELLATION_EVALUATION_SHADER) { result |= vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER; }
-        if value.check(PipelineStage::GEOMETRY_SHADER) { result |= vk::PipelineStageFlags::GEOMETRY_SHADER; }
-        if value.check(PipelineStage::FRAGMENT_SHADER) { result |= vk::PipelineStageFlags::FRAGMENT_SHADER; }
-        if value.check(PipelineStage::EARLY_FRAGMENT_TESTS) { result |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS; }
-        if value.check(PipelineStage::LATE_FRAGMENT_TESTS) { result |= vk::PipelineStageFlags::LATE_FRAGMENT_TESTS; }
-        if value.check(PipelineStage::COLOUR_ATTACHMENT_OUTPUT) { result |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT; }
-        if value.check(PipelineStage::COMPUTE_SHADER) { result |= vk::PipelineStageFlags::COMPUTE_SHADER; }
-        if value.check(PipelineStage::TRANSFER) { result |= vk::PipelineStageFlags::TRANSFER; }
-        if value.check(PipelineStage::BOTTOM_OF_PIPE) { result |= vk::PipelineStageFlags::BOTTOM_OF_PIPE; }
-        if value.check(PipelineStage::HOST) { result |= vk::PipelineStageFlags::HOST; }
-        if value.check(PipelineStage::ALL_GRAPHICS) { result |= vk::PipelineStageFlags::ALL_GRAPHICS; }
-        if value.check(PipelineStage::ALL_COMMANDS) { result |= vk::PipelineStageFlags::ALL_COMMANDS; }
-
-        // Return it
-        result
-    }
-}
+flags_single_from!(vk::PipelineStageFlags, PipelineStage, PipelineStageFlags,
+    vk::PipelineStageFlags::TOP_OF_PIPE                    => TOP_OF_PIPE,
+    vk::PipelineStageFlags::DRAW_INDIRECT                  => DRAW_INDIRECT,
+    vk::PipelineStageFlags::VERTEX_INPUT                   => VERTEX_INPUT,
+    vk::PipelineStageFlags::VERTEX_SHADER                  => VERTEX_SHADER,
+    vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER    => TESSELLATION_CONTROL_SHADER,
+    vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER => TESSELLATION_EVALUATION_SHADER,
+    vk::PipelineStageFlags::GEOMETRY_SHADER                => GEOMETRY_SHADER,
+    vk::PipelineStageFlags::FRAGMENT_SHADER                => FRAGMENT_SHADER,
+    vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS           => EARLY_FRAGMENT_TESTS,
+    vk::PipelineStageFlags::LATE_FRAGMENT_TESTS            => LATE_FRAGMENT_TESTS,
+    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT        => COLOUR_ATTACHMENT_OUTPUT,
+    vk::PipelineStageFlags::COMPUTE_SHADER                 => COMPUTE_SHADER,
+    vk::PipelineStageFlags::TRANSFER                       => TRANSFER,
+    vk::PipelineStageFlags::BOTTOM_OF_PIPE                 => BOTTOM_OF_PIPE,
+    vk::PipelineStageFlags::HOST                           => HOST,
+    vk::PipelineStageFlags::ALL_GRAPHICS                   => ALL_GRAPHICS,
+    vk::PipelineStageFlags::ALL_COMMANDS                   => ALL_COMMANDS,
+);
 
 
 
 
 
 /***** PIPELINES *****/
-/// Defines the channel mask to use when writing.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ColourComponentFlags(u8);
-
-impl ColourComponentFlags {
-    /// A colour mask for only the red colour channel.
-    pub const RED  : Self = Self(0b00000001);
-    /// A colour mask for only the green colour channel.
-    pub const GREEN: Self = Self(0b00000010);
-    /// A colour mask for only the blue colour channel.
-    pub const BLUE : Self = Self(0b00000100);
-    /// A colour mask for only the alpha channel.
-    pub const ALPHA: Self = Self(0b00001000);
-}
-
-impl Flags for ColourComponentFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u8;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(ColourComponentFlags,
-    ColourComponentFlags::RED   => "RED",
-    ColourComponentFlags::GREEN => "GREEN",
-    ColourComponentFlags::BLUE  => "BLUE",
-    ColourComponentFlags::ALPHA => "ALPHA",
+flags_new!(
+    /// Defines the channel mask to use when writing.
+    ColourComponentFlags(u8),
+    {
+        /// A colour mask for only the red colour channel.
+        RED   = 0b00000001,
+        /// A colour mask for only the green colour channel.
+        GREEN = 0b00000010,
+        /// A colour mask for only the blue colour channel.
+        BLUE  = 0b00000100,
+        /// A colour mask for only the alpha channel.
+        ALPHA = 0b00001000,
+    },
+    {
+        RED   => "Red",
+        GREEN => "Green",
+        BLUE  => "Blue",
+        ALPHA => "Alpha",
+    },
 );
 
 flags_from!(vk::ColorComponentFlags, ColourComponentFlags,
@@ -720,59 +917,31 @@ flags_from!(vk::ColorComponentFlags, ColourComponentFlags,
 
 
 /***** MEMORY POOLS *****/
-/// Lists properties of certain memory areas.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct MemoryPropertyFlags(u16);
-
-impl MemoryPropertyFlags {
-    /// Memory should be local to the Device (i.e., not some shared memory pool).
-    pub const DEVICE_LOCAL: Self = Self(0x0001);
-    /// Memory should be writeable/readable by the Host.
-    pub const HOST_VISIBLE: Self = Self(0x0002);
-    /// Memory should be coherent with the host (not requiring separate flush calls).
-    pub const HOST_COHERENT: Self = Self(0x0004);
-    /// Memory is cached, which is faster but non-coherent.
-    pub const HOST_CACHED: Self = Self(0x0008);
-    /// Memory might need to be allocated on first access.
-    pub const LAZILY_ALLOCATED: Self = Self(0x0010);
-    /// Memory is protected; only Device may access it and some special queue operations.
-    pub const PROTECTED: Self = Self(0x0020);
-}
-
-impl Flags for MemoryPropertyFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u16;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(MemoryPropertyFlags,
-    MemoryPropertyFlags::DEVICE_LOCAL     => "DEVICE_LOCAL",
-    MemoryPropertyFlags::HOST_VISIBLE     => "HOST_VISIBLE",
-    MemoryPropertyFlags::HOST_COHERENT    => "HOST_COHERENT",
-    MemoryPropertyFlags::HOST_CACHED      => "HOST_CACHED",
-    MemoryPropertyFlags::LAZILY_ALLOCATED => "LAZILY_ALLOCATED",
-    MemoryPropertyFlags::PROTECTED        => "PROTECTED",
+flags_new!(
+    /// Lists properties of certain memory areas.
+    MemoryPropertyFlags(u16),
+    {
+        /// Memory should be local to the Device (i.e., not some shared memory pool).
+        DEVICE_LOCAL     = 0x0001,
+        /// Memory should be writeable/readable by the Host.
+        HOST_VISIBLE     = 0x0002,
+        /// Memory should be coherent with the host (not requiring separate flush calls).
+        HOST_COHERENT    = 0x0004,
+        /// Memory is cached, which is faster but non-coherent.
+        HOST_CACHED      = 0x0008,
+        /// Memory might need to be allocated on first access.
+        LAZILY_ALLOCATED = 0x0010,
+        /// Memory is protected; only Device may access it and some special queue operations.
+        PROTECTED        = 0x0020,
+    },
+    {
+        DEVICE_LOCAL     => "DEVICE_LOCAL",
+        HOST_VISIBLE     => "HOST_VISIBLE",
+        HOST_COHERENT    => "HOST_COHERENT",
+        HOST_CACHED      => "HOST_CACHED",
+        LAZILY_ALLOCATED => "LAZILY_ALLOCATED",
+        PROTECTED        => "PROTECTED",
+    },
 );
 
 flags_from!(vk::MemoryPropertyFlags, MemoryPropertyFlags, 
@@ -789,47 +958,20 @@ flags_from!(vk::MemoryPropertyFlags, MemoryPropertyFlags,
 
 
 /***** COMMANDS POOLS *****/
-/// Flags for the CommandPool construction.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct CommandBufferFlags(u8);
-
-impl CommandBufferFlags {
-    /// The buffers coming from this CommandPool will be short-lived.
-    pub const TRANSIENT: Self = Self(0x01);
-    /// The buffers coming from this CommandPool may be individually reset instead of only all at once by resetting the pool.
-    pub const ALLOW_RESET: Self = Self(0x02);
-}
-
-impl Flags for CommandBufferFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u8;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(CommandBufferFlags,
-    CommandBufferFlags::TRANSIENT   => "TRANSIENT",
-    CommandBufferFlags::ALLOW_RESET => "ALLOW_RESET",
+flags_new!(
+    /// Flags for the CommandPool construction.
+    #[derive(Hash)]
+    CommandBufferFlags(u8),
+    {
+        /// The buffers coming from this CommandPool will be short-lived.
+        TRANSIENT   = 0x01,
+        /// The buffers coming from this CommandPool may be individually reset instead of only all at once by resetting the pool.
+        ALLOW_RESET = 0x02,
+    },
+    {
+        TRANSIENT   => "TRANSIENT",
+        ALLOW_RESET => "ALLOW_RESET",
+    }
 );
 
 flags_from!(vk::CommandPoolCreateFlags, CommandBufferFlags,
@@ -839,54 +981,102 @@ flags_from!(vk::CommandPoolCreateFlags, CommandBufferFlags,
 
 
 
-/// Flags to set options when beginning a command buffer.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CommandBufferUsageFlags(u8);
-
-impl CommandBufferUsageFlags {
-    /// Tells the Vulkan driver that this command buffer will only be submitted once, and reset or destroyed afterwards.
-    pub const ONE_TIME_SUBMIT: Self = Self(0x01);
-    /// If the CommandBuffer is secondary, then this bit indicates that it lives entirely within the RenderPass.
-    pub const RENDER_PASS_ONLY: Self = Self(0x02);
-    /// The buffer can be resubmitted while it is pending and recorded into multiple primary command buffers.
-    pub const SIMULTANEOUS_USE: Self = Self(0x04);
-}
-
-impl Flags for CommandBufferUsageFlags {
-    /// Determines the type of the internal value where the flags are stored.
-    type RawType = u8;
-
-
-    /// Constructor for the Flags object that creates it from a raw value.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::as_raw()`.
-    /// 
-    /// # Arguments
-    /// - `value`: The raw value (of type `T`) around which to construct this Flags.
-    /// 
-    /// # Returns
-    /// A new instance of Self with the flags set as in the raw value.
-    #[inline]
-    fn from_raw(value: Self::RawType) -> Self { Self(value) }
-
-    /// Returns the raw integer with the flags that is at the core of the Flags.
-    /// 
-    /// Note that this is a _Game_ raw flags rather than a _Vulkan_ raw flags; the two might not align! The only guarantee made by this raw value is that it is compatible with that of `Flags::from_raw()`.
-    /// 
-    /// # Returns
-    /// The raw value at the heart of this Flags.
-    #[inline]
-    fn as_raw(&self) -> Self::RawType { self.0 }
-}
-
-flags_display!(CommandBufferUsageFlags,
-    CommandBufferUsageFlags::ONE_TIME_SUBMIT  => "ONE_TIME_SUBMIT",
-    CommandBufferUsageFlags::RENDER_PASS_ONLY => "RENDER_PASS_ONLY",
-    CommandBufferUsageFlags::SIMULTANEOUS_USE => "SIMULTANEOUS_USE",
+flags_new!(
+    /// Flags to set options when beginning a command buffer.
+    CommandBufferUsageFlags(u8),
+    {
+        /// Tells the Vulkan driver that this command buffer will only be submitted once, and reset or destroyed afterwards.
+        ONE_TIME_SUBMIT  = 0x01,
+        /// If the CommandBuffer is secondary, then this bit indicates that it lives entirely within the RenderPass.
+        RENDER_PASS_ONLY = 0x02,
+        /// The buffer can be resubmitted while it is pending and recorded into multiple primary command buffers.
+        SIMULTANEOUS_USE = 0x04,
+    },
+    {
+        ONE_TIME_SUBMIT  => "ONE_TIME_SUBMIT",
+        RENDER_PASS_ONLY => "RENDER_PASS_ONLY",
+        SIMULTANEOUS_USE => "SIMULTANEOUS_USE",
+    }
 );
 
 flags_from!(vk::CommandBufferUsageFlags, CommandBufferUsageFlags,
     vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT      => CommandBufferUsageFlags::ONE_TIME_SUBMIT,
     vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE => CommandBufferUsageFlags::RENDER_PASS_ONLY,
     vk::CommandBufferUsageFlags::SIMULTANEOUS_USE     => CommandBufferUsageFlags::SIMULTANEOUS_USE,
+);
+
+
+
+
+
+/***** MEMORY POOLS *****/
+flags_single_new!(
+    /// Define a single type of memory that a device has to offer.
+    /// 
+    /// Note: because the actual list is device-dependent, there are no constants available for this "enum" implementation.
+    DeviceMemoryType(u32), DeviceMemoryTypeFlags,
+    {},
+    {},
+);
+
+impl Display for DeviceMemoryType {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Display for DeviceMemoryTypeFlags {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+flags_single_from_raw!(u32, DeviceMemoryType(u32), DeviceMemoryTypeFlags);
+flags_single_from_raw!(usize, DeviceMemoryType(u32), DeviceMemoryTypeFlags);
+
+
+
+flags_new!(
+    /// The BufferUsageFlags that determine what we can use a buffer for.
+    BufferUsageFlags(u16),
+    {
+        /// The buffer may be used as a source buffer in a memory transfer operation.
+        TRANSFER_SRC = 0x0001,
+        /// The buffer may be used as a target buffer in a memory transfer operation.
+        TRANSFER_DST = 0x0002,
+        /// The buffer may be used as a uniform texel buffer.
+        /// 
+        /// Uniform buffers are much smaller but slightly faster than storage buffers.
+        UNIFORM_TEXEL_BUFFER = 0x0004,
+        /// The buffer may be used as a storage texel buffer.
+        /// 
+        /// Storage buffers are much larger but slightly slower than uniform buffers.
+        STORAGE_TEXEL_BUFFER = 0x0008,
+        /// The buffer may be used as a uniform buffer.
+        /// 
+        /// Uniform buffers are much smaller but slightly faster than storage buffers.
+        UNIFORM_BUFFER = 0x0010,
+        /// The buffer may be used as a storage buffer.
+        /// 
+        /// Storage buffers are much larger but slightly slower than uniform buffers.
+        STORAGE_BUFFER = 0x0020,
+        /// The buffer may be used to storage indices.
+        INDEX_BUFFER = 0x0040,
+        /// The buffer may be used to storage vertices.
+        VERTEX_BUFFER = 0x0080,
+        /// The buffer may be used for indirect draw commands (various applications).
+        INDIRECT_BUFFER = 0x0100,
+    },
+    {},
+);
+
+flags_from!(vk::BufferUsageFlags, BufferUsageFlags,
+    vk::BufferUsageFlags::TRANSFER_SRC         => BufferUsageFlags::TRANSFER_SRC,
+    vk::BufferUsageFlags::TRANSFER_DST         => BufferUsageFlags::TRANSFER_DST,
+    vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER => BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
+    vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER => BufferUsageFlags::STORAGE_TEXEL_BUFFER,
+    vk::BufferUsageFlags::UNIFORM_BUFFER       => BufferUsageFlags::UNIFORM_BUFFER,
+    vk::BufferUsageFlags::STORAGE_BUFFER       => BufferUsageFlags::STORAGE_BUFFER,
 );

@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   03 Jul 2022, 16:59:53
+ *   10 Jul 2022, 13:58:12
  * Auto updated?
  *   Yes
  *
@@ -24,7 +24,9 @@ use ash::vk;
 use log::warn;
 
 pub use crate::pools::errors::MemoryPoolError as Error;
-use crate::auxillary::{BufferUsageFlags, CommandBufferFlags, CommandBufferUsageFlags, MemoryPropertyFlags, MemoryRequirements, SharingMode};
+use crate::auxillary::enums::SharingMode;
+use crate::auxillary::flags::{BufferUsageFlags, CommandBufferFlags, CommandBufferUsageFlags, MemoryPropertyFlags};
+use crate::auxillary::structs::MemoryRequirements;
 use crate::device::Device;
 use crate::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 
@@ -635,7 +637,7 @@ pub trait TransferBuffer: Buffer {
         let buffer_copy: vk::BufferCopy = populate_buffer_copy(src_offset as vk::DeviceSize, dst_offset as vk::DeviceSize, size as vk::DeviceSize);
 
         // Schedule the copy on the command buffer
-        self.device().cmd_copy_buffer(cmd.vk(), self.vk(), target.vk(), &[ buffer_copy ]);
+        unsafe{ self.device().cmd_copy_buffer(cmd.vk(), self.vk(), target.vk(), &[ buffer_copy ]); }
     }
 
     /// Copies a part of this Buffer's contents to the given Buffer.
@@ -663,13 +665,13 @@ pub trait TransferBuffer: Buffer {
         };
 
         // Schedule the copy
-        cmd.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        if let Err(err) = cmd.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT) { return Err(Error::CommandBufferRecordBeginError{ what: "transfer", err }); };
         self.schedule_copyto_range(&cmd, target, src_offset, dst_offset, size);
-        cmd.end();
+        if let Err(err) = cmd.end() { return Err(Error::CommandBufferRecordEndError{ what: "transfer", err }); };
 
         // Submit the command buffer and wait until it is completed
-        self.device().queues().memory.submit(&cmd, &[], &[], None);
-        self.device().queues().memory.drain();
+        if let Err(err) = self.device().queues().memory.submit(&cmd, &[], &[], None) { return Err(Error::SubmitError{ what: "transfer", err }); }
+        if let Err(err) = self.device().queues().memory.drain() { return Err(Error::DrainError{ err }); }
 
         // Done
         Ok(())
@@ -734,7 +736,7 @@ pub trait HostBuffer: Buffer {
     #[inline]
     fn map(&self) -> Result<*mut c_void, Error> {
         // Simply call the map function
-        match self.device().map_memory(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize, vk::MemoryMapFlags::empty()) {
+        match unsafe{ self.device().map_memory(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize, vk::MemoryMapFlags::empty()) } {
             Ok(ptr)  => Ok(ptr),
             Err(err) => Err(Error::BufferMapError{ err }),
         }
@@ -775,9 +777,9 @@ pub trait HostBuffer: Buffer {
     #[inline]
     fn flush(&self) -> Result<(), Error> {
         // Call the flush function
-        match self.device().flush_mapped_memory_ranges(&[
+        match unsafe{ self.device().flush_mapped_memory_ranges(&[
             populate_mapped_memory_range(self.vk_mem(), self.vk_offset(), self.capacity() as vk::DeviceSize),
-        ]) {
+        ]) } {
             Ok(_)    => Ok(()),
             Err(err) => Err(Error::BufferFlushError{ err }),
         }

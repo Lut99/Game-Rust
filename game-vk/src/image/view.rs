@@ -4,7 +4,7 @@
  * Created:
  *   05 Apr 2022, 17:41:18
  * Last edited:
- *   30 Apr 2022, 16:44:10
+ *   10 Jul 2022, 13:24:50
  * Auto updated?
  *   Yes
  *
@@ -19,21 +19,22 @@ use ash::vk;
 
 // pub use crate::errors::ImageError;
 pub use crate::errors::ImageViewError as Error;
-use crate::auxillary::{ComponentSwizzle, ImageFormat, ImageAspect, ImageViewKind};
+use crate::auxillary::enums::{ImageFormat, ImageAspect, ImageViewKind};
+use crate::auxillary::structs::ComponentMapping;
 use crate::device::Device;
 use crate::image::Image;
 
 
 /***** AUXILLARY STRUCTS *****/
 /// CreateInfo for the View.
-#[derive(Debug, Default, Clone)]
+#[derive(Clone, Debug)]
 pub struct CreateInfo {
     /// Defines the type of the image view
     pub kind    : ImageViewKind,
     /// Defines the format of the image
     pub format  : ImageFormat,
     /// Defines the channel mapping for the image
-    pub swizzle : ComponentSwizzle,
+    pub swizzle : ComponentMapping,
 
     /// Defines the aspect for this image (how it will be used)
     pub aspect     : ImageAspect,
@@ -41,6 +42,21 @@ pub struct CreateInfo {
     pub base_level : u32,
     /// Defines the number of image MIP levels
     pub mip_levels : u32,
+}
+
+impl Default for CreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            kind    : ImageViewKind::TwoD,
+            format  : ImageFormat::B8G8R8A8SRgb,
+            swizzle : ComponentMapping::default(),
+
+            aspect     : ImageAspect::Colour,
+            base_level : 0,
+            mip_levels : 1,
+        }
+    }
 }
 
 

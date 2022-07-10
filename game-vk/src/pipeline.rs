@@ -4,7 +4,7 @@
  * Created:
  *   23 Apr 2022, 17:26:39
  * Last edited:
- *   14 May 2022, 12:43:38
+ *   10 Jul 2022, 13:43:07
  * Auto updated?
  *   Yes
  *
@@ -24,7 +24,9 @@ use log::{debug, warn};
 
 pub use crate::errors::PipelineError as Error;
 use crate::log_destroy;
-use crate::auxillary::{AttachmentBlendState, BlendFactor, BlendOp, ColourBlendState, ColourMask, CompareOp, DepthTestingState, DynamicState, LogicOp, MultisampleState, RasterizerState, ShaderStage, StencilOp, StencilOpState, VertexAssemblyState, VertexInputState, VertexTopology, ViewportState};
+use crate::auxillary::enums::{BlendFactor, BlendOp, CompareOp, DynamicState, LogicOp, StencilOp, VertexTopology};
+use crate::auxillary::flags::{ColourComponentFlags, ShaderStage};
+use crate::auxillary::structs::{AttachmentBlendState, ColourBlendState, DepthTestingState, MultisampleState, RasterizerState,  StencilOpState, VertexAssemblyState, VertexInputState, ViewportState};
 use crate::device::Device;
 use crate::shader::{Error as ShaderError, Shader};
 use crate::layout::PipelineLayout;
@@ -351,7 +353,7 @@ impl PipelineBuilder {
                     dst_alpha : BlendFactor::Zero,
                     alpha_op  : BlendOp::Add,
 
-                    write_mask : ColourMask::ALL,
+                    write_mask : ColourComponentFlags::all(),
                 }],
                 blend_constants: [0.0, 0.0, 0.0, 0.0],
             },
