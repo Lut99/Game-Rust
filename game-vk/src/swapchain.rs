@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   10 Jul 2022, 13:44:10
+ *   11 Jul 2022, 18:33:47
  * Auto updated?
  *   Yes
  *
@@ -188,7 +188,7 @@ fn choose_image_count(swapchain_support: &SwapchainSupport, image_count: u32) ->
 
     // Clamp the image count in between that
     let image_count = if image_count < min { warn!("Increasing image_count to {}", min); min }
-    else if image_count > max { warn!("Decreasing image_count to {}", max); max }
+    else if max > 0 && image_count > max { warn!("Decreasing image_count to {}", max); max }
     else { image_count };
 
     // Return that as the count
