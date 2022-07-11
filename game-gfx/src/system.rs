@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   10 Jul 2022, 14:27:56
+ *   11 Jul 2022, 19:20:35
  * Auto updated?
  *   Yes
  *
@@ -106,6 +106,7 @@ impl RenderSystem {
     /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
     /// - `event_loop`: The EventLoop to use for triggering Window events and such.
     /// - `gpu`: The index of the GPU to use for rendering.
+    /// - `resolution`: The resolution of the target Window.
     /// - `targets_in_flight`: The maximum number of frames that are in-flight while rendering.
     /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
@@ -114,7 +115,15 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
-    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(_ecs: &mut Ecs, name: S1, version: Version, engine: S2, engine_version: Version, event_loop: &EventLoop<()>, gpu: usize, targets_in_flight: usize, debug: bool) -> Result<Self, Error> {
+    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
+        _ecs: &mut Ecs,
+        name: S1, version: Version,
+        engine: S2, engine_version: Version,
+        event_loop: &EventLoop<()>,
+        gpu: usize, resolution: (u32, u32),
+        targets_in_flight: usize,
+        debug: bool
+    ) -> Result<Self, Error> {
         // Register components
         /* TBD */
 
@@ -152,7 +161,7 @@ impl RenderSystem {
 
         // Initiate the render targets
         let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", 800, 600, 3) {
+        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", resolution.0, resolution.1, 3) {
             Ok(target) => Box::new(target),
             Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
         });

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:53:41
  * Last edited:
- *   15 Apr 2022, 12:44:31
+ *   11 Jul 2022, 18:52:46
  * Auto updated?
  *   Yes
  *
@@ -16,6 +16,8 @@
 
 /// The module that contains this crate's errors.
 pub mod errors;
+/// The module that handles public interfaces.
+pub mod spec;
 /// The module that handles the CLI-part of this crate.
 pub mod cli;
 /// The module that handles the file-part of this crate.

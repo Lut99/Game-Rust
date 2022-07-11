@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 11:12:24
  * Last edited:
- *   15 Apr 2022, 12:43:05
+ *   11 Jul 2022, 19:11:08
  * Auto updated?
  *   Yes
  *
@@ -21,6 +21,14 @@ use std::path::PathBuf;
 /// Lists errors that occur with the Settings struct.
 #[derive(Debug)]
 pub enum SettingsError {
+    /// The given resolution string did not have an 'x'.
+    MissingX{ raw: String },
+    /// The given number is not an unsigned integer.
+    IllegalUnsignedInteger{ raw: String, err: std::num::ParseIntError },
+
+    /// Could not parse a WindowMode.
+    UnknownWindowMode{ raw: String },
+
     /// Could not open the Settings file.
     OpenError{ path: PathBuf, err: std::io::Error },
     /// Could not parse the Settings file.
@@ -36,6 +44,12 @@ impl Display for SettingsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use SettingsError::*;
         match self {
+            MissingX{ raw }                    => write!(f, "Resolution string '{}' does not have an 'x' to separate width and height", raw),
+            IllegalUnsignedInteger{ raw, err } => write!(f, "Could not parse '{}' as an unsigned int: {}", raw, err),
+            
+
+            UnknownWindowMode{ raw } => write!(f, "Unknown window mode '{}'", raw),
+
             OpenError{ path, err }  => write!(f, "Could not open settings file '{}': {}", path.display(), err),
             ParseError{ path, err } => write!(f, "Could not parse settings file '{}': {}", path.display(), err),
 
