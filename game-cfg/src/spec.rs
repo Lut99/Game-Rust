@@ -4,7 +4,7 @@
  * Created:
  *   11 Jul 2022, 18:52:17
  * Last edited:
- *   11 Jul 2022, 19:19:07
+ *   12 Jul 2022, 18:44:42
  * Auto updated?
  *   Yes
  *
@@ -179,15 +179,15 @@ impl FromStr for Resolution {
 
 
 /// The WindowMode to draw the window in.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "mode")]
 pub enum WindowMode {
     /// Draws the window as a, well, window.
-    Windowed,
+    Windowed{ resolution: (u32, u32) },
     /// Draws the window in windowed fullscreen mode.
-    WindowedFullscreen,
+    WindowedFullscreen{ monitor: usize },
     /// Draws the window in fullscreen mode.
-    Fullscreen,
+    Fullscreen{ monitor: usize, resolution: (u32, u32), refresh_rate: u16 },
 }
 
 impl FromStr for WindowMode {
@@ -197,9 +197,9 @@ impl FromStr for WindowMode {
     #[inline]
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "windowed"            => Ok(WindowMode::Windowed),
-            "windowed_fullscreen" => Ok(WindowMode::WindowedFullscreen),
-            "fullscreen"          => Ok(WindowMode::Fullscreen),
+            "windowed"            => Ok(WindowMode::Windowed{ resolution: (0, 0) }),
+            "windowed_fullscreen" => Ok(WindowMode::WindowedFullscreen{ monitor: 0 }),
+            "fullscreen"          => Ok(WindowMode::Fullscreen{ monitor: 0, resolution: (0, 0), refresh_rate: 0 }),
             value                 => Err(SettingsError::UnknownWindowMode{ raw: value.into() }),
         }
     }

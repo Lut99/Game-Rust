@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   10 Jul 2022, 15:07:50
+ *   12 Jul 2022, 18:52:03
  * Auto updated?
  *   Yes
  *
@@ -20,8 +20,10 @@ use std::sync::{Arc, RwLock};
 use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
-use winit::window::{Window as WWindow, WindowBuilder, WindowId};
+use winit::monitor::{MonitorHandle, VideoMode};
+use winit::window::{Fullscreen, Window as WWindow, WindowBuilder, WindowId};
 
+use game_cfg::spec::WindowMode;
 use game_vk::auxillary::enums::{ImageAspect, ImageFormat, ImageViewKind};
 use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
@@ -109,8 +111,7 @@ impl Window {
     /// - `device`: The Device to bind the Swapchain etc to.
     /// - `event_loop`: The EventLoop to register Window events on.
     /// - `title`: The title of the Window.
-    /// - `width`: The width of the Window, in pixels.
-    /// - `height`: The height of the Window, in pixels.
+    /// - `window_mode`: The WindowMode where the window should be drawn in.
     /// - `image_count`: The suggested number of images in the swapchain. May be bound by hardware limitations.
     /// 
     /// # Returns
@@ -118,13 +119,66 @@ impl Window {
     /// 
     /// # Errors
     /// This function errors if the Window or any subsequent resource (like Surfaces or Swapchains) failed to be created. Will always be in the form of an Error.
-    pub fn new(device: Rc<Device>, event_loop: &EventLoop<()>, title: &str, width: u32, height: u32, image_count: u32) -> Result<Self, Error> {
-        // Build the new Winit window
-        let wwindow = match WindowBuilder::new()
-            .with_title(title)
-            .with_inner_size(Size::Physical(PhysicalSize{ width, height }))
-            .build(event_loop)
-        {
+    pub fn new(device: Rc<Device>, event_loop: &EventLoop<()>, title: &str, window_mode: WindowMode, image_count: u32) -> Result<Self, Error> {
+        // Start building the new window
+        let mut wwindow = WindowBuilder::new()
+            .with_title(title);
+
+        // Resolve the WindowMode and set the appropriate properties in the window.
+        match window_mode {
+            WindowMode::Windowed{ resolution } => {
+                wwindow = wwindow.with_inner_size(Size::Physical(PhysicalSize{ width: resolution.0, height: resolution.1 }));
+            },
+            WindowMode::WindowedFullscreen{ monitor } => {
+                // Attempt to find the target monitor
+                let monitor: Option<MonitorHandle> = if monitor < usize::MAX {
+                    match event_loop.available_monitors().nth(monitor) {
+                        Some(handle) => Some(handle),
+                        None         => { return Err(Error::UnknownMonitor{ got: monitor, expected: event_loop.available_monitors().count() }); }
+                    }
+                } else {
+                    if event_loop.available_monitors().count() == 0 { return Err(Error::NoMonitors); }
+                    None
+                };
+
+                // Pass that to the window
+                wwindow = wwindow.with_fullscreen(Some(Fullscreen::Borderless(monitor)));
+            },
+            WindowMode::Fullscreen{ monitor, resolution, refresh_rate } => {
+                // Attempt to find the target monitor
+                let monitor_i = monitor;
+                let monitor: MonitorHandle = if monitor < usize::MAX {
+                    match event_loop.available_monitors().nth(monitor) {
+                        Some(handle) => handle,
+                        None         => { return Err(Error::UnknownMonitor{ got: monitor, expected: event_loop.available_monitors().count() }); }
+                    }
+                } else {
+                    match event_loop.available_monitors().next() {
+                        Some(handle) => handle,
+                        None         => { return Err(Error::NoMonitors); }
+                    }
+                };
+
+                // Now find a videomode with matching stats
+                let mut video_mode: Option<VideoMode> = None;
+                for mode in monitor.video_modes() {
+                    if resolution.0 == mode.size().width && resolution.1 == mode.size().height && refresh_rate == mode.refresh_rate() && mode.bit_depth() == 32 {
+                        video_mode = Some(mode);
+                        break;
+                    }
+                }
+                let video_mode = match video_mode {
+                    Some(mode) => mode,
+                    None       => { return Err(Error::UnknownVideoMode{ monitor: monitor_i, resolution, refresh_rate, bit_depth: 32 }); }
+                };
+
+                // Put that in the Window
+                wwindow = wwindow.with_fullscreen(Some(Fullscreen::Exclusive(video_mode)));
+            },
+        };
+
+        // Finish building the window
+        let wwindow = match wwindow.build(event_loop) {
             Ok(wwindow) => wwindow,
             Err(err)    => { return Err(Error::WinitCreateError{ err }); }
         };
@@ -136,7 +190,8 @@ impl Window {
         };
 
         // Build the swapchain around the GPU and surface
-        let swapchain = match Swapchain::new(device.clone(), surface.clone(), width, height, image_count) {
+        let extent = wwindow.inner_size();
+        let swapchain = match Swapchain::new(device.clone(), surface.clone(), extent.width, extent.height, image_count) {
             Ok(swapchain) => swapchain,
             Err(err)      => { return Err(Error::SwapchainCreateError{ err }); }
         };
@@ -155,7 +210,7 @@ impl Window {
             views,
 
             title  : title.to_string(),
-            extent : Extent2D::new(width, height),
+            extent : Extent2D::new(extent.width, extent.height),
         })
     }
 

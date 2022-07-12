@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   11 Jul 2022, 19:19:41
+ *   12 Jul 2022, 18:30:56
  * Auto updated?
  *   Yes
  *
@@ -61,7 +61,7 @@ fn main() {
         "Game-Rust-Engine", Version::new(0, 1, 0),
         &event_loop,
         config.gpu,
-        config.resolution.into(),
+        config.window_mode,
         2,
         config.verbosity >= LevelFilter::Debug
     ) {

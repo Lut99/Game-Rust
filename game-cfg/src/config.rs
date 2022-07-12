@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 11:48:52
  * Last edited:
- *   11 Jul 2022, 19:16:29
+ *   12 Jul 2022, 18:29:04
  * Auto updated?
  *   Yes
  *
@@ -17,7 +17,7 @@ use clap::Parser;
 use log::LevelFilter;
 
 use crate::errors::ConfigError as Error;
-use crate::spec::{DirConfig, FileConfig, Resolution, WindowMode};
+use crate::spec::{DirConfig, FileConfig, WindowMode};
 use crate::cli::Arguments;
 use crate::file::Settings;
 
@@ -36,8 +36,6 @@ pub struct Config {
 
     /// The gpu to use during rendering
     pub gpu         : usize,
-    /// The resolution
-    pub resolution  : Resolution,
     /// The window mode
     pub window_mode : WindowMode,
 }
@@ -60,11 +58,25 @@ impl Config {
             Err(err)     => { return Err(Error::SettingsLoadError{ err }); }  
         };
 
+        // Throw stuff together in a window mode
+        let window_mode = match args.window_mode {
+            Some(mode) => {
+                // Depending on the mode, populate its fields
+                match mode {
+                    WindowMode::Windowed{ .. }           => WindowMode::Windowed{ resolution: args.resolution.into() },
+                    WindowMode::WindowedFullscreen{ .. } => WindowMode::WindowedFullscreen{ monitor: if args.monitor < 0 { usize::MAX } else { args.monitor as usize } },
+                    WindowMode::Fullscreen{ .. }         => WindowMode::Fullscreen{ monitor: if args.monitor < 0 { usize::MAX } else { args.monitor as usize }, resolution: args.resolution.into(), refresh_rate: args.refresh_rate },
+                }
+            },
+            None => {
+                // Simply use the one in the file
+                settings.window_mode
+            },
+        };
+
         // Overwrite stuff if necessary
         let verbosity   = args.verbosity.unwrap_or(settings.verbosity);
         let gpu         = args.gpu.unwrap_or(settings.gpu);
-        let resolution  = args.resolution.unwrap_or(settings.resolution);
-        let window_mode = args.window_mode.unwrap_or(settings.window_mode);
 
         // Done, return
         Ok(Self {
@@ -74,7 +86,6 @@ impl Config {
             verbosity,
 
             gpu,
-            resolution,
             window_mode,
         })
     }

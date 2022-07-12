@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   03 Jul 2022, 11:16:14
+ *   12 Jul 2022, 18:50:16
  * Auto updated?
  *   Yes
  *
@@ -93,6 +93,12 @@ impl Error for RenderSystemError {}
 /// Defines errors that occur when setting up a Window.
 #[derive(Debug)]
 pub enum WindowError {
+    /// Could not resolve the given monitor index.
+    UnknownMonitor{ got: usize, expected: usize },
+    /// No monitors at all found
+    NoMonitors,
+    /// The video mode with the given properties was not supported on the given monitor
+    UnknownVideoMode{ monitor: usize, resolution: (u32, u32), refresh_rate: u16, bit_depth: u16 },
     /// Could not build a winit window.
     WinitCreateError{ err: winit::error::OsError },
     /// Could not build a surface around the new winit window.
@@ -121,11 +127,14 @@ impl Display for WindowError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use WindowError::*;
         match self {
-            WinitCreateError{ err }               => write!(f, "Could not build a new winit window: {}", err),
-            SurfaceCreateError{ err }             => write!(f, "Could not build Surface: {}", err),
-            SwapchainCreateError{ err }           => write!(f, "Could not build Swapchain: {}", err),
-            ImagesCreateError{ err }              => write!(f, "Could not build Views around Swapchain images: {}", err),
-            PipelineCreateError{ type_name, err } => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
+            UnknownMonitor{ got, expected }                                  => write!(f, "Unknown monitor index '{}' (found {} monitors)", got, expected),
+            NoMonitors                                                       => write!(f, "No monitors found"),
+            UnknownVideoMode{ monitor, resolution, refresh_rate, bit_depth } => write!(f, "Monitor {} does not support {}x{}@{} ({} bpp)", monitor, resolution.0, resolution.1, refresh_rate, bit_depth),
+            WinitCreateError{ err }                                          => write!(f, "Could not build a new winit window: {}", err),
+            SurfaceCreateError{ err }                                        => write!(f, "Could not build Surface: {}", err),
+            SwapchainCreateError{ err }                                      => write!(f, "Could not build Swapchain: {}", err),
+            ImagesCreateError{ err }                                         => write!(f, "Could not build Views around Swapchain images: {}", err),
+            PipelineCreateError{ type_name, err }                            => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
 
             SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
             SwapchainPresentError{ err }   => write!(f, "Could not present Swapchain image: {}", err),

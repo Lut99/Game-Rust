@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   11 Jul 2022, 19:20:35
+ *   12 Jul 2022, 18:31:52
  * Auto updated?
  *   Yes
  *
@@ -21,6 +21,7 @@ use log::debug;
 use semver::Version;
 use winit::event_loop::EventLoop;
 
+use game_cfg::spec::WindowMode;
 use game_ecs::Ecs;
 use game_vk::auxillary::enums::DeviceExtension;
 use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo};
@@ -106,7 +107,7 @@ impl RenderSystem {
     /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
     /// - `event_loop`: The EventLoop to use for triggering Window events and such.
     /// - `gpu`: The index of the GPU to use for rendering.
-    /// - `resolution`: The resolution of the target Window.
+    /// - `window_mode`: The WindowMode of the Window.
     /// - `targets_in_flight`: The maximum number of frames that are in-flight while rendering.
     /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
@@ -120,7 +121,7 @@ impl RenderSystem {
         name: S1, version: Version,
         engine: S2, engine_version: Version,
         event_loop: &EventLoop<()>,
-        gpu: usize, resolution: (u32, u32),
+        gpu: usize, window_mode: WindowMode,
         targets_in_flight: usize,
         debug: bool
     ) -> Result<Self, Error> {
@@ -161,7 +162,7 @@ impl RenderSystem {
 
         // Initiate the render targets
         let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", resolution.0, resolution.1, 3) {
+        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", window_mode, 3) {
             Ok(target) => Box::new(target),
             Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
         });

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 11:04:45
  * Last edited:
- *   11 Jul 2022, 19:12:49
+ *   12 Jul 2022, 18:45:02
  * Auto updated?
  *   Yes
  *
@@ -19,7 +19,7 @@ use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
 pub use crate::errors::SettingsError as Error;
-use crate::spec::{Resolution, WindowMode};
+use crate::spec::WindowMode;
 
 
 /***** SETTINGS STRUCT *****/
@@ -31,8 +31,6 @@ pub struct Settings {
 
     /// The GPU to use
     pub gpu         : usize,
-    /// The resolution of the Window.
-    pub resolution  : Resolution,
     /// The WindowMode for the window.
     pub window_mode : WindowMode,
 }
