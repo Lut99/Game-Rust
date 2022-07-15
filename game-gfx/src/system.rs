@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   12 Jul 2022, 18:31:52
+ *   15 Jul 2022, 18:37:27
  * Auto updated?
  *   Yes
  *
@@ -24,7 +24,7 @@ use winit::event_loop::EventLoop;
 use game_cfg::spec::WindowMode;
 use game_ecs::Ecs;
 use game_vk::auxillary::enums::DeviceExtension;
-use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo};
+use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
@@ -403,7 +403,7 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function fails if the Instance failed to be created or if we could not query it for the available devices.
-    pub fn list(debug: bool) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
+    pub fn list_gpus(debug: bool) -> Result<(Vec<DeviceInfo>, Vec<DeviceInfo>), Error> {
         // Create the instance
         let layers = if debug {
             let mut layers = Vec::from(INSTANCE_LAYERS);
@@ -422,6 +422,27 @@ impl RenderSystem {
             Ok(result) => Ok(result),
             Err(err)   => Err(Error::DeviceListError{ err }),
         }
+    }
+
+    /// Lists all monitors it can find.
+    /// 
+    /// # Returns
+    /// A list of all monitors, as MonitorInfos.
+    /// 
+    /// # Errors
+    /// This function fails if the winit backend failed to enumerate the monitors.
+    #[inline]
+    pub fn list_monitors() -> Result<Vec<MonitorInfo>, Error> {
+        // Simply run it super fast-o
+        Ok(winit::event_loop::EventLoop::<()>::new().available_monitors().enumerate().map(|(i, monitor)| {
+            MonitorInfo {
+                index      : i,
+                name       : monitor.name().unwrap_or(String::from("<unnamed monitor>")),
+                resolution : monitor.size().into(),
+
+                video_modes : monitor.video_modes().map(|v| v.into()).collect(),
+            }
+        }).collect())
     }
 
 

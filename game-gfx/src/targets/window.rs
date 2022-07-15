@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:15:38
  * Last edited:
- *   12 Jul 2022, 18:52:03
+ *   15 Jul 2022, 18:13:27
  * Auto updated?
  *   Yes
  *
@@ -130,19 +130,16 @@ impl Window {
                 wwindow = wwindow.with_inner_size(Size::Physical(PhysicalSize{ width: resolution.0, height: resolution.1 }));
             },
             WindowMode::WindowedFullscreen{ monitor } => {
-                // Attempt to find the target monitor
-                let monitor: Option<MonitorHandle> = if monitor < usize::MAX {
-                    match event_loop.available_monitors().nth(monitor) {
-                        Some(handle) => Some(handle),
-                        None         => { return Err(Error::UnknownMonitor{ got: monitor, expected: event_loop.available_monitors().count() }); }
-                    }
-                } else {
-                    if event_loop.available_monitors().count() == 0 { return Err(Error::NoMonitors); }
-                    None
+                // Attempt to find the target monitor & its resolution
+                let monitor: MonitorHandle = match event_loop.available_monitors().nth(monitor) {
+                    Some(handle) => handle,
+                    None         => { return Err(Error::UnknownMonitor{ got: monitor, expected: event_loop.available_monitors().count() }); }
                 };
+                let resolution: PhysicalSize<u32> = monitor.size();
 
                 // Pass that to the window
-                wwindow = wwindow.with_fullscreen(Some(Fullscreen::Borderless(monitor)));
+                wwindow = wwindow.with_fullscreen(Some(Fullscreen::Borderless(Some(monitor))));
+                wwindow = wwindow.with_inner_size(resolution);
             },
             WindowMode::Fullscreen{ monitor, resolution, refresh_rate } => {
                 // Attempt to find the target monitor

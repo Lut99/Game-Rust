@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 12:22:50
  * Last edited:
- *   10 Jul 2022, 13:39:07
+ *   15 Jul 2022, 18:34:42
  * Auto updated?
  *   Yes
  *
@@ -340,6 +340,52 @@ pub struct DeviceInfo {
 
     /// The memory properties of the Device.
     pub mem_props : DeviceMemoryProperties,
+}
+
+
+
+/// Lists information about a monitor (for use when listing them).
+#[derive(Clone, Debug)]
+pub struct MonitorInfo {
+    /// The index of the monitor.
+    pub index       : usize,
+    /// The name of the monitor.
+    pub name        : String,
+    /// The resolution of the monitor.
+    pub resolution  : (u32, u32),
+    /// The supported video modes of this monitor.
+    pub video_modes : Vec<MonitorVideoMode>,
+}
+
+
+
+/// Contains the information of a single video mode in the MonitorInfo.
+#[derive(Clone, Debug)]
+pub struct MonitorVideoMode {
+    /// The resolution for this video mode.
+    pub resolution   : (u32, u32),
+    /// The refresh rate (in Hz) for this video mode.
+    pub refresh_rate : u16,
+    /// The bit depth (in bits-per-pixel) for this video mode.
+    pub bit_depth    : u16,
+}
+
+impl Display for MonitorVideoMode {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        write!(f, "{}x{}@{} ({} bpp)", self.resolution.0, self.resolution.1, self.refresh_rate, self.bit_depth)
+    }
+}
+
+impl From<winit::monitor::VideoMode> for MonitorVideoMode {
+    #[inline]
+    fn from(value: winit::monitor::VideoMode) -> Self {
+        Self {
+            resolution   : value.size().into(),
+            refresh_rate : value.refresh_rate(),
+            bit_depth    : value.bit_depth(),
+        }
+    }
 }
 
 

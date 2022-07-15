@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 11:48:52
  * Last edited:
- *   12 Jul 2022, 18:29:04
+ *   15 Jul 2022, 18:13:50
  * Auto updated?
  *   Yes
  *
@@ -59,18 +59,33 @@ impl Config {
         };
 
         // Throw stuff together in a window mode
-        let window_mode = match args.window_mode {
-            Some(mode) => {
-                // Depending on the mode, populate its fields
-                match mode {
-                    WindowMode::Windowed{ .. }           => WindowMode::Windowed{ resolution: args.resolution.into() },
-                    WindowMode::WindowedFullscreen{ .. } => WindowMode::WindowedFullscreen{ monitor: if args.monitor < 0 { usize::MAX } else { args.monitor as usize } },
-                    WindowMode::Fullscreen{ .. }         => WindowMode::Fullscreen{ monitor: if args.monitor < 0 { usize::MAX } else { args.monitor as usize }, resolution: args.resolution.into(), refresh_rate: args.refresh_rate },
-                }
+        let window_mode: WindowMode = args.window_mode.unwrap_or(settings.window_mode);
+        let window_mode = match window_mode {
+            WindowMode::Windowed{ resolution }           => {
+                // Collect a resolution
+                let mut resolution = args.resolution.map(|r| r.into()).unwrap_or(resolution);
+                if resolution.0 == 0 || resolution.1 == 0 { resolution = (800, 600); }
+
+                // Return the new window mode
+                WindowMode::Windowed{ resolution }
             },
-            None => {
-                // Simply use the one in the file
-                settings.window_mode
+            WindowMode::WindowedFullscreen{ monitor } => {
+                // Collect a monitor
+                let monitor = args.monitor.unwrap_or(monitor);
+
+                // Return the new window mode
+                WindowMode::WindowedFullscreen{ monitor }
+            },
+            WindowMode::Fullscreen{ monitor, resolution, refresh_rate } => {
+                // Collect the parameters
+                let monitor = args.monitor.unwrap_or(monitor);
+                let mut resolution = args.resolution.map(|r| r.into()).unwrap_or(resolution);
+                let mut refresh_rate = args.refresh_rate.unwrap_or(refresh_rate);
+                if resolution.0 == 0 || resolution.1 == 0 { resolution = (800, 600); }
+                if refresh_rate == 0 { refresh_rate = 30; }
+
+                // Return the new window mode
+                WindowMode::Fullscreen{ monitor, resolution, refresh_rate }
             },
         };
 
