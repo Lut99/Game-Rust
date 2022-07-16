@@ -4,7 +4,7 @@
  * Created:
  *   28 May 2022, 17:10:55
  * Last edited:
- *   10 Jul 2022, 16:03:42
+ *   16 Jul 2022, 22:42:40
  * Auto updated?
  *   Yes
  *
@@ -315,7 +315,7 @@ impl GpuPtr {
     /// # Panics
     /// This function panics if the `align` is not a power of 2.
     #[inline]
-    pub fn aligned(type_idx: u8, pool_idx: u16, ptr: u64, align: u8) -> Self {
+    pub fn aligned(type_idx: u8, pool_idx: u16, ptr: u64, align: u64) -> Self {
         Self::new(type_idx, pool_idx, ptr).align(align)
     }
 
@@ -332,10 +332,10 @@ impl GpuPtr {
     /// # Panics
     /// This function panics if `align` is not a power of 2.
     #[inline]
-    pub fn align(&self, align: u8) -> Self {
+    pub fn align(&self, align: u64) -> Self {
         if align != 0 {
             if (align & (align - 1)) != 0 { panic!("Given alignment '{}' is not a power of two", align); }
-            Self((self.0 + ((align as u64) - 1)) & ((!(align as u64)) + 1))
+            Self((self.0 + (align - 1)) & ((!align) + 1))
         } else {
             Self(self.0)
         }
@@ -538,8 +538,10 @@ pub struct MappedMemory {
     /// The raw host memory which we represent.
     hmem : *mut c_void,
 
+    /// The actual size of the mapped memory area, which is aligned to the `nonCoherentAtomSize` limit of the device.
+    mapped_size : vk::DeviceSize,
     /// The number of bytes that are mapped. Equals the size of the range in the device memory.
-    capacity : usize,
+    capacity    : usize,
 }
 
 impl MappedMemory {
@@ -551,7 +553,7 @@ impl MappedMemory {
     pub fn flush(&self) -> Result<(), Error> {
         // Call the flush function
         match unsafe{ self.device.flush_mapped_memory_ranges(&[
-            populate_mapped_memory_range(self.dmem, self.doff, vk::WHOLE_SIZE),
+            populate_mapped_memory_range(self.dmem, self.doff, self.mapped_size),
         ]) } {
             Ok(_)    => Ok(()),
             Err(err) => Err(Error::BufferFlushError{ err }),
@@ -825,7 +827,9 @@ pub trait HostBuffer: Buffer {
         }.limits.non_coherent_atom_size;
 
         // Simply call the map function
-        match unsafe{ self.device().map_memory(self.vk_mem(), self.vk_offset(), GpuPtr::from(self.capacity()).align(coherent_size as u8).into(), vk::MemoryMapFlags::empty()) } {
+        let mapped_size: vk::DeviceSize = GpuPtr::from(self.capacity()).align(coherent_size).into();
+        println!("Mapped size: {}/{:#X} -> {}/{:#X} (coherent size: {}/{:#X})", self.capacity(), self.capacity(), mapped_size, mapped_size, coherent_size, coherent_size);
+        match unsafe{ self.device().map_memory(self.vk_mem(), self.vk_offset(), mapped_size, vk::MemoryMapFlags::empty()) } {
             Ok(ptr) => Ok(MappedMemory {
                 device : self.device().clone(),
 
@@ -833,6 +837,7 @@ pub trait HostBuffer: Buffer {
                 doff : self.vk_offset(),
                 hmem : ptr,
 
+                mapped_size,
                 capacity : self.capacity(),
             }),
             Err(err) => Err(Error::BufferMapError{ err }),

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   16 Jul 2022, 10:52:39
+ *   16 Jul 2022, 22:29:09
  * Auto updated?
  *   Yes
  *
@@ -221,9 +221,10 @@ fn populate_instance_info(entry: &ash::Entry, app_info: &vk::ApplicationInfo, de
     }
 
     // If on macOS, we want the portability extension
-    let mut flags: vk::InstanceCreateFlags = vk::InstanceCreateFlags::empty();
+    #[allow(unused_variables)]
+    let flags: vk::InstanceCreateFlags = vk::InstanceCreateFlags::empty();
     #[cfg(target_os = "macos")]
-    { flags = vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR; }
+    let flags = vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
 
     // With everything verified, we can finally put it in the struct and return it
     Ok(vk::InstanceCreateInfo {

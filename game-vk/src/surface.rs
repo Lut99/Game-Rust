@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   16 Jul 2022, 10:17:59
+ *   16 Jul 2022, 22:27:40
  * Auto updated?
  *   Yes
  *
@@ -97,26 +97,27 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
     use std::os::raw::c_void;
 
     use ash::extensions::mvk::MacOSSurface;
+    use cocoa::appkit::{NSView, NSWindow};
     use cocoa::base::id as cocoa_id;
-    // use metal::CoreAnimationLayer;
+    use metal::MetalLayer;
     use objc::runtime::YES;
     use winit::platform::macos::WindowExtMacOS;
 
     
-    // // Get the ID of the window
-    // let window: cocoa_id = mem::transmute(wwindow.ns_window());
+    // Get the ID of the window
+    let window: cocoa_id = mem::transmute(wwindow.ns_window());
 
-    // // Create an as-blank-as-possible animation layer to redner to
-    // let layer = CoreAnimationLayer::new();
-    // layer.set_edge_antialiasing_mask(0);
-    // layer.set_presents_with_transaction(false);
-    // layer.remove_all_animations();
+    // Create an as-blank-as-possible animation layer to redner to
+    let layer: MetalLayer = MetalLayer::new();
+    layer.set_edge_antialiasing_mask(0);
+    layer.set_presents_with_transaction(false);
+    layer.remove_all_animations();
 
-    // // Get the window's view, and put the animation layer there
-    // let view = window.contentView();
-    // layer.set_contents_scale(view.backingScaleFactor());
-    // view.setLayer(mem::transmute(layer.as_ref()));
-    // view.setWantsLayer(YES);
+    // Get the window's view, and put the animation layer there
+    let view: cocoa_id = window.contentView();
+    layer.set_contents_scale(view.backingScaleFactor());
+    view.setLayer(mem::transmute(layer.as_ref()));
+    view.setWantsLayer(YES);
 
     // Now use the view in the create info
     let surface_info = vk::MacOSSurfaceCreateInfoMVK {

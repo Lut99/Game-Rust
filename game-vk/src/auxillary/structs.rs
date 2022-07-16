@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 12:22:50
  * Last edited:
- *   15 Jul 2022, 18:34:42
+ *   16 Jul 2022, 22:43:13
  * Auto updated?
  *   Yes
  *
@@ -1891,7 +1891,7 @@ pub struct MemoryRequirements {
     /// The minimum size of the required memory block.
     pub size  : usize,
     /// The alignment (in bytes) of the start of the required memory block. Must be a multiple of two.
-    pub align : u8,
+    pub align : u64,
     /// The device memory types that are supported by the buffer or image for this particular usage.
     pub types : DeviceMemoryTypeFlags,
 }
@@ -1901,7 +1901,7 @@ impl From<vk::MemoryRequirements> for MemoryRequirements {
     fn from(value: vk::MemoryRequirements) -> Self {
         Self {
             size  : value.size as usize,
-            align : value.alignment as u8,
+            align : value.alignment as u64,
             types : value.memory_type_bits.into(),
         }
     }
