@@ -4,7 +4,7 @@
  * Created:
  *   09 Jul 2022, 12:23:22
  * Last edited:
- *   10 Jul 2022, 13:45:34
+ *   16 Jul 2022, 10:56:15
  * Auto updated?
  *   Yes
  *
@@ -14,10 +14,13 @@
 **/
 
 use std::cmp::Ordering;
+use std::ffi::CString;
 use std::fmt::{Display, Formatter, Result as FResult};
 use std::str::FromStr;
 
 use ash::vk;
+
+use game_utl::to_cstring;
 
 use crate::errors::{AttributeLayoutError, ExtensionError};
 
@@ -83,8 +86,8 @@ macro_rules! enum_from {
 /// An enum that describes instance extensions used in the Game.
 #[derive(Copy, Clone, Debug)]
 pub enum InstanceExtension {
-    /// A dummy extension as a temporary placeholder
-    Dummy,
+    /// The instance portability extension, used on macOS
+    PortabilityEnumeration,
 }
 
 impl InstanceExtension {
@@ -93,7 +96,7 @@ impl InstanceExtension {
     pub const fn as_str(&self) -> &'static str {
         use InstanceExtension::*;
         match self {
-            Dummy => "dummy",
+            PortabilityEnumeration => "VK_KHR_portability_enumeration",
         }
     }
 }
@@ -105,13 +108,20 @@ impl Display for InstanceExtension {
     }
 }
 
+impl From<InstanceExtension> for CString {
+    #[inline]
+    fn from(value: InstanceExtension) -> Self {
+        to_cstring!(format!("{}", value))
+    }
+}
+
 impl FromStr for InstanceExtension {
     type Err = ExtensionError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "dummy" => Ok(InstanceExtension::Dummy),
-            value   => Err(ExtensionError::UnknownInstanceExtension{ got: value.into() }),
+            "VK_KHR_portability_enumeration" => Ok(InstanceExtension::PortabilityEnumeration),
+            value                            => Err(ExtensionError::UnknownInstanceExtension{ got: value.into() }),
         }
     }
 }
@@ -238,6 +248,8 @@ enum_from!(impl From<vk::PhysicalDeviceType> for DeviceKind {
 pub enum DeviceExtension {
     /// The Swapchain device extension.
     Swapchain,
+    /// The portability subset extension.
+    PortabilitySubset,
 }
 
 impl DeviceExtension {
@@ -246,7 +258,8 @@ impl DeviceExtension {
     pub const fn as_str(&self) -> &'static str {
         use DeviceExtension::*;
         match self {
-            Swapchain => "VK_KHR_swapchain",
+            Swapchain         => "VK_KHR_swapchain",
+            PortabilitySubset => "VK_KHR_portability_subset",
         }
     }
 }
@@ -258,13 +271,21 @@ impl Display for DeviceExtension {
     }
 }
 
+impl From<DeviceExtension> for CString {
+    #[inline]
+    fn from(value: DeviceExtension) -> Self {
+        to_cstring!(format!("{}", value))
+    }
+}
+
 impl FromStr for DeviceExtension {
     type Err = ExtensionError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
-            "VK_KHR_swapchain" => Ok(DeviceExtension::Swapchain),
-            value              => Err(ExtensionError::UnknownDeviceExtension{ got: value.into() }),
+            "VK_KHR_swapchain"          => Ok(DeviceExtension::Swapchain),
+            "VK_KHR_portability_subset" => Ok(DeviceExtension::PortabilitySubset),
+            value                       => Err(ExtensionError::UnknownDeviceExtension{ got: value.into() }),
         }
     }
 }

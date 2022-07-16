@@ -4,7 +4,7 @@
  * Created:
  *   27 Mar 2022, 13:19:36
  * Last edited:
- *   10 Jul 2022, 13:34:45
+ *   16 Jul 2022, 10:57:52
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,7 @@ use game_utl::to_cstring;
 
 pub use crate::errors::DeviceError as Error;
 use crate::log_destroy;
-use crate::auxillary::enums::{DeviceKind, QueueKind};
+use crate::auxillary::enums::{DeviceExtension, DeviceKind, QueueKind};
 use crate::auxillary::structs::{DeviceFeatures, DeviceInfo, QueueFamilyInfo, SwapchainSupport};
 use crate::instance::Instance;
 use crate::surface::Surface;
@@ -269,6 +269,12 @@ impl Device {
 
         // Map the given device extensions and layers to pointers
         let device_extensions: Vec<CString> = device_extensions.iter().map(|extension| to_cstring!(extension)).collect();
+        #[cfg(target_os = "macos")]
+        let device_extensions = {
+            let mut device_extensions = device_extensions;
+            device_extensions.push(DeviceExtension::PortabilitySubset.into());
+            device_extensions
+        };
         let device_layers: Vec<CString>     = device_layers.iter().map(|layer| to_cstring!(layer)).collect();
         let p_device_extensions: Vec<*const i8> = (0..device_extensions.len()).map(|i| device_extensions[i].as_ptr()).collect();
         let p_device_layers: Vec<*const i8>     = (0..device_layers.len()).map(|i| device_layers[i].as_ptr()).collect();

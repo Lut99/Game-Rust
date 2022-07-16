@@ -4,7 +4,7 @@
  * Created:
  *   01 Apr 2022, 17:26:26
  * Last edited:
- *   14 May 2022, 12:41:14
+ *   16 Jul 2022, 10:17:59
  * Auto updated?
  *   Yes
  *
@@ -98,35 +98,35 @@ unsafe fn create_surface(entry: &VkEntry, instance: &VkInstance, wwindow: &WWind
 
     use ash::extensions::mvk::MacOSSurface;
     use cocoa::base::id as cocoa_id;
-    use metal::CoreAnimationlayer;
+    // use metal::CoreAnimationLayer;
     use objc::runtime::YES;
     use winit::platform::macos::WindowExtMacOS;
 
     
-    // Get the ID of the window
-    let window: cocoa_id = mem::transmute(wwindow.ns_window());
+    // // Get the ID of the window
+    // let window: cocoa_id = mem::transmute(wwindow.ns_window());
 
-    // Create an as-blank-as-possible animation layer to redner to
-    let layer = CoreAnimationLayer::new();
-    layer.set_edge_antialiasing_mask(0);
-    layer.set_presents_with_transaction(false);
-    layer.remove_all_animations();
+    // // Create an as-blank-as-possible animation layer to redner to
+    // let layer = CoreAnimationLayer::new();
+    // layer.set_edge_antialiasing_mask(0);
+    // layer.set_presents_with_transaction(false);
+    // layer.remove_all_animations();
 
-    // Get the window's view, and put the animation layer there
-    let view = window.contentView();
-    layer.set_contents_scale(view.backingScaleFactor());
-    view.setLayer(mem::transmute(layer.as_ref()));
-    view.setWantsLayer(YES);
+    // // Get the window's view, and put the animation layer there
+    // let view = window.contentView();
+    // layer.set_contents_scale(view.backingScaleFactor());
+    // view.setLayer(mem::transmute(layer.as_ref()));
+    // view.setWantsLayer(YES);
 
     // Now use the view in the create info
     let surface_info = vk::MacOSSurfaceCreateInfoMVK {
         // Set the standard fields
-        s_type : vk::StructureType::MACOS_SURFACE_CREATE_INFO_M,
+        s_type : vk::StructureType::MACOS_SURFACE_CREATE_INFO_MVK,
         p_next : ptr::null(),
         flags  : Default::default(),
 
         // Pass the view to create the surface on
-        p_view : window.ns_view() as *const c_void,
+        p_view : wwindow.ns_view() as *const c_void,
     };
 
     // Create the surface!

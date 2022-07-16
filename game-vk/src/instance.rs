@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 14:10:40
  * Last edited:
- *   14 May 2022, 12:37:35
+ *   16 Jul 2022, 10:52:39
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use semver::Version;
 use game_utl::to_cstring;
 
 pub use crate::errors::InstanceError as Error;
+use crate::auxillary::enums::InstanceExtension;
 use crate::log_destroy;
 
 
@@ -52,7 +53,7 @@ fn os_surface_extensions() -> Vec<CString> {
 #[cfg(target_os = "macos")]
 fn os_surface_extensions() -> Vec<CString> {
     // Import the extension into the namespace
-    use ash::extensions::khr::MacOSSurface;
+    use ash::extensions::mvk::MacOSSurface;
 
     // Return the name of the macOS surface extension
     vec![
@@ -219,6 +220,11 @@ fn populate_instance_info(entry: &ash::Entry, app_info: &vk::ApplicationInfo, de
         }
     }
 
+    // If on macOS, we want the portability extension
+    let mut flags: vk::InstanceCreateFlags = vk::InstanceCreateFlags::empty();
+    #[cfg(target_os = "macos")]
+    { flags = vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR; }
+
     // With everything verified, we can finally put it in the struct and return it
     Ok(vk::InstanceCreateInfo {
         s_type                     : vk::StructureType::INSTANCE_CREATE_INFO,
@@ -227,7 +233,7 @@ fn populate_instance_info(entry: &ash::Entry, app_info: &vk::ApplicationInfo, de
         } else {
             ptr::null()
         },
-        flags                      : vk::InstanceCreateFlags::empty(),
+        flags,
         p_application_info         : app_info as *const vk::ApplicationInfo,
         pp_enabled_extension_names : p_extensions.as_ptr(),
         enabled_extension_count    : p_extensions.len() as u32,
@@ -340,10 +346,12 @@ impl Instance {
 
         // Convert both list of additional extensions/layers to CStrs
         let mut additional_extensions: Vec<CString> = (0..additional_extensions.len()).map(|i| to_cstring!(additional_extensions[i])).collect();
-        let additional_layers: Vec<CString>     = (0..additional_layers.len()).map(|i| to_cstring!(additional_layers[i])).collect();
+        let additional_layers: Vec<CString>         = (0..additional_layers.len()).map(|i| to_cstring!(additional_layers[i])).collect();
 
         // Collect the required extensions
         let mut extensions: Vec<CString> = vec![ ash::extensions::khr::Surface::name().to_owned() ];
+        #[cfg(target_os = "macos")]
+        { extensions.push(InstanceExtension::PortabilityEnumeration.into()); }
         if debug { extensions.push(ash::extensions::ext::DebugUtils::name().to_owned()); }
         extensions.append(&mut os_surface_extensions());
 
