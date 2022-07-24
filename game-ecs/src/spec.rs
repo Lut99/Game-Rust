@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:32:55
  * Last edited:
- *   26 Mar 2022, 10:44:04
+ *   18 Jul 2022, 18:32:16
  * Auto updated?
  *   Yes
  *
@@ -45,4 +45,4 @@ impl From<Entity> for u64 {
 
 
 /// Defines the base Component trait.
-pub trait Component: Debug {}
+pub trait Component {}

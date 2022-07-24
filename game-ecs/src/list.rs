@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:32:36
  * Last edited:
- *   26 Mar 2022, 10:42:39
+ *   18 Jul 2022, 18:33:54
  * Auto updated?
  *   Yes
  *
@@ -15,7 +15,6 @@
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::ops::{Index, IndexMut};
 
 use crate::spec::{Component, Entity};
@@ -23,7 +22,7 @@ use crate::spec::{Component, Entity};
 
 /***** LIBRARY *****/
 /// Defines the ComponentListBase trait that functions as the typeless base of the ComponentList
-pub trait ComponentListBase: Debug {
+pub trait ComponentListBase {
     /// Allows the ComponentListBase to be downcasted.
     fn as_any(&self) -> &dyn Any;
 
@@ -67,7 +66,7 @@ pub trait ComponentListBase: Debug {
 /// 
 /// **Generic Types**
 ///  * `T`: The Component for this list.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ComponentList<T>
 where
     T: Component,

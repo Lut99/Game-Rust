@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:26
  * Last edited:
- *   26 Mar 2022, 18:18:03
+ *   18 Jul 2022, 18:34:01
  * Auto updated?
  *   Yes
  *
@@ -25,7 +25,6 @@ use crate::list::{ComponentList, ComponentListBase};
 
 /***** LIBRARY *****/
 /// The Entity Component System (ECS) manages all entiteis that exist in the engine (both renderable as non-renderable).
-#[derive(Debug)]
 pub struct Ecs {
     /// The last entity added to the ECS.
     next_id    : u64,
