@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:27:38
  * Last edited:
- *   18 Jul 2022, 19:11:01
+ *   24 Jul 2022, 12:16:25
  * Auto updated?
  *   Yes
  *
@@ -104,8 +104,8 @@ impl EventSystem {
 
                 WinitEvent::MainEventsCleared => {
                     // Trigger the 'redraw' winit event
-                    let draw_callbacks = ecs.list_component_mut::<DrawCallback>();
-                    for c in draw_callbacks {
+                    let windows = ecs.list_component_mut::<Window>();
+                    for w in windows {
                         // The function *might* decide to cancel the quit
                         if let Err(err) = (*c.draw_callback)() {
                             error!("{}", err);
