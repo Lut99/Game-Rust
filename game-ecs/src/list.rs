@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:32:36
  * Last edited:
- *   18 Jul 2022, 18:33:54
+ *   25 Jul 2022, 23:59:14
  * Auto updated?
  *   Yes
  *
@@ -34,6 +34,9 @@ pub trait ComponentListBase {
     /// Returns the identifier for this specific generic type
     fn id(&self) -> TypeId;
 
+    /// Returns the name of the ComponentList's type.
+    fn type_name(&self) -> &'static str;
+
 
 
     /// Get the index from an entity.  
@@ -55,6 +58,14 @@ pub trait ComponentListBase {
     /// **Returns**  
     /// The entity that resides at the given index if the index is in range, or None otherwise.
     fn get_entity(&self, index: usize) -> Option<Entity>;
+
+
+
+    /// Deletes the given entity if it existed from the internal list.
+    /// 
+    /// **Arguments**
+    ///  * `entity`: The Entity to remove the data of.
+    fn delete(&self, entity: Entity);
 }
 
 
@@ -99,6 +110,15 @@ impl<T: Component> ComponentList<T> {
         T: 'static
     {
         TypeId::of::<T>()
+    }
+
+    /// Returns the name of the ComponentList's type.
+    #[inline]
+    fn type_name() -> &'static str
+    where
+        T: 'static
+    {
+        std::any::type_name::<T>()
     }
 
 
@@ -216,6 +236,12 @@ where
         ComponentList::<T>::id()
     }
 
+    /// Returns the name of the ComponentList's type.
+    #[inline]
+    fn type_name(&self) -> &'static str {
+        ComponentList::<T>::type_name()
+    }
+
 
 
     /// Get the index from an entity.  
@@ -242,6 +268,17 @@ where
     #[inline]
     fn get_entity(&self, index: usize) -> Option<Entity> {
         self.i_to_e.get(&index).map(|entity| *entity)
+    }
+
+
+
+    /// Deletes the given entity if it existed from the internal list.
+    /// 
+    /// **Arguments**
+    ///  * `entity`: The Entity to remove the data of.
+    #[inline]
+    fn delete(&self, entity: Entity) {
+        self.remove(entity);
     }
 }
 

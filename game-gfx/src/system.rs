@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   24 Jul 2022, 12:33:31
+ *   25 Jul 2022, 23:36:34
  * Auto updated?
  *   Yes
  *
@@ -22,7 +22,7 @@ use semver::Version;
 use winit::event_loop::EventLoop;
 
 use game_cfg::spec::WindowMode;
-use game_ecs::Ecs;
+use game_ecs::{Ecs, Entity};
 use game_vk::auxillary::enums::DeviceExtension;
 use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
 use game_vk::instance::Instance;
@@ -30,9 +30,11 @@ use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
 use game_vk::pools::memory::MetaPool;
 use game_vk::sync::{Fence, Semaphore};
+use game_win::system::WindowSystem;
 
 pub use crate::errors::RenderSystemError as Error;
 use crate::spec::{RenderPipeline, RenderPipelineId, RenderTarget, RenderTargetId};
+use crate::components;
 use crate::targets;
 use crate::pipelines;
 
@@ -117,7 +119,7 @@ impl RenderSystem {
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
-        _ecs: &mut Ecs,
+        ecs: &mut Ecs,
         name: S1, version: Version,
         engine: S2, engine_version: Version,
         event_loop: &EventLoop<()>,
@@ -126,7 +128,8 @@ impl RenderSystem {
         debug: bool
     ) -> Result<Self, Error> {
         // Register components
-        /* TBD */
+        ecs.register::<components::Window>();
+        ecs.register::<components::Target>();
 
 
 
@@ -160,15 +163,22 @@ impl RenderSystem {
 
 
 
+        // Initiate a Window (via the WindowSystem)
+        let window_system  = WindowSystem::new(ecs);
+        let window: Entity = match window_system.create(ecs, event_loop, device.clone(), "Game-Rust ALPHA", window_mode) {
+            Ok(target) => target,
+            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
+        };
+
         // Initiate the render targets
         let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
         targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", window_mode, 3) {
             Ok(target) => Box::new(target),
             Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
         });
-    
 
-    
+
+
         // Initiate the render pipelines
         let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
         pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), memory_pool.clone(), command_pool.clone()) {

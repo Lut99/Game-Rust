@@ -4,7 +4,7 @@
  * Created:
  *   24 Jul 2022, 15:51:36
  * Last edited:
- *   24 Jul 2022, 16:08:40
+ *   25 Jul 2022, 23:41:15
  * Auto updated?
  *   Yes
  *
@@ -24,6 +24,7 @@ use winit::window::{Fullscreen, WindowBuilder};
 use game_cfg::spec::WindowMode;
 use game_ecs::{Ecs, Entity};
 use game_vk::auxillary::enums::{ImageAspect, ImageViewKind};
+use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
 use game_vk::image;
 use game_vk::surface::Surface;
@@ -79,7 +80,8 @@ fn create_views(device: &Rc<Device>, swapchain: &Arc<RwLock<Swapchain>>) -> Resu
 /***** LIBRARY *****/
 /// The WindowSystem manages windows, which are stored in the ECS.
 pub struct WindowSystem {
-    
+    /// The Entity Component System where the WindowSystem creates new Windows.
+    ecs : Rc<Ecs>,
 }
 
 impl WindowSystem {
@@ -90,12 +92,14 @@ impl WindowSystem {
     /// 
     /// # Returns
     /// A new WindowSystem.
-    pub fn new(ecs: &mut Ecs) -> Self {
+    pub fn new(ecs: Rc<Ecs>) -> Self {
         // Register new components
-        ecs.register::<Window>();
+        Rc::get_mut(&mut ecs).expect("Could not get muteable ECS for registering new components").register::<Window>();
 
         // Return ourselves
-        Self {}
+        Self {
+            ecs,
+        }
     }
 
 
@@ -200,8 +204,33 @@ impl WindowSystem {
         debug!("Initialized new window '{}'", title);
         let window = ecs.add_entity();
         ecs.add_component(window, Window {
-            
+            device,
+
+            window : wwindow,
+            surface,
+            swapchain,
+            views,
+
+            title  : title.into(),
+            extent : Extent2D::new(extent.width, extent.height),
         });
         Ok(window)
+    }
+
+    /// Returns the next swapchain image for the given Window entity.
+    /// 
+    /// # Arguments
+    /// - `window`: The Entity in the (internal) ECS that represents the Window.
+    /// 
+    /// # Returns
+    /// The ImageView of the next Swapchain image, wrapped in an Rc.
+    /// 
+    /// # Errors
+    /// This function may error if we failed to get the next swapchain image.
+    /// 
+    /// # Panics
+    /// This function panics if the given entity does not have a Window component.
+    pub fn next_view(&self, window: Entity) -> Result<Rc<image::View>, Error> {
+        
     }
 }

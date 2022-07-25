@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:26
  * Last edited:
- *   18 Jul 2022, 18:34:01
+ *   26 Jul 2022, 00:27:09
  * Auto updated?
  *   Yes
  *
@@ -14,8 +14,8 @@
 
 use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-#[cfg(feature = "log")]
 use log::debug;
 
 use crate::{to_component_list, to_component_list_mut};
@@ -26,12 +26,14 @@ use crate::list::{ComponentList, ComponentListBase};
 /***** LIBRARY *****/
 /// The Entity Component System (ECS) manages all entiteis that exist in the engine (both renderable as non-renderable).
 pub struct Ecs {
-    /// The last entity added to the ECS.
-    next_id    : u64,
-    /// The list of entities in the ECS
-    entities   : HashSet<Entity>,
+    /// Data related to the entities in the ECS.
+    /// 
+    /// # Layout
+    /// - `.0`: The last entity ID used.
+    /// - `.1`: The list of currently active entities.
+    entities   : RwLock<(u64, HashSet<Entity>)>,
     /// The list of Window components
-    components : HashMap<TypeId, Box<dyn ComponentListBase>>,
+    components : HashMap<TypeId, (&'static str, RwLock<Box<dyn ComponentListBase>>)>,
 }
 
 impl Ecs {
@@ -40,11 +42,9 @@ impl Ecs {
     /// **Arguments**
     ///  * `initial_capacity`: The initial size of the internal vector (might be used to optimize)
     pub fn new(initial_capacity: usize) -> Self {
-        #[cfg(feature = "log")]
         debug!("Initialized Entity Component System v{}", env!("CARGO_PKG_VERSION"));
         Ecs {
-            next_id    : 0,
-            entities   : HashSet::with_capacity(initial_capacity),
+            entities   : RwLock::new((0, HashSet::with_capacity(initial_capacity))),
             components : HashMap::with_capacity(16),
         }
     }
@@ -58,12 +58,12 @@ impl Ecs {
     pub fn register<T: 'static + Component>(&mut self) {
         // Insert the new component type if it does not exist yet
         if self.components.contains_key(&ComponentList::<T>::id()) { panic!("A component with ID {:?} already exists", ComponentList::<T>::id()); }
-        self.components.insert(ComponentList::<T>::id(), Box::new(
-            ComponentList::<T>::default()
+        self.components.insert(ComponentList::<T>::id(), (
+            std::any::type_name::<T>(),
+            RwLock::new(Box::new(ComponentList::<T>::default())),
         ));
 
         // Also log the new component registration, but only if compiled with log support
-        #[cfg(feature = "log")]
         debug!("Registered new Component type '{:?}'", ComponentList::<T>::id());
     }
 
@@ -74,12 +74,14 @@ impl Ecs {
     /// **Returns**  
     /// The identifier of that entity, as an Entity.
     pub fn add_entity(&mut self) -> Entity {
-        // Get the next id
-        let id: Entity = self.next_id.into();
-        self.next_id += 1;
+        // Get a lock first
+        let entities: RwLockWriteGuard<(u64, HashSet<_>)> = self.entities.write().expect("Could not get write lock on entity data");
 
-        // Add the ID to the list
-        self.entities.insert(id);
+        // Get the next id
+        let id: Entity = entities.0.into();
+        entities.0 += 1;
+        // Insert it into the list of active entities
+        entities.1.insert(id);
 
         // Done
         id
@@ -91,10 +93,25 @@ impl Ecs {
     ///  * `entity`: The Entity to remove.
     /// 
     /// **Returns**  
-    /// True if we removed something, or false if that entity did not exist anymore.
-    #[inline]
+    /// True if we removed something, or false if that entity did not exist already.
     pub fn remove_entity(&mut self, entity: Entity) -> bool {
-        self.entities.remove(&entity)
+        // Remove the entity in question
+        {
+            let entities: RwLockWriteGuard<(u64, HashSet<_>)> = self.entities.write().expect("Could not get write lock on entity data");
+            if !entities.1.remove(&entity) { return false; }
+        }
+
+        // Also remove its components from all relevant lists
+        for (name, list) in self.components.values() {
+            // Get a lock on this list
+            let list: RwLockWriteGuard<Box<dyn ComponentListBase>> = list.write().unwrap_or_else(|_| format!("Could not get write lock on component list for {}", name));
+
+            // Remove the entity from it if it exists
+            list.delete(entity);
+        }
+
+        // Done
+        true
     }
 
 
@@ -112,12 +129,18 @@ impl Ecs {
     /// **Returns**  
     /// 'true' if the component was added, or 'false' otherwise. It can only fail to be added if the Entity does not exist.
     pub fn add_component<T: 'static + Component>(&mut self, entity: Entity, data: T) -> bool {
+        // Get a read lock on the entity list
+        let entities: RwLockReadGuard<(_, HashSet<_>)> = self.entities.read().expect("Could not get read lock on entity data");
+
         // Check if the entity exists
-        if !self.entities.contains(&entity) { return false; }
+        if !entities.1.contains(&entity) { return false; }
 
         // Try to get the list to insert it into
-        let list = self.components.get_mut(&ComponentList::<T>::id())
+        let (name, list) = self.components.get_mut(&ComponentList::<T>::id())
             .expect(&format!("Unregistered Component type '{:?}'", ComponentList::<T>::id()));
+        let list: RwLockWriteGuard<Box<dyn ComponentListBase>> = list.write().unwrap_or_else(|_| format!("Could not get write lock on component list for {}", name));
+
+        // Perform the insert
         to_component_list_mut!(list, T).insert(entity, data);
 
         // Done
@@ -125,6 +148,8 @@ impl Ecs {
     }
 
     /// Returns the component of the given Entity.
+    /// 
+    /// The lock returned is actually a lock to the parent ComponentList, so try to keep access to a minimum.
     /// 
     /// **Generic Types**
     ///  * `T`: The Component type we want to get.
