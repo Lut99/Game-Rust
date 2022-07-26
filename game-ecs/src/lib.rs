@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:02
  * Last edited:
- *   26 Mar 2022, 10:52:28
+ *   26 Jul 2022, 14:44:34
  * Auto updated?
  *   Yes
  *
@@ -32,8 +32,8 @@ pub use system::Ecs;
 macro_rules! to_component_list {
     ($list:expr,$ctype:tt) => {
         {
-            let id = $list.id();
-            $list.as_any().downcast_ref::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{:?}> to ComponentList<{:?}>", id, ComponentList::<$ctype>::id()))
+            let name = $list.type_name();
+            $list.as_any().downcast_ref::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{}> to ComponentList<{}>", name, ComponentList::<$ctype>::type_name()))
         }
     };
 }
@@ -43,8 +43,8 @@ macro_rules! to_component_list {
 macro_rules! to_component_list_mut {
     ($list:expr,$ctype:tt) => {
         {
-            let id = $list.id();
-            $list.as_any_mut().downcast_mut::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{:?}> to ComponentList<{:?}>", id, ComponentList::<$ctype>::id()))
+            let name = $list.type_name();
+            $list.as_any_mut().downcast_mut::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{}> to ComponentList<{}>", name, ComponentList::<$ctype>::type_name()))
         }
     };
 }

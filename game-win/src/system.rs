@@ -4,7 +4,7 @@
  * Created:
  *   24 Jul 2022, 15:51:36
  * Last edited:
- *   25 Jul 2022, 23:41:15
+ *   26 Jul 2022, 15:15:49
  * Auto updated?
  *   Yes
  *
@@ -93,8 +93,10 @@ impl WindowSystem {
     /// # Returns
     /// A new WindowSystem.
     pub fn new(ecs: Rc<Ecs>) -> Self {
+        let mut ecs = ecs;
+
         // Register new components
-        Rc::get_mut(&mut ecs).expect("Could not get muteable ECS for registering new components").register::<Window>();
+        Ecs::register::<Window>(&mut ecs);
 
         // Return ourselves
         Self {
@@ -104,13 +106,12 @@ impl WindowSystem {
 
 
 
-    /// Creates a new Window in the given ECS with the given properties.
+    /// Creates a new Window with the given properties.
     /// 
     /// # Generic types
     /// - `S`: The String-like type of the title.
     /// 
     /// # Arguments
-    /// - `ecs`: The Entity Component System where the Window will live.
     /// - `event_loop`: The EventLoop where the events of the new Window will be processed on.
     /// - `device`: The Device that will render to the given Window.
     /// - `title`: The title of the Window (as a String-like).
@@ -120,7 +121,7 @@ impl WindowSystem {
     /// 
     /// # Errors
     /// This function typically errors if we failed to create a new Window.
-    pub fn create<S: AsRef<str>>(&self, ecs: &mut Ecs, event_loop: &EventLoop<()>, device: Rc<Device>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
+    pub fn create<S: AsRef<str>>(&self, event_loop: &EventLoop<()>, device: Rc<Device>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
         // Convert str-like to str
         let title: &str = title.as_ref();
 
@@ -202,8 +203,8 @@ impl WindowSystem {
 
         // Done! Return the window
         debug!("Initialized new window '{}'", title);
-        let window = ecs.add_entity();
-        ecs.add_component(window, Window {
+        let window = self.ecs.add_entity();
+        self.ecs.add_component(window, Window {
             device,
 
             window : wwindow,
@@ -217,20 +218,20 @@ impl WindowSystem {
         Ok(window)
     }
 
-    /// Returns the next swapchain image for the given Window entity.
-    /// 
-    /// # Arguments
-    /// - `window`: The Entity in the (internal) ECS that represents the Window.
-    /// 
-    /// # Returns
-    /// The ImageView of the next Swapchain image, wrapped in an Rc.
-    /// 
-    /// # Errors
-    /// This function may error if we failed to get the next swapchain image.
-    /// 
-    /// # Panics
-    /// This function panics if the given entity does not have a Window component.
-    pub fn next_view(&self, window: Entity) -> Result<Rc<image::View>, Error> {
-        
-    }
+    // /// Returns the next swapchain image for the given Window entity.
+    // /// 
+    // /// # Arguments
+    // /// - `window`: The Entity in the (internal) ECS that represents the Window.
+    // /// 
+    // /// # Returns
+    // /// The ImageView of the next Swapchain image, wrapped in an Rc.
+    // /// 
+    // /// # Errors
+    // /// This function may error if we failed to get the next swapchain image.
+    // /// 
+    // /// # Panics
+    // /// This function panics if the given entity does not have a Window component.
+    // pub fn next_view(&self, window: Entity) -> Result<Rc<image::View>, Error> {
+    //     Ok(image::View::new())
+    // }
 }

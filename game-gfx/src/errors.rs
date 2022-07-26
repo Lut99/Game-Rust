@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:25
  * Last edited:
- *   12 Jul 2022, 18:50:16
+ *   26 Jul 2022, 15:42:07
  * Auto updated?
  *   Yes
  *
@@ -36,6 +36,9 @@ pub enum RenderSystemError {
     SemaphoreCreateError{ err: game_vk::sync::Error },
     /// Failed to create a Fence
     FenceCreateError{ err: game_vk::sync::Error },
+
+    /// Could not create new framebuffers for the pipeline.
+    FramebufferCreateError{ id: RenderPipelineId, err: game_vk::framebuffer::Error },
 
     /// Could not poll if a fence is ready
     FencePollError{ err: game_vk::sync::Error },
@@ -70,6 +73,8 @@ impl Display for RenderSystemError {
             RenderPipelineCreateError{ name, err } => write!(f, "Could not initialize render pipeline '{}': {}", name, err),
             SemaphoreCreateError{ err }            => write!(f, "Failed to create Semaphore: {}", err),
             FenceCreateError{ err }                => write!(f, "Failed to create Fence: {}", err),
+
+            FramebufferCreateError{ id, err } => write!(f, "Could not create Framebuffer for {} pipeline: {}", id, err),
 
             FencePollError{ err }           => write!(f, "Could not poll Fence: {}", err),
             TargetGetIndexError{ err }      => write!(f, "Could not get next image index: {}", err),

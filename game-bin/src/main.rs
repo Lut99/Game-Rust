@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   12 Jul 2022, 18:30:56
+ *   26 Jul 2022, 15:07:30
  * Auto updated?
  *   Yes
  *
@@ -52,7 +52,7 @@ fn main() {
     let event_loop = EventLoop::new();
 
     // Initialize the entity component system
-    let mut ecs = Ecs::default();
+    let mut ecs = Ecs::new(2048);
 
     // Initialize the render system
     let mut render_system = match RenderSystem::new(

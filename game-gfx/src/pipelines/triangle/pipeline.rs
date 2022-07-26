@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   10 Jul 2022, 15:33:23
+ *   26 Jul 2022, 15:47:57
  * Auto updated?
  *   Yes
  *
@@ -279,12 +279,13 @@ pub struct Pipeline {
     /// The CommandPool from which we may allocate buffers.
     command_pool : Arc<RwLock<CommandPool>>,
 
+    /// The vertex buffer for this pipeline.
+    vertex_buffer   : Rc<VertexBuffer>,
+
     /// The VkPipeline we wrap.
     pipeline        : Rc<VkPipeline>,
     /// The framebuffers for this pipeline.
     framebuffers    : Vec<Rc<Framebuffer>>,
-    /// The vertex buffer for this pipeline.
-    vertex_buffer   : Rc<VertexBuffer>,
     /// The command buffers for this pipeline.
     command_buffers : Vec<Rc<CommandBuffer>>,
 }
@@ -318,11 +319,11 @@ impl Pipeline {
         let extent = target.extent();
         let pipeline: Rc<VkPipeline> = create_pipeline(&device, &layout, &render_pass, &extent)?;
 
-        // Create the framebuffers for this target
-        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
-
         // Prepare the triangle buffer
         let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+
+        // Create the framebuffers for this target
+        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
         // Record one command buffer per framebuffer
         let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
@@ -334,15 +335,38 @@ impl Pipeline {
             memory_pool,
             command_pool,
 
+            vertex_buffer,
+
             pipeline,
             framebuffers,
-            vertex_buffer,
             command_buffers,
         })
     }
 }
 
 impl RenderPipeline for Pipeline {
+    /// Creates new framebuffers for the given views.
+    /// 
+    /// This is more than one view because of swapchaining. During rendering, the pipeline is told to which of these views to render.
+    /// 
+    /// # Arguments
+    /// - `views`: The ImageViews for which to create framebuffers.
+    /// - `extent`: The dimensions of the image views. They are all guaranteed to have the same dimensions.
+    /// 
+    /// # Returns
+    /// Nothing, but does create framebuffers internally and any other useful structures (e.g., command buffers).
+    /// 
+    /// # Errors
+    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
+    fn create_framebuffers(&mut self, views: &[image::View], extent: &Extent2D<u32>) -> Result<(), Box<dyn error::Error>> {
+        // Create the framebuffers for this target
+        self.framebuffers    = Some(create_framebuffers(&self.device, &self.render_pass, views, extent)?);
+        // Record one command buffer per framebuffer
+        self.command_buffers = Some(record_command_buffers(&self.device, &self.command_pool, &self.render_pass, &self.pipeline, &self.framebuffers, &self.vertex_buffer, extent)?);
+    }
+
+
+
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.

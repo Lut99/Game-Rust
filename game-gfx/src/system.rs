@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   25 Jul 2022, 23:36:34
+ *   26 Jul 2022, 15:42:30
  * Auto updated?
  *   Yes
  *
@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use log::debug;
+use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard};
 use semver::Version;
 use winit::event_loop::EventLoop;
 
@@ -25,11 +26,13 @@ use game_cfg::spec::WindowMode;
 use game_ecs::{Ecs, Entity};
 use game_vk::auxillary::enums::DeviceExtension;
 use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
+use game_vk::framebuffer::Framebuffer;
 use game_vk::instance::Instance;
 use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
 use game_vk::pools::memory::MetaPool;
 use game_vk::sync::{Fence, Semaphore};
+use game_win::components::Window;
 use game_win::system::WindowSystem;
 
 pub use crate::errors::RenderSystemError as Error;
@@ -62,9 +65,50 @@ lazy_static!{
 
 
 
+/***** RENDERABLE FUNCTIONS *****/
+/// Constructs a new Renderable component from the given window and pipeline.
+/// 
+/// # Arguments
+/// - `ecs`: The ECS to create the new component in. Is also where we will retrieve the Window properties from.
+/// - `window`: The Window to create a renderable for.
+/// - `pipeline`: The Pipeline (ID and the actual object) will use for this rendering.
+/// 
+/// # Returns
+/// Nothing, but does create a new component for the Window entity in the given ECS.
+/// 
+/// # Errors
+/// This function may error if we failed to create Framebuffers.
+/// 
+/// # Panics
+/// This function may panic if the given entity was not known in the ECS.
+fn create_renderable(ecs: &Rc<Ecs>, window: Entity, pipeline: (RenderPipelineId, &dyn RenderPipeline)) -> Result<(), Error> {
+    // Obtain the window entity
+    let window   : MappedRwLockReadGuard<Window> = ecs.get_component(window).unwrap_or_else(|| panic!("Entity {:?} does not have a Window component", window));
+
+    // Create framebuffers for this Window
+    let mut framebuffers: Vec<Rc<Framebuffer>> = Vec::with_capacity(window.views.len());
+    for view in window.views {
+        // Add the newly created buffer (if successful)
+        framebuffers.push(match Framebuffer::new(pipeline.1.device().clone(), pipeline.1.render_pass().clone(), vec![ view.clone() ], window.extent.clone()) {
+            Ok(framebuffer) => framebuffer,
+            Err(err)        => { return Err(Error::FramebufferCreateError{ id: pipeline.0, err }); }
+        });
+    }
+
+    // Record the command buffers for the framebuffers
+    pipeline.1.
+}
+
+
+
+
+
 /***** LIBRARY *****/
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
+    /// The Entity Component System where the RenderSystem stores some of its data.
+    ecs : Rc<Ecs>,
+
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
     /// The Device we'll use for rendering.
@@ -75,10 +119,10 @@ pub struct RenderSystem {
     /// The CommandPool from which we allocate commands.
     _command_pool : Arc<RwLock<CommandPool>>,
 
-    /// The map of render targets to which we render.
-    targets   : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
     /// The map of render pipelines which we use to render to.
     pipelines : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
+    /// Set of windows known to the RenderSystem.
+    windows   : Vec<Entity>,
 
     /// The Semaphores that signal when an image is ready (one per image that is in-flight).
     image_ready  : Vec<Rc<Semaphore>>,
@@ -119,7 +163,7 @@ impl RenderSystem {
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
-        ecs: &mut Ecs,
+        ecs: Rc<Ecs>,
         name: S1, version: Version,
         engine: S2, engine_version: Version,
         event_loop: &EventLoop<()>,
@@ -127,9 +171,12 @@ impl RenderSystem {
         targets_in_flight: usize,
         debug: bool
     ) -> Result<Self, Error> {
+        let mut ecs = ecs;
+
+
+
         // Register components
-        ecs.register::<components::Window>();
-        ecs.register::<components::Target>();
+        Ecs::register::<components::Renderable>(&mut ecs);
 
 
 
@@ -163,28 +210,22 @@ impl RenderSystem {
 
 
 
-        // Initiate a Window (via the WindowSystem)
-        let window_system  = WindowSystem::new(ecs);
-        let window: Entity = match window_system.create(ecs, event_loop, device.clone(), "Game-Rust ALPHA", window_mode) {
-            Ok(target) => target,
-            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
-        };
-
-        // Initiate the render targets
-        let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", window_mode, 3) {
-            Ok(target) => Box::new(target),
-            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
-        });
-
-
-
-        // Initiate the render pipelines
+        // Initiate the render pipeline
         let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
         pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), memory_pool.clone(), command_pool.clone()) {
             Ok(pipeline) => Box::new(pipeline),
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err: Box::new(err) }); }
         });
+
+        // Initiate a Window (via the WindowSystem)
+        let window_system  = WindowSystem::new(ecs.clone());
+        let window: Entity = match window_system.create(event_loop, device.clone(), "Game-Rust ALPHA", window_mode) {
+            Ok(target) => target,
+            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
+        };
+
+        // Hook the pipelines into that as a renderable
+        ecs.add_component(window, create_renderable(&ecs, window, RenderPipelineId::Triangle));
 
 
 
@@ -213,11 +254,13 @@ impl RenderSystem {
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
+            ecs,
+
             _instance     : instance,
             device,
             _command_pool : command_pool,
 
-            targets,
+            windows : vec![ window ],
             pipelines,
 
             image_ready,

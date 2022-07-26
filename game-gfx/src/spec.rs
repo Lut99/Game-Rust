@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   10 Jul 2022, 14:29:59
+ *   26 Jul 2022, 15:46:57
  * Auto updated?
  *   Yes
  *
@@ -127,6 +127,23 @@ pub trait RenderTarget: 'static + AsAny {
 /***** RENDER PIPELINE TRAIT *****/
 /// Defines a Render-capable pipeline.
 pub trait RenderPipeline: 'static + AsAny {
+    /// Creates new framebuffers for the given views.
+    /// 
+    /// This is more than one view because of swapchaining. During rendering, the pipeline is told to which of these views to render.
+    /// 
+    /// # Arguments
+    /// - `views`: The ImageViews for which to create framebuffers.
+    /// - `extent`: The dimensions of the image views. They are all guaranteed to have the same dimensions.
+    /// 
+    /// # Returns
+    /// Nothing, but does create framebuffers internally and any other useful structures (e.g., command buffers).
+    /// 
+    /// # Errors
+    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
+    fn create_framebuffers(&mut self, views: &[image::View], extent: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
+
+
+
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.

@@ -9,6 +9,7 @@ ash = "0.37.0"
 lazy_static = "1.4.0"
 log = "0.4.16"
 memoffset = "0.6.5"
+parking_lot = "0.12.1"
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 semver = "1.0.6"
 winit = "0.26"
