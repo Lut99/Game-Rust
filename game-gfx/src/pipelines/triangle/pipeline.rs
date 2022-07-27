@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   26 Jul 2022, 15:47:57
+ *   27 Jul 2022, 14:25:10
  * Auto updated?
  *   Yes
  *
@@ -13,12 +13,13 @@
  *   screen.
 **/
 
-use std::error;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use log::debug;
+use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard};
 
+use game_ecs::{Ecs, Entity};
 use game_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
 use game_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
 use game_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
@@ -34,9 +35,11 @@ use game_vk::image;
 use game_vk::framebuffer::Framebuffer;
 use game_vk::sync::{Fence, Semaphore};
 
-pub use crate::pipelines::errors::TriangleError as Error;
+pub use crate::errors::PipelineError as Error;
 use crate::pipelines::triangle::{Shaders, Vertex};
-use crate::spec::{RenderPipeline, RenderTarget};
+use crate::spec::RenderPipeline;
+use crate::components;
+use crate::window;
 
 
 /***** CONSTANTS *****/
@@ -270,12 +273,17 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, 
 /***** LIBRARY *****/
 /// The Triangle Pipeline, which implements a simple pipeline that only renders a hardcoded triangle to the screen.
 pub struct Pipeline {
+    /// The ECS we use to interface with entities.
+    ecs    : Rc<Ecs>,
+    /// The ID of the Target for this Pipeline.
+    target : Entity,
+
     /// The Device where the pipeline runs.
     device       : Rc<Device>,
     /// The PipelineLayout that defines the resource layout of the pipeline.
     layout       : Rc<PipelineLayout>,
     /// The MemoryPool from which we may draw memory.
-    memory_pool  : Arc<RwLock<dyn MemoryPool>>,
+    _memory_pool : Arc<RwLock<dyn MemoryPool>>,
     /// The CommandPool from which we may allocate buffers.
     command_pool : Arc<RwLock<CommandPool>>,
 
@@ -288,6 +296,11 @@ pub struct Pipeline {
     framebuffers    : Vec<Rc<Framebuffer>>,
     /// The command buffers for this pipeline.
     command_buffers : Vec<Rc<CommandBuffer>>,
+
+    /// A list used to determine the image for the current frame in flight. And index of usize::MAX means no image in flight.
+    indices     : Vec<usize>,
+    /// The list of semaphores which we use to determine if the next image is ready.
+    image_ready : Vec<Rc<Semaphore>>,
 }
 
 impl Pipeline {
@@ -296,43 +309,67 @@ impl Pipeline {
     /// This initializes a new RenderPipeline. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
     /// 
     /// # Arguments
+    /// - `ecs`: The Entity Component System where we will read the render target's data from.
     /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
-    /// - `target`: The RenderTarget where this pipeline will render to.
+    /// - `memory_pool`: The RenderSystem's MemoryPool struct that may be used to allocate generic buffers and images (also later during rendering).
     /// - `command_pool`: The RenderSystem's CommandPool struct that may be used to allocate command buffers (also later during rendering).
+    /// - `target`: The entity where this pipeline will render to.
+    /// - `frames_in_flight`: The number of frames that will (at most) be in flight.
     /// 
     /// # Returns
     /// A new instance of the backend RenderPipeline.
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
-        // Build the pipeline layout
-        let layout = match PipelineLayout::new(device.clone(), &[]) {
-            Ok(layout) => layout,
-            Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
-        };
+    pub fn new(ecs: Rc<Ecs>, device: Rc<Device>, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>, target: Entity, frames_in_flight: usize) -> Result<Self, Error> {
+        // Create all the necessary structs
+        let layout          : Rc<PipelineLayout>;
+        let render_pass     : Rc<RenderPass>;
+        let pipeline        : Rc<VkPipeline>;
+        let vertex_buffer   : Rc<VertexBuffer>;
+        let framebuffers    : Vec<Rc<Framebuffer>>;
+        let command_buffers : Vec<Rc<CommandBuffer>>;
+        {
+            // Get the target information
+            let starget: MappedRwLockReadGuard<components::Target> = ecs.get_component(target).unwrap_or_else(|| panic!("Given entity {:?} does not have a Target component", target));
 
-        // Build the render pass
-        let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
+            // Build the pipeline layout
+            layout = match PipelineLayout::new(device.clone(), &[]) {
+                Ok(layout) => layout,
+                Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
+            };
 
-        // Build the pipeline
-        let extent = target.extent();
-        let pipeline: Rc<VkPipeline> = create_pipeline(&device, &layout, &render_pass, &extent)?;
+            // Build the render pass & pipeline
+            render_pass = create_render_pass(&device, starget.format)?;
+            pipeline = create_pipeline(&device, &layout, &render_pass, &starget.extent)?;
 
-        // Prepare the triangle buffer
-        let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+            // Prepare the triangle buffer
+            vertex_buffer = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
 
-        // Create the framebuffers for this target
-        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
+            // Create the framebuffers for this target
+            framebuffers = create_framebuffers(&device, &render_pass, &starget.views, &starget.extent)?;
 
-        // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+            // Record one command buffer per framebuffer
+            command_buffers = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &starget.extent)?;
+        }
+
+        // Create the semaphores
+        let mut image_ready : Vec<Rc<Semaphore>> = Vec::with_capacity(frames_in_flight);
+        for _ in 0..frames_in_flight {
+            image_ready.push(match Semaphore::new(device.clone()) {
+                Ok(semaphore) => semaphore,
+                Err(err)      => { return Err(Error::SemaphoreCreateError{ err }); }  
+            });
+        }
 
         // Done, store the pipeline
         Ok(Self {
+            ecs,
+            target,
+
             device,
             layout,
-            memory_pool,
+            _memory_pool : memory_pool,
             command_pool,
 
             vertex_buffer,
@@ -340,33 +377,14 @@ impl Pipeline {
             pipeline,
             framebuffers,
             command_buffers,
+
+            indices : (0..frames_in_flight).map(|_| usize::MAX).collect(),
+            image_ready,
         })
     }
 }
 
 impl RenderPipeline for Pipeline {
-    /// Creates new framebuffers for the given views.
-    /// 
-    /// This is more than one view because of swapchaining. During rendering, the pipeline is told to which of these views to render.
-    /// 
-    /// # Arguments
-    /// - `views`: The ImageViews for which to create framebuffers.
-    /// - `extent`: The dimensions of the image views. They are all guaranteed to have the same dimensions.
-    /// 
-    /// # Returns
-    /// Nothing, but does create framebuffers internally and any other useful structures (e.g., command buffers).
-    /// 
-    /// # Errors
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn create_framebuffers(&mut self, views: &[image::View], extent: &Extent2D<u32>) -> Result<(), Box<dyn error::Error>> {
-        // Create the framebuffers for this target
-        self.framebuffers    = Some(create_framebuffers(&self.device, &self.render_pass, views, extent)?);
-        // Record one command buffer per framebuffer
-        self.command_buffers = Some(record_command_buffers(&self.device, &self.command_pool, &self.render_pass, &self.pipeline, &self.framebuffers, &self.vertex_buffer, extent)?);
-    }
-
-
-
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.
@@ -374,47 +392,97 @@ impl RenderPipeline for Pipeline {
     /// You can assume that the synchronization with e.g. swapchains is already been done.
     /// 
     /// # Arguments
-    /// - `index`: The index of the target image to render to.
+    /// - `current_frame`: The current frame in flight, since there will likely be multiple.
     /// - `wait_semaphores`: One or more Semaphores to wait for before we can start rendering.
     /// - `done_semaphores`: One or more Semaphores to signal when we're done rendering.
     /// - `done_fence`: Fence to signal when rendering is done.
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn error::Error>> {
-        // We only need to submit our already-recorded command buffer
-        match self.device.queues().present.submit(&self.command_buffers[index], wait_semaphores, done_semaphores, Some(done_fence)) {
-            Ok(_)    => Ok(()),
-            Err(err) => Err(Box::new(Error::SubmitError{ err })),
+    /// 
+    /// # Panics
+    /// This function panics if the internal target component has become invalid.
+    fn render(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Error> {
+        // Copy the wait semaphores in a slightly larger list
+        let mut wait_semaphores: Vec<&Rc<Semaphore>> = wait_semaphores.to_owned();
+
+        // Get the next index, which is dependent on the actual Target type of the pipeline's render target
+        let mut index: Option<usize> = None;
+        if let Some(win) = self.ecs.get_component::<components::Window>(self.target) {
+            // Attempt to get the next image
+            match window::next_image(&win, Some(&self.image_ready[current_frame])) {
+                Ok(Some(i)) => { index = Some(i); },
+                Ok(None)    => { return Err(Error::SwapchainRebuildNeeded); },
+                Err(err)    => { return Err(Error::SwapchainNextImageError{ err }); }
+            }
+
+            // If so, then add the semaphore to the list
+            wait_semaphores.push(&self.image_ready[current_frame]);
         }
+        self.indices[current_frame] = index.unwrap_or_else(|| panic!("Target {:?} has neither a Window nor an Image component", self.target));
+
+        // We only need to submit our already-recorded command buffer
+        match self.device.queues().present.submit(&self.command_buffers[self.indices[current_frame]], &wait_semaphores, done_semaphores, Some(done_fence)) {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::SubmitError{ err }),
+        }
+    }
+
+    /// Presents the rendered image to the internal target.
+    /// 
+    /// Note that this doesn't _actually_ present it, but merely schedule it. Thus, this function may be executed before rendering is done.
+    /// 
+    /// # Arguments
+    /// - `current_frame`: The current frame in flight, since there will likely be multiple.
+    /// - `wait_semaphores`: A list of semaphores to wait for before we can start presenting the image.
+    /// 
+    /// # Errors
+    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
+    fn present(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), crate::errors::PipelineError> {
+        // Switch on the type of entity again
+        if let Some(win) = self.ecs.get_component::<components::Window>(self.target) {
+            // Run the present function
+            return match window::present(&win, self.indices[current_frame], wait_semaphores) {
+                Ok(_)    => Ok(()),
+                Err(err) => Err(Error::PresentError{ title: win.title.clone(), err }),
+            }
+        }
+
+        // If we got here, panic.
+        panic!("Target {:?} has neither a Window nor an Image component", self.target);
     }
 
 
 
-    /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
+    /// Rebuild the RenderPipeline's resources to the internal target.
     /// 
-    /// # Arguments
-    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
+    /// This is only useful if the target's dimensions have changed (e.g., the window has been resized).
     /// 
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn error::Error>> {
+    fn rebuild(&mut self) -> Result<(), Error> {
         debug!("Rebuiling TrianglePipeline...");
 
-        // Build the render pass
-        let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format())?;
+        // Get the target component
+        let mut target: MappedRwLockWriteGuard<components::Target> = self.ecs.get_component_mut(self.target).unwrap_or_else(|| panic!("Internal entity {:?} does not have a Target component (anymore)", self.target));
 
-        // Build the pipeline
-        let extent = target.extent();
-        let pipeline: Rc<VkPipeline> = create_pipeline(&self.device, &self.layout, &render_pass, &extent)?;
+        // Refresh the entity size if needed for this type
+        if let Some(mut win) = self.ecs.get_component_mut::<components::Window>(self.target) {
+            // Rebuild the window itself
+            if let Err(err) = window::rebuild(&mut target, &mut win) { return Err(Error::WindowRebuildError{ title: win.title.clone(), err }); }
+        }
 
-        // Create the framebuffers for this target
-        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
+        // Build the render pass and pipeline with the new extent
+        let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format)?;
+        let pipeline: Rc<VkPipeline> = create_pipeline(&self.device, &self.layout, &render_pass, &target.extent)?;
 
-        // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+        // Create the framebuffers for this target, with the new extent
+        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&self.device, &render_pass, &target.views, &target.extent)?;
 
-        // Overwrite some internal shit
+        // Record one command buffer per framebuffer (with the new extent)
+        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &target.extent)?;
+
+        // Overwrite some internal shit to store this all
         self.pipeline        = pipeline;
         self.framebuffers    = framebuffers;
         self.command_buffers = command_buffers;

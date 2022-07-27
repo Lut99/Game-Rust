@@ -18,4 +18,3 @@ game-cfg = { path = "../game-cfg" }
 game-ecs = { path = "../game-ecs" }
 game-utl = { path = "../game-utl" }
 game-vk  = { path = "../game-vk" }
-game-win = { path = "../game-win" }

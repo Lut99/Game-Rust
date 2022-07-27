@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:27:38
  * Last edited:
- *   24 Jul 2022, 12:16:25
+ *   27 Jul 2022, 14:37:05
  * Auto updated?
  *   Yes
  *
@@ -29,7 +29,8 @@ use crate::components::{DrawCallback, ExitCallback, TickCallback};
 /***** LIBRARY *****/
 /// Implements the EventSystem.
 pub struct EventSystem {
-
+    /// The entity component system around which the EventSystem builds.
+    ecs : Rc<Ecs>,
 }
 
 impl EventSystem {
@@ -43,15 +44,17 @@ impl EventSystem {
     /// 
     /// # Errors
     /// This function only errors if we failed to register new components.
-    pub fn new(ecs: &mut Ecs) -> Result<Rc<Self>, Error> {
+    pub fn new(ecs: Rc<Ecs>) -> Result<Rc<Self>, Error> {
+        let mut ecs = ecs;
+
         // Register the components
-        ecs.register::<DrawCallback>();
-        ecs.register::<TickCallback>();
-        ecs.register::<ExitCallback>();
+        Ecs::register::<DrawCallback>(&mut ecs);
+        Ecs::register::<TickCallback>(&mut ecs);
+        Ecs::register::<ExitCallback>(&mut ecs);
 
         // Return a new instance, done
         Ok(Rc::new(Self {
-            
+            ecs,
         }))
     }
 
@@ -67,9 +70,7 @@ impl EventSystem {
     /// 
     /// # Errors
     /// Any error that occurs is printed to stderr using `log`'s `error!()` macro.
-    pub fn game_loop(event_loop: EventLoop<Event>, ecs: Ecs) -> ! {
-        let mut ecs = ecs;
-
+    pub fn game_loop(self, event_loop: EventLoop<Event>) -> ! {
         // Start the EventLoop
         event_loop.run(move |wevent, _, control_flow| {
             // Switch on the Event that happened
@@ -82,8 +83,8 @@ impl EventSystem {
                             *control_flow = ControlFlow::Exit;
 
                             // Handle close events
-                            let exit_callbacks = ecs.list_component_mut::<ExitCallback>();
-                            for c in exit_callbacks {
+                            let mut exit_callbacks = self.ecs.list_component_mut::<ExitCallback>();
+                            for c in exit_callbacks.iter_mut() {
                                 // The function *might* decide to cancel the quit
                                 match (*c.exit_callback)() {
                                     Ok(should_close) => if !should_close { *control_flow = ControlFlow::default(); break; },
@@ -103,15 +104,16 @@ impl EventSystem {
                 },
 
                 WinitEvent::MainEventsCleared => {
-                    // Trigger the 'redraw' winit event
-                    let windows = ecs.list_component_mut::<Window>();
-                    for w in windows {
-                        // The function *might* decide to cancel the quit
-                        if let Err(err) = (*c.draw_callback)() {
-                            error!("{}", err);
-                            *control_flow = ControlFlow::Exit;
-                        }
-                    }
+                    // // Trigger the 'redraw' winit event
+                    // let windows = ecs.list_component_mut::<game_gfx::Window>();
+                    // for w in windows {
+                    //     // The function *might* decide to cancel the quit
+                    //     if let Err(err) = (*c.draw_callback)() {
+                    //         error!("{}", err);
+                    //         *control_flow = ControlFlow::Exit;
+                    //     }
+                    // }
+                    todo!();
                 },
 
                 // Skip the rest (for now)

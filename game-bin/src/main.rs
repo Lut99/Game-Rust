@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   26 Jul 2022, 15:07:30
+ *   27 Jul 2022, 14:37:41
  * Auto updated?
  *   Yes
  *
@@ -24,7 +24,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use game_cfg::Config;
 use game_ecs::Ecs;
 use game_gfx::RenderSystem;
-use game_gfx::spec::{RenderPipelineId, RenderTargetId};
+use game_gfx::spec::RenderPipelineId;
 
 
 /***** ENTRYPOINT *****/
@@ -52,11 +52,14 @@ fn main() {
     let event_loop = EventLoop::new();
 
     // Initialize the entity component system
-    let mut ecs = Ecs::new(2048);
+    let ecs = Ecs::new(2048);
+
+    // // Initialize the event system
+    // let mut event_system = EventSystem::new(ecs.clone());
 
     // Initialize the render system
     let mut render_system = match RenderSystem::new(
-        &mut ecs,
+        ecs.clone(),
         "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)),
         "Game-Rust-Engine", Version::new(0, 1, 0),
         &event_loop,
@@ -91,20 +94,19 @@ fn main() {
 
             | Event::MainEventsCleared => {
                 // Request a redraw of all internal windows
-                render_system.get_target_as::<game_gfx::targets::window::Window>(RenderTargetId::TriangleWindow).request_redraw();
+                let windows = ecs.list_component::<game_gfx::components::Window>();
+                for window in windows.iter() {
+                    window.window.request_redraw();
+                }
             },
 
             | Event::RedrawRequested(window_id) => {
-                // Check if this concerns our Window
-                let window_obj = render_system.get_target_as_mut::<game_gfx::targets::window::Window>(RenderTargetId::TriangleWindow);
-                if window_id == window_obj.id() {
-                    // Render the necessary pipelines
-                    if let Err(err) = render_system.render(RenderPipelineId::Triangle, RenderTargetId::TriangleWindow) {
-                        error!("Rendering Triangle Pipeline failed: {}", err);
-                        if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
+                // Redraw the pipeline
+                if let Err(err) = render_system.render(RenderPipelineId::Triangle) {
+                    error!("Rendering Triangle Pipeline failed: {}", err);
+                    if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
+                    *control_flow = ControlFlow::Exit;
+                    return;
                 }
             },
 

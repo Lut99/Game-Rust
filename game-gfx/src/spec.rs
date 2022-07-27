@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   26 Jul 2022, 15:46:57
+ *   27 Jul 2022, 14:20:36
  * Auto updated?
  *   Yes
  *
@@ -12,37 +12,14 @@
  *   Contains interfaces and other structs for the GFX crate.
 **/
 
-use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 
 use game_utl::traits::AsAny;
-use game_vk::auxillary::enums::ImageFormat;
-use game_vk::auxillary::structs::Extent2D;
-use game_vk::image;
 use game_vk::sync::{Fence, Semaphore};
 
 
 /***** AUXILLARY NEWTYPES *****/
-/// Defines an ID to reference specific render targets with.
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-pub enum RenderTargetId {
-    /// The Window to which the TrianglePipeline renders.
-    TriangleWindow,
-}
-
-impl Display for RenderTargetId {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderTargetId::*;
-        match self {
-            TriangleWindow => write!(f, "TriangleWindow"),
-        }
-    }
-}
-
-
-
 /// Defines an ID to reference specific render pipelines with.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum RenderPipelineId {
@@ -64,110 +41,42 @@ impl Display for RenderPipelineId {
 
 
 
-/***** RENDER TARGET TRAIT *****/
-/// Defines a target that the RenderSystem may render to (like a Window or an Image).
-pub trait RenderTarget: 'static + AsAny {
-    /// Returns the index of a renderable target, i.e., an image::View to render to.
-    /// 
-    /// For non-Swapchain targets, this function will be very simple.
-    /// 
-    /// # Arguments
-    /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
-    /// 
-    /// # Returns
-    /// A new ImageView on success. It could be that stuff like Swapchains are outdated or invalid, in which case 'None' is returned.
-    /// 
-    /// # Errors
-    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Box<dyn Error>>;
-
-    /// Presents this RenderTarget in the way it likes.
-    /// 
-    /// # Arguments
-    /// - `index`: The index of the internal image to present.
-    /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
-    /// 
-    /// # Returns
-    /// Whether or not the Target needs to be rebuild.
-    /// 
-    /// # Errors
-    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Box<dyn Error>>;
-
-
-
-    /// Resize the RenderTarget to the new size.
-    /// 
-    /// # Arguments
-    /// - `new_size`: The new Extent2D of the RenderTarget.
-    /// 
-    /// # Errors
-    /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
-
-
-
-    /// Returns a list of all image views in the RenderTarget.
-    fn views(&self) -> &Vec<Rc<image::View>>;
-
-    /// Returns the ImageFormat of this RenderTarget.
-    fn format(&self) -> ImageFormat;
-
-    /// Returns the extent of this RenderTarget (cached but cheap).
-    fn extent(&self) -> &Extent2D<u32>;
-
-    /// Returns the _actual_ extent of this RenderTarget (more expensive but accurate).
-    fn real_extent(&self) -> Extent2D<u32>;
-}
-
-
-
-
-
 /***** RENDER PIPELINE TRAIT *****/
 /// Defines a Render-capable pipeline.
 pub trait RenderPipeline: 'static + AsAny {
-    /// Creates new framebuffers for the given views.
-    /// 
-    /// This is more than one view because of swapchaining. During rendering, the pipeline is told to which of these views to render.
-    /// 
-    /// # Arguments
-    /// - `views`: The ImageViews for which to create framebuffers.
-    /// - `extent`: The dimensions of the image views. They are all guaranteed to have the same dimensions.
-    /// 
-    /// # Returns
-    /// Nothing, but does create framebuffers internally and any other useful structures (e.g., command buffers).
-    /// 
-    /// # Errors
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn create_framebuffers(&mut self, views: &[image::View], extent: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
-
-
-
     /// Renders a single frame to the given renderable target.
     /// 
-    /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.
-    /// 
-    /// You can assume that the synchronization with e.g. swapchains is already been done.
+    /// This function doesn't perform the actual rendering, but rather schedules it.
     /// 
     /// # Arguments
-    /// - `index`: The index of the target image to render to.
+    /// - `current_frame`: The current frame in flight, since there will likely be multiple.
     /// - `wait_semaphores`: One or more Semaphores to wait for before we can start rendering.
     /// - `done_semaphores`: One or more Semaphores to signal when we're done rendering.
     /// - `done_fence`: Fence to signal when rendering is done.
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn Error>>;
+    fn render(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), crate::errors::PipelineError>;
+
+    /// Presents the rendered image to the internal target.
+    /// 
+    /// Note that this doesn't _actually_ present it, but merely schedule it. Thus, this function may be executed before rendering is done.
+    /// 
+    /// # Arguments
+    /// - `current_frame`: The current frame in flight, since there will likely be multiple.
+    /// - `wait_semaphores`: A list of semaphores to wait for before we can start presenting the image.
+    /// 
+    /// # Errors
+    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
+    fn present(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), crate::errors::PipelineError>;
 
 
 
     /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
     /// 
-    /// # Arguments
-    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
+    /// This is only useful if the target's dimensions have changed (e.g., the window has been resized).
     /// 
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn Error>>;
+    fn rebuild(&mut self) -> Result<(), crate::errors::PipelineError>;
 }

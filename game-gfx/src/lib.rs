@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:00:33
  * Last edited:
- *   25 Jul 2022, 23:23:06
+ *   27 Jul 2022, 13:02:10
  * Auto updated?
  *   Yes
  *
@@ -22,13 +22,15 @@ pub mod errors;
 pub mod spec;
 /// The module that contains ECS definitions.
 pub mod components;
+/// The module that implements the window management functions.
+pub mod window;
 /// The module that implements the main RenderSystem.
 pub mod system;
-/// The module that implements the different render targets.
-pub mod targets;
+// /// The module that implements the different render targets.
+// pub mod targets;
 /// The module that implements the different pipelines.
 pub mod pipelines;
 
 // Bring some components into the general package namespace
 pub use system::{Error, RenderSystem};
-pub use targets::window::{Error as WindowError, Window};
+// pub use targets::window::{Error as WindowError, Window};

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:32:36
  * Last edited:
- *   26 Jul 2022, 15:03:00
+ *   27 Jul 2022, 14:36:15
  * Auto updated?
  *   Yes
  *
@@ -210,6 +210,22 @@ impl<T: Component> ComponentList<T> {
             None => None,
         }
     }
+
+
+
+    /// Returns an iterator for the ComponentList.
+    /// 
+    /// # Returns
+    /// A new iterator for the internal Vector.
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<T> { self.data.iter() }
+
+    /// Returns a (muteable) iterator for the ComponentList.
+    /// 
+    /// # Returns
+    /// A new iterator for the internal Vector.
+    #[inline]
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> { self.data.iter_mut() }
 }
 
 impl<T> ComponentListBase for ComponentList<T>

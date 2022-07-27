@@ -5,7 +5,6 @@ members = [
     "game-vk",
     "game-ecs",
     "game-evt",
-    "game-win",
     "game-gfx",
 
     "game-ins",
