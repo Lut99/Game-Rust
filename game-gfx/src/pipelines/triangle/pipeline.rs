@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   28 Jul 2022, 17:06:45
+ *   28 Jul 2022, 17:42:38
  * Auto updated?
  *   Yes
  *
@@ -493,4 +493,10 @@ impl RenderPipeline for Pipeline {
         // Done
         Ok(())
     }
+
+
+
+    /// Returns the internal Target's Entity ID.
+    #[inline]
+    fn target(&self) -> Entity { self.target }
 }

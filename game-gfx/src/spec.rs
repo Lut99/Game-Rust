@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:01:17
  * Last edited:
- *   27 Jul 2022, 14:20:36
+ *   28 Jul 2022, 17:42:19
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 
+use game_ecs::Entity;
 use game_utl::traits::AsAny;
 use game_vk::sync::{Fence, Semaphore};
 
@@ -79,4 +80,9 @@ pub trait RenderPipeline: 'static + AsAny {
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
     fn rebuild(&mut self) -> Result<(), crate::errors::PipelineError>;
+
+
+
+    /// Returns the internal Target's Entity ID.
+    fn target(&self) -> Entity;
 }
