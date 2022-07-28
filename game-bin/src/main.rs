@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   27 Jul 2022, 14:37:41
+ *   28 Jul 2022, 17:07:35
  * Auto updated?
  *   Yes
  *
@@ -12,6 +12,7 @@
  *   Entrypoint to the game executable.
 **/
 
+use std::cell::Ref;
 use std::fs::File;
 use std::str::FromStr;
 
@@ -94,13 +95,14 @@ fn main() {
 
             | Event::MainEventsCleared => {
                 // Request a redraw of all internal windows
+                let ecs: Ref<Ecs> = ecs.borrow();
                 let windows = ecs.list_component::<game_gfx::components::Window>();
                 for window in windows.iter() {
                     window.window.request_redraw();
                 }
             },
 
-            | Event::RedrawRequested(window_id) => {
+            | Event::RedrawRequested(_) => {
                 // Redraw the pipeline
                 if let Err(err) = render_system.render(RenderPipelineId::Triangle) {
                     error!("Rendering Triangle Pipeline failed: {}", err);

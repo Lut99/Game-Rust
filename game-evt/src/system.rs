@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:27:38
  * Last edited:
- *   27 Jul 2022, 14:37:05
+ *   28 Jul 2022, 17:09:04
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
  *   computations, updates or render passes.
 **/
 
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use log::error;
@@ -30,7 +31,7 @@ use crate::components::{DrawCallback, ExitCallback, TickCallback};
 /// Implements the EventSystem.
 pub struct EventSystem {
     /// The entity component system around which the EventSystem builds.
-    ecs : Rc<Ecs>,
+    ecs : Rc<RefCell<Ecs>>,
 }
 
 impl EventSystem {
@@ -44,13 +45,11 @@ impl EventSystem {
     /// 
     /// # Errors
     /// This function only errors if we failed to register new components.
-    pub fn new(ecs: Rc<Ecs>) -> Result<Rc<Self>, Error> {
-        let mut ecs = ecs;
-
+    pub fn new(ecs: Rc<RefCell<Ecs>>) -> Result<Rc<Self>, Error> {
         // Register the components
-        Ecs::register::<DrawCallback>(&mut ecs);
-        Ecs::register::<TickCallback>(&mut ecs);
-        Ecs::register::<ExitCallback>(&mut ecs);
+        Ecs::register::<DrawCallback>(&ecs);
+        Ecs::register::<TickCallback>(&ecs);
+        Ecs::register::<ExitCallback>(&ecs);
 
         // Return a new instance, done
         Ok(Rc::new(Self {
@@ -83,7 +82,8 @@ impl EventSystem {
                             *control_flow = ControlFlow::Exit;
 
                             // Handle close events
-                            let mut exit_callbacks = self.ecs.list_component_mut::<ExitCallback>();
+                            let ecs: RefMut<Ecs> = self.ecs.borrow_mut();
+                            let mut exit_callbacks = ecs.list_component_mut::<ExitCallback>();
                             for c in exit_callbacks.iter_mut() {
                                 // The function *might* decide to cancel the quit
                                 match (*c.exit_callback)() {

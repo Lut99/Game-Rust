@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:26
  * Last edited:
- *   26 Jul 2022, 15:09:52
+ *   28 Jul 2022, 17:03:54
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
 **/
 
 use std::any::TypeId;
+use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -44,13 +45,13 @@ impl Ecs {
     ///  * `initial_capacity`: The initial size of the internal vector (might be used to optimize)
     /// 
     /// # Returns
-    /// A new instance of the Ecs, already wrapped in an Rc.
-    pub fn new(initial_capacity: usize) -> Rc<Self> {
+    /// A new instance of the Ecs, already wrapped in an Rc + RefCell.
+    pub fn new(initial_capacity: usize) -> Rc<RefCell<Self>> {
         debug!("Initialized Entity Component System v{}", env!("CARGO_PKG_VERSION"));
-        Rc::new(Ecs {
+        Rc::new(RefCell::new(Ecs {
             entities   : RwLock::new((0, HashSet::with_capacity(initial_capacity))),
             components : HashMap::with_capacity(16),
-        })
+        }))
     }
 
 
@@ -62,9 +63,9 @@ impl Ecs {
     /// 
     /// # Arguments
     /// - `this`: The instance of self to which we registered, wrapped in an Rc.
-    pub fn register<T: 'static + Component>(this: &mut Rc<Self>) {
+    pub fn register<T: 'static + Component>(this: &Rc<RefCell<Self>>) {
         // Get the muteable reference
-        let mthis: &mut Self = Rc::get_mut(this).expect("Could not get muteable ECS to register new component");
+        let mut mthis: RefMut<Self> = this.borrow_mut();
 
         // Insert the new component type if it does not exist yet
         if mthis.components.contains_key(&ComponentList::<T>::id()) { panic!("A component with ID {:?} already exists", ComponentList::<T>::id()); }

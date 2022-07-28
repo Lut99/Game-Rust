@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:02
  * Last edited:
- *   26 Jul 2022, 14:44:34
+ *   28 Jul 2022, 17:01:37
  * Auto updated?
  *   Yes
  *
@@ -20,8 +20,8 @@ pub mod list;
 /// The module for the base system itself.
 pub mod system;
 
-// Bring some components into the general package namespace
-pub use spec::Entity;
+// Bring some components into the general package namespace (possibly by aliasing them)
+pub use spec::{Component, Entity};
 pub use list::ComponentList;
 pub use system::Ecs;
 

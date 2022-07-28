@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   27 Jul 2022, 14:25:10
+ *   28 Jul 2022, 17:06:45
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
  *   screen.
 **/
 
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
@@ -274,7 +275,7 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, 
 /// The Triangle Pipeline, which implements a simple pipeline that only renders a hardcoded triangle to the screen.
 pub struct Pipeline {
     /// The ECS we use to interface with entities.
-    ecs    : Rc<Ecs>,
+    ecs    : Rc<RefCell<Ecs>>,
     /// The ID of the Target for this Pipeline.
     target : Entity,
 
@@ -321,7 +322,7 @@ impl Pipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(ecs: Rc<Ecs>, device: Rc<Device>, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>, target: Entity, frames_in_flight: usize) -> Result<Self, Error> {
+    pub fn new(ecs: Rc<RefCell<Ecs>>, device: Rc<Device>, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>, target: Entity, frames_in_flight: usize) -> Result<Self, Error> {
         // Create all the necessary structs
         let layout          : Rc<PipelineLayout>;
         let render_pass     : Rc<RenderPass>;
@@ -331,6 +332,7 @@ impl Pipeline {
         let command_buffers : Vec<Rc<CommandBuffer>>;
         {
             // Get the target information
+            let ecs: Ref<Ecs> = ecs.borrow();
             let starget: MappedRwLockReadGuard<components::Target> = ecs.get_component(target).unwrap_or_else(|| panic!("Given entity {:?} does not have a Target component", target));
 
             // Build the pipeline layout
@@ -408,7 +410,7 @@ impl RenderPipeline for Pipeline {
 
         // Get the next index, which is dependent on the actual Target type of the pipeline's render target
         let mut index: Option<usize> = None;
-        if let Some(win) = self.ecs.get_component::<components::Window>(self.target) {
+        if let Some(win) = self.ecs.borrow().get_component::<components::Window>(self.target) {
             // Attempt to get the next image
             match window::next_image(&win, Some(&self.image_ready[current_frame])) {
                 Ok(Some(i)) => { index = Some(i); },
@@ -440,7 +442,7 @@ impl RenderPipeline for Pipeline {
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
     fn present(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), crate::errors::PipelineError> {
         // Switch on the type of entity again
-        if let Some(win) = self.ecs.get_component::<components::Window>(self.target) {
+        if let Some(win) = self.ecs.borrow().get_component::<components::Window>(self.target) {
             // Run the present function
             return match window::present(&win, self.indices[current_frame], wait_semaphores) {
                 Ok(_)    => Ok(()),
@@ -464,10 +466,11 @@ impl RenderPipeline for Pipeline {
         debug!("Rebuiling TrianglePipeline...");
 
         // Get the target component
-        let mut target: MappedRwLockWriteGuard<components::Target> = self.ecs.get_component_mut(self.target).unwrap_or_else(|| panic!("Internal entity {:?} does not have a Target component (anymore)", self.target));
+        let ecs: Ref<Ecs> = self.ecs.borrow();
+        let mut target: MappedRwLockWriteGuard<components::Target> = ecs.get_component_mut(self.target).unwrap_or_else(|| panic!("Internal entity {:?} does not have a Target component (anymore)", self.target));
 
         // Refresh the entity size if needed for this type
-        if let Some(mut win) = self.ecs.get_component_mut::<components::Window>(self.target) {
+        if let Some(mut win) = ecs.get_component_mut::<components::Window>(self.target) {
             // Rebuild the window itself
             if let Err(err) = window::rebuild(&mut target, &mut win) { return Err(Error::WindowRebuildError{ title: win.title.clone(), err }); }
         }

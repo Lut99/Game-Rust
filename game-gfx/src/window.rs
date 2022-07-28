@@ -4,7 +4,7 @@
  * Created:
  *   27 Jul 2022, 12:54:07
  * Last edited:
- *   27 Jul 2022, 14:25:42
+ *   28 Jul 2022, 17:05:22
  * Auto updated?
  *   Yes
  *
@@ -12,6 +12,7 @@
  *   Contains functions to manage the Window entity.
 **/
 
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
 use log::debug;
@@ -95,7 +96,7 @@ fn create_views(device: &Rc<Device>, swapchain: &mut Rc<Swapchain>) -> Result<Ve
 /// 
 /// # Errors
 /// This function may error if we failed to create a new Window, or associated Vulkan resources (such as swapchains etc).
-pub fn create<S: Into<String>>(ecs: &Rc<Ecs>, device: Rc<Device>, event_loop: &EventLoop<()>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
+pub fn create<S: Into<String>>(ecs: &Rc<RefCell<Ecs>>, device: Rc<Device>, event_loop: &EventLoop<()>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
     // Convert String-like into String
     let title: String = title.into();
 
@@ -177,6 +178,7 @@ pub fn create<S: Into<String>>(ecs: &Rc<Ecs>, device: Rc<Device>, event_loop: &E
     let views: Vec<Rc<image::View>> = create_views(&device, &mut swapchain)?;
 
     // Wrap it in a Window and associated Target component and store it in the ECS
+    let ecs: Ref<Ecs> = ecs.borrow();
     let window = ecs.add_entity();
     ecs.add_component(window, components::Window {
         device,

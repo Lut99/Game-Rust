@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   27 Jul 2022, 14:26:26
+ *   28 Jul 2022, 17:10:19
  * Auto updated?
  *   Yes
  *
@@ -13,6 +13,7 @@
 **/
 
 use std::any::type_name;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
@@ -66,7 +67,7 @@ lazy_static!{
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
     /// The Entity Component System where the RenderSystem stores some of its data.
-    _ecs : Rc<Ecs>,
+    _ecs : Rc<RefCell<Ecs>>,
 
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
@@ -120,7 +121,7 @@ impl RenderSystem {
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
-        ecs: Rc<Ecs>,
+        ecs: Rc<RefCell<Ecs>>,
         name: S1, version: Version,
         engine: S2, engine_version: Version,
         event_loop: &EventLoop<()>,
@@ -128,13 +129,9 @@ impl RenderSystem {
         targets_in_flight: usize,
         debug: bool
     ) -> Result<Self, Error> {
-        let mut ecs = ecs;
-
-
-
         // Register components
-        Ecs::register::<components::Window>(&mut ecs);
-        Ecs::register::<components::Target>(&mut ecs);
+        Ecs::register::<components::Window>(&ecs);
+        Ecs::register::<components::Target>(&ecs);
 
 
 
@@ -266,6 +263,7 @@ impl RenderSystem {
 
         // We're done processing this frame; move to the next
         self.current_frame += 1;
+        if self.current_frame >= self.render_ready.len() { self.current_frame = 0; }
         Ok(())
     }
 
