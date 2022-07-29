@@ -2,27 +2,24 @@
  *   by Lut99
  *
  * Created:
- *   25 Jul 2022, 23:21:16
+ *   29 Jul 2022, 12:44:21
  * Last edited:
- *   27 Jul 2022, 13:58:35
+ *   29 Jul 2022, 12:45:40
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Defines the ECS components used by the RenderSystem.
+ *   Contains the ECS component specifications for this crate.
 **/
 
 use std::rc::Rc;
 
 use winit::window::Window as WinitWindow;
 
-use game_ecs::spec::Component;
-use game_vk::auxillary::enums::ImageFormat;
-use game_vk::auxillary::structs::Extent2D;
+use game_ecs::Component;
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
-use game_vk::image;
 
 
 /***** LIBRARY *****/
@@ -42,17 +39,3 @@ pub struct Window {
 }
 
 impl Component for Window {}
-
-
-
-/// Defines a Target, which is an entity which may be rendered to.
-pub struct Target {
-    /// The ImageViews of this RenderTarget.
-    pub views  : Vec<Rc<image::View>>,
-    /// The format for these views.
-    pub format : ImageFormat,
-    /// The size (extent) of these views.
-    pub extent : Extent2D<u32>,
-}
-
-impl Component for Target {}

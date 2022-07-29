@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:25:39
  * Last edited:
- *   28 Jul 2022, 17:58:36
+ *   29 Jul 2022, 13:14:19
  * Auto updated?
  *   Yes
  *
@@ -13,9 +13,12 @@
  *   mostly encompasses (general) events.
 **/
 
+use std::cell::Ref;
 use std::error::Error;
 
-use game_ecs::{Component, Entity};
+use winit::window::WindowId;
+
+use game_ecs::{Component, Ecs, Entity};
 
 use crate::spec::Event;
 
@@ -24,17 +27,20 @@ use crate::spec::Event;
 /// Defines a Draw callback, which is called whenever the window needs redrawing.
 pub struct DrawCallback {
     /// The Entity ID of this callback.
-    pub this : Entity,
+    pub this      : Entity,
+    /// The Window ID that this callback represents. If None, then it's not a Window.
+    pub window_id : Option<WindowId>,
 
     /// The callback to call when a target needs to be redrawn.
     /// 
     /// # Arguments
     /// - `event`: The Event type that was called (is always `Event::Draw` for this callback). It contains the target to which should be drawn.
+    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
     /// - `this`: The ID of the entity for which the callback was called.
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub draw_callback: Box<dyn FnMut(Event, Entity) -> Result<(), Box<dyn Error>>>,
+    pub draw_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
 }
 
 impl Component for DrawCallback {}
@@ -50,11 +56,12 @@ pub struct TickCallback {
     /// 
     /// # Arguments
     /// - `event`: The Event type that was called (is always `Event::Tick` for this callback).
+    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
     /// - `this`: The ID of the entity for which the callback was called.
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub tick_callback: Box<dyn FnMut(Event, Entity) -> Result<(), Box<dyn Error>>>,
+    pub tick_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
 }
 
 impl Component for TickCallback {}
@@ -68,11 +75,12 @@ pub struct GameLoopCompleteCallback {
     /// 
     /// # Arguments
     /// - `event`: The Event type that was called (is always `Event::GameLoopComplete` for this callback).
+    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
     /// - `this`: The ID of the entity for which the callback was called.
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub loop_complete_callback: Box<dyn FnMut(Event, Entity) -> Result<(), Box<dyn Error>>>,
+    pub loop_complete_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
 }
 
 impl Component for GameLoopCompleteCallback {}
@@ -88,6 +96,7 @@ pub struct ExitCallback {
     /// 
     /// # Arguments
     /// - `event`: The Event type that was called (is always `Event::Exit` for this callback).
+    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
     /// - `this`: The ID of the entity for which the callback was called.
     /// 
     /// # Returns
@@ -95,7 +104,7 @@ pub struct ExitCallback {
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub exit_callback: Box<dyn FnMut(Event, Entity) -> Result<bool, Box<dyn Error>>>,
+    pub exit_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<bool, Box<dyn Error>>>,
 }
 
 impl Component for ExitCallback {}

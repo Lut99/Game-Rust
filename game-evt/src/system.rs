@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:27:38
  * Last edited:
- *   28 Jul 2022, 17:59:56
+ *   29 Jul 2022, 13:39:37
  * Auto updated?
  *   Yes
  *
@@ -16,12 +16,11 @@
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
-use log::error;
+use log::{error, info};
 use winit::event::{Event as WinitEvent, WindowEvent as WinitWindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use game_ecs::{Ecs, Entity};
-use game_ecs::list::ComponentListBase;
+use game_ecs::Ecs;
 
 pub use crate::errors::EventError as Error;
 use crate::spec::Event;
@@ -32,7 +31,9 @@ use crate::components::{DrawCallback, ExitCallback, GameLoopCompleteCallback, Ti
 /// Implements the EventSystem.
 pub struct EventSystem {
     /// The entity component system around which the EventSystem builds.
-    ecs : Rc<RefCell<Ecs>>,
+    ecs        : Rc<RefCell<Ecs>>,
+    /// The EventLoop which we use to receive OS and Window events.
+    event_loop : EventLoop<Event>,
 }
 
 impl EventSystem {
@@ -43,18 +44,18 @@ impl EventSystem {
     /// 
     /// # Returns
     /// A new instance of an EventSystem, already wrapped in a reference-counting pointer.
-    /// 
-    /// # Errors
-    /// This function only errors if we failed to register new components.
-    pub fn new(ecs: Rc<RefCell<Ecs>>) -> Result<Rc<Self>, Error> {
+    pub fn new(ecs: Rc<RefCell<Ecs>>) -> Rc<RefCell<Self>> {
         // Register the components
         Ecs::register::<DrawCallback>(&ecs);
         Ecs::register::<TickCallback>(&ecs);
+        Ecs::register::<GameLoopCompleteCallback>(&ecs);
         Ecs::register::<ExitCallback>(&ecs);
 
         // Return a new instance, done
-        Ok(Rc::new(Self {
+        info!("Initialize EventSystem v{}", env!("CARGO_PKG_VERSION"));
+        Rc::new(RefCell::new(Self {
             ecs,
+            event_loop : EventLoop::with_user_event(),
         }))
     }
 
@@ -70,9 +71,16 @@ impl EventSystem {
     /// 
     /// # Errors
     /// Any error that occurs is printed to stderr using `log`'s `error!()` macro.
-    pub fn game_loop(self, event_loop: EventLoop<Event>) -> ! {
+    pub fn game_loop(this: Rc<RefCell<Self>>) -> ! {
+        // Take the internal EventLoop
+        let mut event_loop: EventLoop<Event> = EventLoop::with_user_event();
+        std::mem::swap(&mut event_loop, &mut this.borrow_mut().event_loop);
+
         // Start the EventLoop
         event_loop.run(move |wevent, _, control_flow| {
+            // Read-only borrow the EventSystem
+            let this: Ref<Self> = this.borrow();
+
             // Switch on the Event that happened
             let mut exit: Option<Event> = None;
             match wevent {
@@ -91,11 +99,11 @@ impl EventSystem {
 
                 WinitEvent::MainEventsCleared => {
                     // Trigger the 'MainEventsCleared' event
-                    let ecs: Ref<Ecs> = self.ecs.borrow();
+                    let ecs: Ref<Ecs> = this.ecs.borrow();
                     let mut callbacks = ecs.list_component_mut::<GameLoopCompleteCallback>();
                     for c in callbacks.iter_mut() {
                         // Perform the call
-                        if let Err(err) = (*c.loop_complete_callback)(Event::GameLoopComplete, c.this) {
+                        if let Err(err) = (*c.loop_complete_callback)(Event::GameLoopComplete, &ecs, c.this) {
                             // Make sure the error loop begins
                             exit = Some(Event::Exit(Some(err)));
                             break;
@@ -105,11 +113,17 @@ impl EventSystem {
 
                 WinitEvent::RedrawRequested(window) => {
                     // Trigger the 'Draw' event for this target
-                    let ecs: Ref<Ecs> = self.ecs.borrow();
+                    let ecs: Ref<Ecs> = this.ecs.borrow();
                     let mut callbacks = ecs.list_component_mut::<DrawCallback>();
                     for c in callbacks.iter_mut() {
+                        // Skip if not á Window or not this Window
+                        match c.window_id {
+                            Some(window_id) => { if window_id != window { continue; } },
+                            None            => { continue; }
+                        }
+
                         // Perform the call
-                        if let Err(err) = (*c.draw_callback)(Event::Draw, c.this) {
+                        if let Err(err) = (*c.draw_callback)(Event::Draw, &ecs, c.this) {
                             // Make sure the error loop begins
                             exit = Some(Event::Exit(Some(err)));
                             break;
@@ -124,7 +138,7 @@ impl EventSystem {
             // If the ControlFlow is exiting, call the callbacks
             if let Some(Event::Exit(mut error)) = exit {
                 // Get the exit callbacks
-                let ecs: Ref<Ecs> = self.ecs.borrow();
+                let ecs: Ref<Ecs> = this.ecs.borrow();
                 let mut exit_callbacks = ecs.list_component_mut::<ExitCallback>();
 
                 // If Exit is an Error, print that first
@@ -136,7 +150,7 @@ impl EventSystem {
                 *control_flow = ControlFlow::Exit;
                 for c in exit_callbacks.iter_mut() {
                     // The function *might* decide to cancel the quit
-                    match (*c.exit_callback)(Event::Exit(None), c.this) {
+                    match (*c.exit_callback)(Event::Exit(None), &ecs, c.this) {
                         // If told to stop quitting, then see if we need to stop
                         Ok(should_close) => if !should_close {
                             // Only stop if no error occurred (otherwise, we still quit but forego to call the other callbacks)
@@ -155,4 +169,10 @@ impl EventSystem {
             // The result of the exit callbacks now determine control_flow
         })
     }
+
+
+
+    /// Returns the internal EventLoop.
+    #[inline]
+    pub fn event_loop(&self) -> &EventLoop<Event> { &self.event_loop }
 }

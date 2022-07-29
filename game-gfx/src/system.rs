@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 18:07:31
  * Last edited:
- *   28 Jul 2022, 17:10:19
+ *   29 Jul 2022, 16:55:45
  * Auto updated?
  *   Yes
  *
@@ -13,17 +13,19 @@
 **/
 
 use std::any::type_name;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 use log::debug;
+use parking_lot::MappedRwLockReadGuard;
 use semver::Version;
-use winit::event_loop::EventLoop;
 
 use game_cfg::spec::WindowMode;
 use game_ecs::{Ecs, Entity};
+use game_ecs::list::ComponentListBase;
+use game_evt::{DrawCallback, EventSystem};
 use game_vk::auxillary::enums::DeviceExtension;
 use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
 use game_vk::instance::Instance;
@@ -31,12 +33,11 @@ use game_vk::device::Device;
 use game_vk::pools::command::Pool as CommandPool;
 use game_vk::pools::memory::MetaPool;
 use game_vk::sync::{Fence, Semaphore};
+use game_win::{Window, WindowSystem};
 
 pub use crate::errors::RenderSystemError as Error;
 use crate::errors::PipelineError;
 use crate::spec::{RenderPipeline, RenderPipelineId};
-use crate::components;
-use crate::window;
 use crate::pipelines;
 
 
@@ -67,7 +68,7 @@ lazy_static!{
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
     /// The Entity Component System where the RenderSystem stores some of its data.
-    _ecs : Rc<RefCell<Ecs>>,
+    ecs : Rc<RefCell<Ecs>>,
 
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
@@ -80,9 +81,11 @@ pub struct RenderSystem {
     _command_pool : Arc<RwLock<CommandPool>>,
 
     /// The map of render pipelines which we use to render to.
-    pipelines : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
+    pipelines      : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
+    /// The WindowSystem we use to manage windows.
+    _window_system : Rc<WindowSystem>,
     /// Set of windows known to the RenderSystem.
-    _windows  : Vec<Entity>,
+    windows        : Vec<Entity>,
 
     /// The Semaphores that signal when a frame is done being rendered (one per image that is in-flight).
     render_ready : Vec<Rc<Semaphore>>,
@@ -105,13 +108,14 @@ impl RenderSystem {
     /// 
     /// # Arguments
     /// - `ecs`: The ECS to register new components with.
+    /// - `event_system`: The EventSystem where we can attach callbacks to.
     /// - `name`: The name of the application to register in the Vulkan driver.
     /// - `version`: The version of the application to register in the Vulkan driver.
     /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
     /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
-    /// - `event_loop`: The EventLoop to use for triggering Window events and such.
     /// - `gpu`: The index of the GPU to use for rendering.
-    /// - `window_mode`: The WindowMode of the Window.
+    /// - `window_system`: The WindowSystem to get new Windows from.
+    /// - `window_mode`: The WindowMode of the new Window.
     /// - `targets_in_flight`: The maximum number of frames that are in-flight while rendering.
     /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
@@ -122,16 +126,17 @@ impl RenderSystem {
     /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
         ecs: Rc<RefCell<Ecs>>,
+        event_system: Rc<RefCell<EventSystem>>,
         name: S1, version: Version,
         engine: S2, engine_version: Version,
-        event_loop: &EventLoop<()>,
-        gpu: usize, window_mode: WindowMode,
+        gpu: usize,
+        window_system: Rc<WindowSystem>,
+        window_mode: WindowMode,
         targets_in_flight: usize,
         debug: bool
     ) -> Result<Self, Error> {
-        // Register components
-        Ecs::register::<components::Window>(&ecs);
-        Ecs::register::<components::Target>(&ecs);
+        // Borrow the event system
+        let es: Ref<EventSystem> = event_system.borrow();
 
 
 
@@ -166,7 +171,7 @@ impl RenderSystem {
 
 
         // Create a Window
-        let win = match window::create(&ecs, device.clone(), event_loop, "Game-Rust", window_mode) {
+        let win = match window_system.create(device.clone(), es.event_loop(), "Game-Rust", window_mode) {
             Ok(win)  => win,
             Err(err) => { return Err(Error::WindowCreateError{ title: "Game-Rust".into(), err }); } 
         };
@@ -205,19 +210,78 @@ impl RenderSystem {
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            _ecs : ecs,
+            ecs,
 
             _instance     : instance,
             device,
             _command_pool : command_pool,
 
-            _windows : vec![ win ],
             pipelines,
+            _window_system : window_system,
+            windows        : vec![ win ],
 
             render_ready,
             in_flight,
             current_frame : 0,
         })
+    }
+
+    /// Registers callbacks to entities belonging to the RenderSystem.
+    /// 
+    /// These are mostly render callbacks.
+    pub fn register(&'static mut self) {
+        // Borrow the ECS
+        let ecs: Ref<Ecs> = self.ecs.borrow();
+
+        // Add the render callbacks for all known pipelines
+        for (id, pipeline) in &mut self.pipelines {
+            // Skip if it does not render to a Window
+            let w: Entity = pipeline.target();
+            let window: MappedRwLockReadGuard<Window> = match ecs.get_component(w) {
+                Some(window) => window,
+                None         => { continue; }
+            };
+
+            // Add it as a component
+            let p = ecs.add_entity();
+            ecs.add_component(p, DrawCallback {
+                this      : p,
+                window_id : Some(window.window.id()),
+
+                draw_callback : Box::new(|event, ecs, this| {
+                    loop {
+                        // If the next fence is not yet available, early quit
+                        match self.in_flight[self.current_frame].poll() {
+                            Ok(res)  => if !res { return Ok(()); },
+                            Err(err) => { return Err(Box::new(Error::FencePollError{ err })) }
+                        };
+
+                        // Tell the pipeline to render
+                        match pipeline.render(self.current_frame, &[], &[&self.render_ready[self.current_frame]], &self.in_flight[self.current_frame]) {
+                            Ok(_)                                      => {},
+                            Err(PipelineError::SwapchainRebuildNeeded) => {
+                                // Hit the pipeline function
+                                if let Err(err) = pipeline.rebuild() { return Err(Box::new(Error::PipelineRebuildError{ id: RenderPipelineId::Triangle, err })); }
+
+                                // Simply go through it again to do the proper render call
+                                continue;
+                            },
+                            Err(err) => { return Err(Box::new(Error::RenderError{ err })); }
+                        }
+
+                        // If rendering has been scheduled successfully, schedule it for presentation
+                        if let Err(err) = pipeline.present(self.current_frame, &[&self.render_ready[self.current_frame]]) {
+                            return Err(Box::new(Error::PresentError{ err }));
+                        }
+
+                        // We're done processing this frame; move to the next
+                        self.current_frame += 1;
+                        if self.current_frame >= self.render_ready.len() { self.current_frame = 0; }
+                        break Ok(());
+                    }
+                })
+            });
+        }
     }
 
 

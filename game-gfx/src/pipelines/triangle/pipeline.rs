@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 16:56:20
  * Last edited:
- *   28 Jul 2022, 17:42:38
+ *   29 Jul 2022, 13:01:06
  * Auto updated?
  *   Yes
  *
@@ -21,6 +21,7 @@ use log::debug;
 use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard};
 
 use game_ecs::{Ecs, Entity};
+use game_spc::components::Target;
 use game_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
 use game_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
 use game_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
@@ -35,12 +36,11 @@ use game_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 use game_vk::image;
 use game_vk::framebuffer::Framebuffer;
 use game_vk::sync::{Fence, Semaphore};
+use game_win::{Window, WindowSystem};
 
 pub use crate::errors::PipelineError as Error;
 use crate::pipelines::triangle::{Shaders, Vertex};
 use crate::spec::RenderPipeline;
-use crate::components;
-use crate::window;
 
 
 /***** CONSTANTS *****/
@@ -333,7 +333,7 @@ impl Pipeline {
         {
             // Get the target information
             let ecs: Ref<Ecs> = ecs.borrow();
-            let starget: MappedRwLockReadGuard<components::Target> = ecs.get_component(target).unwrap_or_else(|| panic!("Given entity {:?} does not have a Target component", target));
+            let starget: MappedRwLockReadGuard<Target> = ecs.get_component(target).unwrap_or_else(|| panic!("Given entity {:?} does not have a Target component", target));
 
             // Build the pipeline layout
             layout = match PipelineLayout::new(device.clone(), &[]) {
@@ -410,9 +410,9 @@ impl RenderPipeline for Pipeline {
 
         // Get the next index, which is dependent on the actual Target type of the pipeline's render target
         let mut index: Option<usize> = None;
-        if let Some(win) = self.ecs.borrow().get_component::<components::Window>(self.target) {
+        if let Some(win) = self.ecs.borrow().get_component::<Window>(self.target) {
             // Attempt to get the next image
-            match window::next_image(&win, Some(&self.image_ready[current_frame])) {
+            match WindowSystem::next_image(&win, Some(&self.image_ready[current_frame])) {
                 Ok(Some(i)) => { index = Some(i); },
                 Ok(None)    => { return Err(Error::SwapchainRebuildNeeded); },
                 Err(err)    => { return Err(Error::SwapchainNextImageError{ err }); }
@@ -442,9 +442,9 @@ impl RenderPipeline for Pipeline {
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
     fn present(&mut self, current_frame: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<(), crate::errors::PipelineError> {
         // Switch on the type of entity again
-        if let Some(win) = self.ecs.borrow().get_component::<components::Window>(self.target) {
+        if let Some(win) = self.ecs.borrow().get_component::<Window>(self.target) {
             // Run the present function
-            return match window::present(&win, self.indices[current_frame], wait_semaphores) {
+            return match WindowSystem::present(&win, self.indices[current_frame], wait_semaphores) {
                 Ok(_)    => Ok(()),
                 Err(err) => Err(Error::PresentError{ title: win.title.clone(), err }),
             }
@@ -467,12 +467,12 @@ impl RenderPipeline for Pipeline {
 
         // Get the target component
         let ecs: Ref<Ecs> = self.ecs.borrow();
-        let mut target: MappedRwLockWriteGuard<components::Target> = ecs.get_component_mut(self.target).unwrap_or_else(|| panic!("Internal entity {:?} does not have a Target component (anymore)", self.target));
+        let mut target: MappedRwLockWriteGuard<Target> = ecs.get_component_mut(self.target).unwrap_or_else(|| panic!("Internal entity {:?} does not have a Target component (anymore)", self.target));
 
         // Refresh the entity size if needed for this type
-        if let Some(mut win) = ecs.get_component_mut::<components::Window>(self.target) {
+        if let Some(mut win) = ecs.get_component_mut::<Window>(self.target) {
             // Rebuild the window itself
-            if let Err(err) = window::rebuild(&mut target, &mut win) { return Err(Error::WindowRebuildError{ title: win.title.clone(), err }); }
+            if let Err(err) = WindowSystem::rebuild(&mut target, &mut win) { return Err(Error::WindowRebuildError{ title: win.title.clone(), err }); }
         }
 
         // Build the render pass and pipeline with the new extent

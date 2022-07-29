@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:42:16
  * Last edited:
- *   28 Jul 2022, 18:00:26
+ *   29 Jul 2022, 13:11:32
  * Auto updated?
  *   Yes
  *
@@ -13,8 +13,6 @@
 **/
 
 use std::error::Error;
-
-use winit::window::WindowId;
 
 
 /***** LIBRARY *****/

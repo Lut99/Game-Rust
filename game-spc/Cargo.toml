@@ -1,0 +1,9 @@
+[package]
+name = "game-spc"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+game-ecs = { path = "../game-ecs" }
+game-vk  = { path = "../game-vk" }

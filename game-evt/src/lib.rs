@@ -4,7 +4,7 @@
  * Created:
  *   18 Jul 2022, 18:29:26
  * Last edited:
- *   18 Jul 2022, 18:42:57
+ *   29 Jul 2022, 13:16:11
  * Auto updated?
  *   Yes
  *
@@ -21,3 +21,9 @@ pub mod spec;
 pub mod components;
 /// Contains the system itself.
 pub mod system;
+
+
+// Bring some stuff into the crate namespace
+pub use spec::Event;
+pub use components::*;
+pub use system::{Error, EventSystem};

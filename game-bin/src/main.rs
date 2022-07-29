@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 12:11:47
  * Last edited:
- *   28 Jul 2022, 17:07:35
+ *   29 Jul 2022, 13:44:15
  * Auto updated?
  *   Yes
  *
@@ -12,20 +12,18 @@
  *   Entrypoint to the game executable.
 **/
 
-use std::cell::Ref;
 use std::fs::File;
 use std::str::FromStr;
 
 use log::{error, info, LevelFilter};
 use semver::Version;
 use simplelog::{ColorChoice, CombinedLogger, TerminalMode, TermLogger, WriteLogger};
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::Config;
 use game_ecs::Ecs;
+use game_evt::EventSystem;
 use game_gfx::RenderSystem;
-use game_gfx::spec::RenderPipelineId;
+use game_win::WindowSystem;
 
 
 /***** ENTRYPOINT *****/
@@ -49,22 +47,24 @@ fn main() {
 
     info!("Initializing Game-Rust {}", env!("CARGO_PKG_VERSION"));
 
-    // Initialize the event loop
-    let event_loop = EventLoop::new();
-
     // Initialize the entity component system
     let ecs = Ecs::new(2048);
+    game_spc::register_components(&ecs);
 
-    // // Initialize the event system
-    // let mut event_system = EventSystem::new(ecs.clone());
+    // Initialize the event system
+    let event_system = EventSystem::new(ecs.clone());
+
+    // Initialize the window system
+    let window_system = WindowSystem::new(ecs.clone());
 
     // Initialize the render system
-    let mut render_system = match RenderSystem::new(
+    let render_system = match RenderSystem::new(
         ecs.clone(),
+        event_system.clone(),
         "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)),
         "Game-Rust-Engine", Version::new(0, 1, 0),
-        &event_loop,
         config.gpu,
+        window_system.clone(),
         config.window_mode,
         2,
         config.verbosity >= LevelFilter::Debug
@@ -77,48 +77,57 @@ fn main() {
 
     // Enter the main loop
     info!("Initialization complete; entering game loop...");
-    event_loop.run(move |event, _, control_flow| {
-        // Switch on the event type
-        match event {
-            | Event::WindowEvent{ window_id: _window_id, event } => {
-                // Match the event again
-                match event {
-                    | WindowEvent::CloseRequested => {
-                        // For now, we close on _any_ window close, but this should obviously be marginally more clever
-                        *control_flow = ControlFlow::Exit;
-                    },
+    {
+        let register = move || {
+            // Register system components
+            render_system.register();
+        };
 
-                    // Ignore the others
-                    _ => {}
-                }
-            },
+        // Run the game loop
+        EventSystem::game_loop(event_system);
+    }
+    // event_loop.run(move |event, _, control_flow| {
+    //     // Switch on the event type
+    //     match event {
+    //         | Event::WindowEvent{ window_id: _window_id, event } => {
+    //             // Match the event again
+    //             match event {
+    //                 | WindowEvent::CloseRequested => {
+    //                     // For now, we close on _any_ window close, but this should obviously be marginally more clever
+    //                     *control_flow = ControlFlow::Exit;
+    //                 },
 
-            | Event::MainEventsCleared => {
-                // Request a redraw of all internal windows
-                let ecs: Ref<Ecs> = ecs.borrow();
-                let windows = ecs.list_component::<game_gfx::components::Window>();
-                for window in windows.iter() {
-                    window.window.request_redraw();
-                }
-            },
+    //                 // Ignore the others
+    //                 _ => {}
+    //             }
+    //         },
 
-            | Event::RedrawRequested(_) => {
-                // Redraw the pipeline
-                if let Err(err) = render_system.render(RenderPipelineId::Triangle) {
-                    error!("Rendering Triangle Pipeline failed: {}", err);
-                    if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
-            },
+    //         | Event::MainEventsCleared => {
+    //             // Request a redraw of all internal windows
+    //             let ecs: Ref<Ecs> = ecs.borrow();
+    //             let windows = ecs.list_component::<game_win::Window>();
+    //             for window in windows.iter() {
+    //                 window.window.request_redraw();
+    //             }
+    //         },
 
-            // We do nothing for all other events
-            _ => {}
-        }
+    //         | Event::RedrawRequested(_) => {
+    //             // Redraw the pipeline
+    //             if let Err(err) = render_system.render(RenderPipelineId::Triangle) {
+    //                 error!("Rendering Triangle Pipeline failed: {}", err);
+    //                 if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
+    //                 *control_flow = ControlFlow::Exit;
+    //                 return;
+    //             }
+    //         },
 
-        // If we're about to exit, wait until the device is idle
-        if *control_flow == ControlFlow::Exit {
-            if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
-        }
-    });
+    //         // We do nothing for all other events
+    //         _ => {}
+    //     }
+
+    //     // If we're about to exit, wait until the device is idle
+    //     if *control_flow == ControlFlow::Exit {
+    //         if let Err(err) = render_system.wait_for_idle() { error!("Could not wait for device to be idle: {}", err); }
+    //     }
+    // });
 }

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 13:00:33
  * Last edited:
- *   27 Jul 2022, 13:02:10
+ *   29 Jul 2022, 12:58:43
  * Auto updated?
  *   Yes
  *
@@ -20,14 +20,8 @@
 pub mod errors;
 /// The module that contains common specifications.
 pub mod spec;
-/// The module that contains ECS definitions.
-pub mod components;
-/// The module that implements the window management functions.
-pub mod window;
 /// The module that implements the main RenderSystem.
 pub mod system;
-// /// The module that implements the different render targets.
-// pub mod targets;
 /// The module that implements the different pipelines.
 pub mod pipelines;
 

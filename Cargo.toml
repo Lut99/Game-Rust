@@ -4,6 +4,8 @@ members = [
     "game-cfg",
     "game-vk",
     "game-ecs",
+    "game-spc",
+    "game-win",
     "game-evt",
     "game-gfx",
 
