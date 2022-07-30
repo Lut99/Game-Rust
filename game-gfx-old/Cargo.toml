@@ -1,0 +1,23 @@
+[package]
+name = "game-gfx"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+ash = "0.37.0"
+lazy_static = "1.4.0"
+log = "0.4.16"
+memoffset = "0.6.5"
+parking_lot = "0.12.1"
+rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
+semver = "1.0.6"
+winit = "0.26"
+
+game-cfg = { path = "../game-cfg" }
+game-ecs = { path = "../game-ecs" }
+game-evt = { path = "../game-evt" }
+game-spc = { path = "../game-spc" }
+game-utl = { path = "../game-utl" }
+game-vk  = { path = "../game-vk" }
+game-win = { path = "../game-win" }
