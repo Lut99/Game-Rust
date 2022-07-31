@@ -4,7 +4,7 @@
 //  Created:
 //    18 Jul 2022, 18:27:38
 //  Last edited:
-//    31 Jul 2022, 12:06:48
+//    31 Jul 2022, 15:58:43
 //  Auto updated?
 //    Yes
 // 
@@ -23,7 +23,7 @@ use game_ecs::Ecs;
 use game_spc::spec::Event;
 
 pub use crate::errors::EventError as Error;
-use crate::components::{DrawCallback, ExitCallback, GameLoopCompleteCallback, TickCallback};
+use crate::components::{ExitCallback, GameLoopCompleteCallback, TickCallback, WindowDrawCallback};
 
 
 /***** LIBRARY *****/
@@ -45,10 +45,10 @@ impl EventSystem {
     /// A new instance of an EventSystem, already wrapped in a reference-counting pointer.
     pub fn new(ecs: Rc<RefCell<Ecs>>) -> Rc<RefCell<Self>> {
         // Register the components
-        Ecs::register::<DrawCallback>(&ecs);
-        Ecs::register::<TickCallback>(&ecs);
-        Ecs::register::<GameLoopCompleteCallback>(&ecs);
         Ecs::register::<ExitCallback>(&ecs);
+        Ecs::register::<GameLoopCompleteCallback>(&ecs);
+        Ecs::register::<TickCallback>(&ecs);
+        Ecs::register::<WindowDrawCallback>(&ecs);
 
         // Return a new instance, done
         info!("Initialize EventSystem v{}", env!("CARGO_PKG_VERSION"));
@@ -113,13 +113,10 @@ impl EventSystem {
                 WinitEvent::RedrawRequested(window) => {
                     // Trigger the 'Draw' event for this target
                     let ecs: Ref<Ecs> = this.ecs.borrow();
-                    let mut callbacks = ecs.list_component_mut::<DrawCallback>();
+                    let mut callbacks = ecs.list_component_mut::<WindowDrawCallback>();
                     for c in callbacks.iter_mut() {
-                        // Skip if not á Window or not this Window
-                        match c.window_id {
-                            Some(window_id) => { if window_id != window { continue; } },
-                            None            => { continue; }
-                        }
+                        // Skip if not this Window
+                        if c.window_id != window { continue; }
 
                         // Perform the call
                         if let Err(err) = (*c.draw_callback)(Event::Draw, &ecs, c.this) {

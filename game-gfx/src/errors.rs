@@ -4,7 +4,7 @@
 //  Created:
 //    30 Jul 2022, 18:08:27
 //  Last edited:
-//    31 Jul 2022, 12:54:59
+//    31 Jul 2022, 15:44:57
 //  Auto updated?
 //    Yes
 // 
@@ -114,6 +114,9 @@ pub enum PipelineError {
     CommandBufferAllocateError{ name: &'static str, err: game_vk::pools::command::Error },
     /// Failed to record a new CommandBuffer.
     CommandBufferRecordError{ name: &'static str, err: game_vk::pools::command::Error },
+
+    /// Failed to create a new PipelineLayout
+    PipelineLayoutCreateError{ name: &'static str, err: game_vk::layout::Error },
 }
 
 impl Display for PipelineError {
@@ -134,6 +137,8 @@ impl Display for PipelineError {
 
             CommandBufferAllocateError{ name, err } => write!(f, "Could not create a new CommandBuffer for the {} pipeline: {}", name, err),
             CommandBufferRecordError{ name, err }   => write!(f, "Could not record a CommandBuffer for the {} pipeline: {}", name, err),
+
+            PipelineLayoutCreateError{ name, err } => write!(f, "Could not create a new PipelineLayout for the {} pipeline: {}", name, err),
         }
     }
 }

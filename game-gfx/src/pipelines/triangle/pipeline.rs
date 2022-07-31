@@ -4,7 +4,7 @@
 //  Created:
 //    31 Jul 2022, 12:17:24
 //  Last edited:
-//    31 Jul 2022, 12:54:31
+//    31 Jul 2022, 16:00:42
 //  Auto updated?
 //    Yes
 // 
@@ -14,10 +14,13 @@
 //!   as well.
 // 
 
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
+use parking_lot::MappedRwLockReadGuard;
+
 use game_ecs::{Ecs, Entity};
+use game_evt::WindowDrawCallback;
 use game_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
 use game_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
 use game_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
@@ -32,8 +35,10 @@ use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBui
 use game_vk::framebuffer::Framebuffer;
 
 pub use crate::errors::PipelineError as Error;
+use crate::components::RenderTarget;
 use crate::pipelines::triangle::{NAME, Shaders};
 use crate::pipelines::triangle::spec::Vertex;
+use crate::pipelines::triangle::components::TrianglePipeline;
 
 
 /***** CONSTANTS *****/
@@ -173,9 +178,9 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
 /// 
 /// # Arguments
 /// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
-/// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
-fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
+/// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
+fn create_vertex_buffer(device: &Rc<Device>, command_pool: &Rc<RefCell<CommandPool>>, memory_pool: &Rc<RefCell<dyn MemoryPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
     let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
         device.clone(),
@@ -268,16 +273,72 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
 /// Creates a new Triangle Pipeline that renders to the given entity.
 /// 
 /// # Arguments
+/// - `ecs`: The Entity Component System where the given `target` entity lives.
+/// - `device`: The Device where all of the new resources will be created.
+/// - `command_pool`: The CommandPool which we use to allocate new CommandBuffers from (both for copying data and rendering).
+/// - `memory_pool`: The MemoryPool which we use to allocate new Buffers from.
+/// - `device`: The Device where all of the new resources will be created.
 /// - `target`: The entity to use as a render target. Must implement the RenderTarget component.
 /// 
 /// # Returns
-/// Nothing, but does create new components for the target so that it may function as a renderable pipeline.
+/// The new entity representing this pipeline.
 /// 
 /// # Errors
 /// This function errors if we fail to create the appropriate Vulkan structs.
 /// 
 /// # Panics
 /// This function may panic if the given entity does not have a RenderTarget component.
-pub fn create(ecs: &Rc<RefCell<Ecs>>, target: Entity) -> Result<(), Error> {
-    
+pub fn create(ecs: &Rc<RefCell<Ecs>>, device: &Rc<Device>, command_pool: &Rc<RefCell<CommandPool>>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, target: Entity) -> Result<Entity, Error> {
+    // Borrow the ECS
+    let ecs: Ref<Ecs> = ecs.borrow();
+
+    // Create the pipeline layout
+    let layout : Rc<PipelineLayout> = match PipelineLayout::new(device.clone(), &[]) {
+        Ok(layout) => layout,
+        Err(err)   => { return Err(Error::PipelineLayoutCreateError{ name: NAME, err }); }
+    };
+
+    // Create the various components we need with the information in the RenderTarget
+    let pipeline      : Rc<VkPipeline>;
+    let framebuffers  : Vec<Rc<Framebuffer>>;
+    let vertex_buffer : Rc<VertexBuffer>;
+    let cmds          : Vec<Rc<CommandBuffer>>;
+    {
+        // Get the RenderTarget component of this entity
+        let render_target: MappedRwLockReadGuard<RenderTarget> = ecs.get_component(target).unwrap_or_else(|| panic!("Entity {:?} does not have a RenderTarget component", target));
+
+        // Create a render pass with that information
+        let render_pass: Rc<RenderPass> = create_render_pass(device, render_target.format)?;
+
+        // Use that + the extent and such to populate the to-be-stored fields.
+        pipeline      = create_pipeline(device, &layout, &render_pass, &render_target.extent)?;
+        framebuffers  = create_framebuffers(device, &render_pass, &render_target.views, &render_target.extent)?;
+        vertex_buffer = create_vertex_buffer(device, command_pool, memory_pool)?;
+        cmds          = record_command_buffers(device, command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &render_target.extent)?;
+    }
+
+    // Put all of this in a new entity
+    let result: Entity = ecs.add_entity();
+    ecs.add_component(result, TrianglePipeline {
+        layout,
+        pipeline,
+        framebuffers,
+        vertex_buffer,
+        cmds,
+    });
+
+    // Add the render callback for this entity (target-specific)
+    if let Some(window) = ecs.get_component(target) {
+        ecs.add_component(result, WindowDrawCallback {
+            this      : result,
+            window_id : window.window.id(),
+
+            window_draw_callback : Box::new(|event, ecs, this| {
+                
+            })
+        });
+    }
+
+    // Done
+    Ok(0)
 }

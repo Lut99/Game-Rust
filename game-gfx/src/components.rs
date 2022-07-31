@@ -4,7 +4,7 @@
 //  Created:
 //    30 Jul 2022, 18:11:44
 //  Last edited:
-//    31 Jul 2022, 12:11:12
+//    31 Jul 2022, 15:35:15
 //  Auto updated?
 //    Yes
 // 
@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use winit::window::Window as WinitWindow;
 
-use game_ecs::Component;
+use game_ecs::{Component, Entity};
 use game_vk::auxillary::enums::ImageFormat;
 use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
@@ -61,9 +61,10 @@ impl Component for RenderTarget {}
 
 
 
-/// Defines a general RenderPipeline component that may be used by the RenderSystem to render a pipeline.
-pub struct RenderPipeline {
-    
-}
+// /// Defines a general RenderPipeline component that may be used by the RenderSystem to render a pipeline.
+// pub struct RenderPipeline {
+//     /// The Entity ID of the entity to which we render. We assume that this entity has a RenderTarget component.
+//     pub target : Entity,
+// }
 
-impl Component for RenderPipeline {}
+// impl Component for RenderPipeline {}

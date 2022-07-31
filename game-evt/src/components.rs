@@ -4,7 +4,7 @@
 //  Created:
 //    18 Jul 2022, 18:25:39
 //  Last edited:
-//    31 Jul 2022, 12:07:17
+//    31 Jul 2022, 15:57:54
 //  Auto updated?
 //    Yes
 // 
@@ -22,17 +22,17 @@ use game_spc::spec::Event;
 
 
 /***** LIBRARY *****/
-/// Defines a Draw callback, which is called whenever the window needs redrawing.
-pub struct DrawCallback {
+/// Defines a WindowDraw callback, which is called whenever a window needs redrawing.
+pub struct WindowDrawCallback {
     /// The Entity ID of this callback.
     pub this      : Entity,
     /// The Window ID that this callback represents. If None, then it's not a Window.
-    pub window_id : Option<WindowId>,
+    pub window_id : WindowId,
 
     /// The callback to call when a target needs to be redrawn.
     /// 
     /// # Arguments
-    /// - `event`: The Event type that was called (is always `Event::Draw` for this callback). It contains the target to which should be drawn.
+    /// - `event`: The Event type that was called (is always `Event::WindowDraw` for this callback).
     /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
     /// - `this`: The ID of the entity for which the callback was called.
     /// 
@@ -41,7 +41,7 @@ pub struct DrawCallback {
     pub draw_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
 }
 
-impl Component for DrawCallback {}
+impl Component for WindowDrawCallback {}
 
 
 
