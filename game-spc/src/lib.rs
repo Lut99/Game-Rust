@@ -1,18 +1,19 @@
-/* LIB.rs
- *   by Lut99
- *
- * Created:
- *   29 Jul 2022, 12:46:37
- * Last edited:
- *   29 Jul 2022, 13:03:46
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Entrypoint to the library that contains crate-surpassing definitions
- *   and ECS components.
-**/
+//  LIB.rs
+//    by Lut99
+// 
+//  Created:
+//    29 Jul 2022, 12:46:37
+//  Last edited:
+//    31 Jul 2022, 12:06:03
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Entrypoint to the library that contains crate-surpassing definitions
+// 
 
+/// Contains general interfaces and structs.
+pub mod spec;
 /// Contains general ECS components.
 pub mod components;
 

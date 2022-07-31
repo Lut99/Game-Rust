@@ -1,23 +1,20 @@
-/* POOLS.rs
- *   by Lut99
- *
- * Created:
- *   25 Jun 2022, 18:04:08
- * Last edited:
- *   10 Jul 2022, 13:33:15
- * Auto updated?
- *   Yes
- *
- * Description:
- *   The pools that we use to allocate new bits of memory.
- *   
- *   The algorith for the BlockPool is taken from the Rasterizer project
- *   (https://github.com/Lut99/Rasterizer).
-**/
+//  POOLS.rs
+//    by Lut99
+// 
+//  Created:
+//    25 Jun 2022, 18:04:08
+//  Last edited:
+//    31 Jul 2022, 11:38:22
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   The pools that we use to allocate new bits of memory.
+// 
 
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::slice;
-use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use log::warn;
@@ -35,7 +32,7 @@ use crate::pools::memory::spec::{GpuPtr, MemoryPool};
 /***** UNIT TESTS *****/
 #[cfg(test)]
 mod tests {
-    use std::sync::RwLockWriteGuard;
+    use std::cell::RefMut;
     use semver::Version;
     use crate::auxillary::enums::InstanceLayer;
     use crate::auxillary::flags::DeviceMemoryTypeFlags;
@@ -81,7 +78,7 @@ mod tests {
 
         // Create a LinearPool on said device
         let pool = LinearPool::new(device.clone(), 512);
-        let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
+        let mut mpool: RefMut<LinearPool> = pool.borrow_mut();
         // Allocate four non-aligned blocks of 128 bytes
         let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
@@ -92,7 +89,7 @@ mod tests {
 
         // Create another to check it overflow correctly
         let pool = LinearPool::new(device.clone(), 512);
-        let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
+        let mut mpool: RefMut<LinearPool> = pool.borrow_mut();
         // Allocate a block that's always too large
         match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
@@ -111,7 +108,7 @@ mod tests {
 
         // Finally, a block to check alignment
         let pool = LinearPool::new(device.clone(), 512);
-        let mut mpool: RwLockWriteGuard<LinearPool> = pool.write().expect("Could not get write lock on linear pool");
+        let mut mpool: RefMut<LinearPool> = pool.borrow_mut();
         // Allocate the first block with  weird size
         let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
@@ -162,7 +159,7 @@ mod tests {
 
         // Create a BlockPool on said device
         let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
-        let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
+        let mut mpool: RefMut<BlockPool> = pool.borrow_mut();
         // Allocate four non-aligned blocks of 128 bytes
         let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
@@ -173,7 +170,7 @@ mod tests {
 
         // Create another to check it overflow correctly
         let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
-        let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
+        let mut mpool: RefMut<BlockPool> = pool.borrow_mut();
         // Allocate a block that's always too large
         match mpool.allocate(&MemoryRequirements{ align: 1, size: 1024, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
@@ -192,7 +189,7 @@ mod tests {
 
         // A block to check alignment
         let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
-        let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
+        let mut mpool: RefMut<BlockPool> = pool.borrow_mut();
         // Allocate the first block with  weird size
         let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
@@ -217,7 +214,7 @@ mod tests {
 
         // Finally we do a pool to check if it properly frees
         let pool = BlockPool::new(device.clone(), MemoryBlock::allocate(device.clone(), &MemoryRequirements{ align: 1, size: 512, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Could not allocate block pool memory block"));
-        let mut mpool: RwLockWriteGuard<BlockPool> = pool.write().expect("Could not get write lock on block pool");
+        let mut mpool: RefMut<BlockPool> = pool.borrow_mut();
         // Allocate three blocks of 128 bytes
         let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
@@ -267,7 +264,7 @@ mod tests {
 
         // Create a MetaPool on said device
         let pool = MetaPool::new(device.clone(), 2048);
-        let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
+        let mut mpool: RefMut<MetaPool> = pool.borrow_mut();
         // Allocate four non-aligned blocks of 128 bytes
         let (_, pointer) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         assert_eq!(pointer, GpuPtr::new(0, 0, 0));
@@ -278,7 +275,7 @@ mod tests {
 
         // Create another to check it overflow correctly
         let pool = MetaPool::new(device.clone(), 2048);
-        let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
+        let mut mpool: RefMut<MetaPool> = pool.borrow_mut();
         // Allocate a block that's always too large
         match mpool.allocate(&MemoryRequirements{ align: 1, size: usize::MAX, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()) {
             Ok(_)                              => { panic!("Pool successfully allocated block that should throw out-of-memory"); },
@@ -288,7 +285,7 @@ mod tests {
 
         // A block to check alignment
         let pool = MetaPool::new(device.clone(), 2048);
-        let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
+        let mut mpool: RefMut<MetaPool> = pool.borrow_mut();
         // Allocate the first block with  weird size
         let (_, _)       = mpool.allocate(&MemoryRequirements{ align: 1, size: 133, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         // Allocate one that needs to be aligned
@@ -307,7 +304,7 @@ mod tests {
 
         // Finally we do a pool to check if it properly frees
         let pool = MetaPool::new(device.clone(), 2048);
-        let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
+        let mut mpool: RefMut<MetaPool> = pool.borrow_mut();
         // Allocate three blocks of 128 bytes
         let (_, _       ) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate first block");
         let (_, pointer2) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::empty()).expect("Failed to allocate second block");
@@ -326,7 +323,7 @@ mod tests {
         // It can also allocate multiple blocks of memory
         // NOTE: Might want to remove this, especially the last one
         let pool = MetaPool::new(device.clone(), 2048);
-        let mut mpool: RwLockWriteGuard<MetaPool> = pool.write().expect("Could not get write lock on meta pool");
+        let mut mpool: RefMut<MetaPool> = pool.borrow_mut();
         let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::HOST_COHERENT).expect("Failed to allocate first block");
         let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::all() }, MemoryPropertyFlags::DEVICE_LOCAL).expect("Failed to allocate second block");
         let (_, _) = mpool.allocate(&MemoryRequirements{ align: 1, size: 128, types: DeviceMemoryTypeFlags::from(2 as u32) }, MemoryPropertyFlags::empty()).expect("Failed to allocate third block");
@@ -375,10 +372,10 @@ impl LinearPool {
     /// - `capacity`: The size (in bytes) of the pool.
     /// 
     /// # Returns
-    /// A new LinearPool instance, already wrapped in an Arc and a RwLock.
+    /// A new LinearPool instance, already wrapped in an Rc and a RefCell.
     #[inline]
-    pub fn new(device: Rc<Device>, capacity: usize) -> Arc<RwLock<Self>> {
-        Arc::new(RwLock::new(Self {
+    pub fn new(device: Rc<Device>, capacity: usize) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             device,
             block : None,
 
@@ -518,13 +515,13 @@ impl BlockPool {
     /// - `block`: The already allocated MemoryBlock. If you have yet to allocate one, check `MemoryBlock::allocate()`.
     /// 
     /// # Returns
-    /// A new BlockPool instance, already wrapped in an Arc and a RwLock.
-    pub fn new(device: Rc<Device>, block: MemoryBlock) -> Arc<RwLock<Self>> {
+    /// A new BlockPool instance, already wrapped in an Rc and a RefCell.
+    pub fn new(device: Rc<Device>, block: MemoryBlock) -> Rc<RefCell<Self>> {
         // Get the new capacity
         let capacity = block.mem_size();
 
         // Done
-        Arc::new(RwLock::new(Self {
+        Rc::new(RefCell::new(Self {
             device,
             block,
 
@@ -684,7 +681,7 @@ impl MetaPool {
     /// 
     /// # Returns
     /// A new MetaPool instance, wrapped in a reference-counting pointer.
-    pub fn new(device: Rc<Device>, pref_size: usize) -> Arc<RwLock<Self>> {
+    pub fn new(device: Rc<Device>, pref_size: usize) -> Rc<RefCell<Self>> {
         // Get all available types from the device
         let device_props: vk::PhysicalDeviceMemoryProperties = unsafe { device.instance().get_physical_device_memory_properties(device.physical_device()) };
         let device_heaps: &[vk::MemoryHeap] = unsafe { slice::from_raw_parts(device_props.memory_heaps.as_ptr(), device_props.memory_heap_count as usize) };
@@ -703,7 +700,7 @@ impl MetaPool {
         }
 
         // Wrap that in ourselves and done
-        Arc::new(RwLock::new(Self {
+        Rc::new(RefCell::new(Self {
             device,
 
             pref_size,
@@ -781,7 +778,7 @@ impl MemoryPool for MetaPool {
                 };
 
                 // Allocate new memory on this block (which we assume succeeds)
-                let mut new_pool: BlockPool = Arc::try_unwrap(BlockPool::new(self.device.clone(), new_block)).dunwrap().into_inner().unwrap();
+                let mut new_pool: BlockPool = Rc::try_unwrap(BlockPool::new(self.device.clone(), new_block)).dunwrap().into_inner();
                 let (memory, mut pointer): (vk::DeviceMemory, GpuPtr) = new_pool.allocate(reqs, props)?;
 
                 // Set the pointer indices

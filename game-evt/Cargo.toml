@@ -9,3 +9,4 @@ log = "0.4.14"
 winit = "0.26"
 
 game-ecs = { path = "../game-ecs" }
+game-spc = { path = "../game-spc" }

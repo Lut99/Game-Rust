@@ -1,17 +1,16 @@
-/* COMPONENTS.rs
- *   by Lut99
- *
- * Created:
- *   18 Jul 2022, 18:25:39
- * Last edited:
- *   29 Jul 2022, 13:14:19
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Defines the components in the ECS for the event system. This thus
- *   mostly encompasses (general) events.
-**/
+//  COMPONENTS.rs
+//    by Lut99
+// 
+//  Created:
+//    18 Jul 2022, 18:25:39
+//  Last edited:
+//    31 Jul 2022, 12:07:17
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Defines the components in the ECS for the event system. This thus
+// 
 
 use std::cell::Ref;
 use std::error::Error;
@@ -19,8 +18,7 @@ use std::error::Error;
 use winit::window::WindowId;
 
 use game_ecs::{Component, Ecs, Entity};
-
-use crate::spec::Event;
+use game_spc::spec::Event;
 
 
 /***** LIBRARY *****/

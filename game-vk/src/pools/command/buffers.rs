@@ -1,20 +1,20 @@
-/* BUFFERS.rs
- *   by Lut99
- *
- * Created:
- *   05 May 2022, 10:45:36
- * Last edited:
- *   10 Jul 2022, 15:06:11
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Contains the buffer definitions for this type of Pool.
-**/
+//  BUFFERS.rs
+//    by Lut99
+// 
+//  Created:
+//    05 May 2022, 10:45:36
+//  Last edited:
+//    31 Jul 2022, 12:51:39
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Contains the buffer definitions for this type of Pool.
+// 
 
+use std::cell::{RefCell, RefMut};
 use std::ptr;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use ash::vk;
 
@@ -89,7 +89,7 @@ pub struct CommandBuffer {
     /// The parent CommandPool where this buffer was allocated from.
     device  : Rc<Device>,
     /// The parent CommandPool where this buffer was allocated from.
-    pool    : Arc<RwLock<CommandPool>>,
+    pool    : Rc<RefCell<CommandPool>>,
 
     /// The parent VkCommandPool where this buffer was allocated from.
     vk_pool : vk::CommandPool,
@@ -113,11 +113,11 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
-    pub fn new(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
+    pub fn new(device: Rc<Device>, pool: Rc<RefCell<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
         // Allocate a new vk::CommandBuffer
         let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
             // Get a lock on the pool
-            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RefMut<CommandPool> = pool.borrow_mut();
 
             // Do the allocation
             lock.allocate(index, flags, CommandBufferLevel::Primary)?
@@ -148,11 +148,11 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
-    pub fn secondary(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
+    pub fn secondary(device: Rc<Device>, pool: Rc<RefCell<CommandPool>>, index: u32, flags: CommandBufferFlags) -> Result<Rc<Self>, Error> {
         // Allocate a new vk::CommandBuffer
         let (vk_pool, buffer): (vk::CommandPool, vk::CommandBuffer) = {
             // Get a lock on the pool
-            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RefMut<CommandPool> = pool.borrow_mut();
 
             // Do the allocation
             lock.allocate(index, flags, CommandBufferLevel::Secondary)?
@@ -183,11 +183,11 @@ impl CommandBuffer {
     /// 
     /// # Errors
     /// This function errors if the given CommandPool could not allocate a new Buffer of this type.
-    pub fn multiple(device: Rc<Device>, pool: Arc<RwLock<CommandPool>>, count: usize, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<Rc<Self>>, Error> {
+    pub fn multiple(device: Rc<Device>, pool: Rc<RefCell<CommandPool>>, count: usize, index: u32, flags: CommandBufferFlags, level: CommandBufferLevel) -> Result<Vec<Rc<Self>>, Error> {
         // Allocate N new vk::CommandBuffers
         let buffers: Vec<(vk::CommandPool, vk::CommandBuffer)> = {
             // Get a lock on the pool
-            let mut lock: RwLockWriteGuard<CommandPool> = pool.write().expect("Could not get a write lock on CommandPool");
+            let mut lock: RefMut<CommandPool> = pool.borrow_mut();
 
             // Do the allocation
             lock.n_allocate(count as u32, index, flags, level)?
@@ -347,7 +347,7 @@ impl CommandBuffer {
 
     /// Returns the parent Pool where this buffer lives.
     #[inline]
-    pub fn pool(&self) -> &Arc<RwLock<CommandPool>> { &self.pool }
+    pub fn pool(&self) -> &Rc<RefCell<CommandPool>> { &self.pool }
 
     /// Returns the internal buffer.
     #[inline]

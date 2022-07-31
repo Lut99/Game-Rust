@@ -6,7 +6,13 @@ authors = [ "Lut99" ]
 
 [dependencies]
 lazy_static = "1.4.0"
+log = "0.4.14"
+memoffset = "0.6.5"
+rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 semver = "1.0.6"
+winit = "0.26"
 
+game-cfg = { path = "../game-cfg" }
 game-ecs = { path = "../game-ecs" }
+game-spc = { path = "../game-spc" }
 game-vk  = { path = "../game-vk" }

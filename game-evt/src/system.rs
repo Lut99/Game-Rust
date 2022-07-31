@@ -1,17 +1,16 @@
-/* SYSTEM.rs
- *   by Lut99
- *
- * Created:
- *   18 Jul 2022, 18:27:38
- * Last edited:
- *   29 Jul 2022, 13:39:37
- * Auto updated?
- *   Yes
- *
- * Description:
- *   The Event system is in charge of triggering events, which trigger
- *   computations, updates or render passes.
-**/
+//  SYSTEM.rs
+//    by Lut99
+// 
+//  Created:
+//    18 Jul 2022, 18:27:38
+//  Last edited:
+//    31 Jul 2022, 12:06:48
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   The Event system is in charge of triggering events, which trigger
+// 
 
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
@@ -21,9 +20,9 @@ use winit::event::{Event as WinitEvent, WindowEvent as WinitWindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_ecs::Ecs;
+use game_spc::spec::Event;
 
 pub use crate::errors::EventError as Error;
-use crate::spec::Event;
 use crate::components::{DrawCallback, ExitCallback, GameLoopCompleteCallback, TickCallback};
 
 

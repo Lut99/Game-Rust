@@ -4,7 +4,7 @@
 //  Created:
 //    30 Jul 2022, 11:56:00
 //  Last edited:
-//    30 Jul 2022, 11:56:08
+//    31 Jul 2022, 12:14:51
 //  Auto updated?
 //    Yes
 //
@@ -13,9 +13,14 @@
 //!   interfaces with Vulkan and winit and specific shaders.
 //
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod errors;
 pub mod spec;
 pub mod components;
+pub mod windows;
+pub mod pipelines;
 pub mod system;
 
 
