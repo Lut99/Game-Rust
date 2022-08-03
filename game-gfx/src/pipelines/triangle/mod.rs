@@ -1,21 +1,20 @@
-//  MOD.rs
-//    by Lut99
-// 
-//  Created:
-//    31 Jul 2022, 12:15:56
-//  Last edited:
-//    31 Jul 2022, 12:37:08
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Defines the simplest pipeline of the bunch: one that simply renders
-//!   a triangle to the screen. It does use Vertex buffers, but not yet
-//!   complicated stuff like materials.
-// 
+/* MOD.rs
+ *   by Lut99
+ *
+ * Created:
+ *   30 Apr 2022, 17:34:49
+ * Last edited:
+ *   03 Jul 2022, 14:41:19
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Entrypoint to the triangle module within the pipelines module.
+**/
 
-pub mod spec;
-pub mod components;
+/// Specifies the vertex definition for this pipeline
+pub mod vertex;
+/// Implements the pipeline
 pub mod pipeline;
 
 
@@ -25,11 +24,6 @@ pub mod pipeline;
 struct Shaders;
 
 
-// Bring stuff into this namespace
-pub use pipeline::*;
-
-
-
-/***** CONSTANTS *****/
-/// The name of this pipeline.
-pub const NAME: &str = "triangle";
+// Bring some stuff into the module scope
+pub use vertex::Vertex;
+pub use pipeline::Pipeline;

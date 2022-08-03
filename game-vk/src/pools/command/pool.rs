@@ -1,21 +1,21 @@
-//  POOL.rs
-//    by Lut99
-// 
-//  Created:
-//    05 May 2022, 10:45:56
-//  Last edited:
-//    31 Jul 2022, 11:38:58
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Contains the pool implemenation for this type of pool.
-// 
+/* POOL.rs
+ *   by Lut99
+ *
+ * Created:
+ *   05 May 2022, 10:45:56
+ * Last edited:
+ *   10 Jul 2022, 13:52:30
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Contains the pool implemenation for this type of pool.
+**/
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 
@@ -94,7 +94,7 @@ impl CommandPool {
     /// 
     /// # Errors
     /// This function errors if the underlying Vulkan backend could not allocate the pool for some reason.
-    pub fn new(device: Rc<Device>) -> Result<Rc<RefCell<Self>>, Error> {
+    pub fn new(device: Rc<Device>) -> Result<Arc<RwLock<Self>>, Error> {
         // Get the family info
         let family_info: &QueueFamilyInfo = device.families();
 
@@ -105,7 +105,7 @@ impl CommandPool {
         }        
 
         // Done, wrap that and the device in the struct
-        Ok(Rc::new(RefCell::new(Self {
+        Ok(Arc::new(RwLock::new(Self {
             device,
             pools,
         })))

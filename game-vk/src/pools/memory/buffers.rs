@@ -1,20 +1,20 @@
-//  BUFFERS.rs
-//    by Lut99
-// 
-//  Created:
-//    25 Jun 2022, 16:17:19
-//  Last edited:
-//    31 Jul 2022, 12:44:00
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Defines buffers that are used in the MemoryPool.
-// 
+/* BUFFERS.rs
+ *   by Lut99
+ *
+ * Created:
+ *   25 Jun 2022, 16:17:19
+ * Last edited:
+ *   10 Jul 2022, 16:06:34
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Defines buffers that are used in the MemoryPool.
+**/
 
-use std::cell::{RefCell, RefMut};
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
 use ash::vk;
 
@@ -62,7 +62,7 @@ fn populate_buffer_info(usage_flags: vk::BufferUsageFlags, sharing_mode: vk::Sha
 
 /***** HELPER FUNCTIONS *****/
 /// Creates & allocates a new vk::Buffer object.
-fn create_buffer(device: &Rc<Device>, pool: &Rc<RefCell<dyn MemoryPool>>, usage_flags: BufferUsageFlags, sharing_mode: &SharingMode, mem_props: MemoryPropertyFlags, capacity: usize) -> Result<(vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements), Error> {
+fn create_buffer(device: &Rc<Device>, pool: &Arc<RwLock<dyn MemoryPool>>, usage_flags: BufferUsageFlags, sharing_mode: &SharingMode, mem_props: MemoryPropertyFlags, capacity: usize) -> Result<(vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements), Error> {
     // Split the sharing mode
     let (vk_sharing_mode, vk_queue_family_indices) = sharing_mode.clone().into();
 
@@ -87,7 +87,7 @@ fn create_buffer(device: &Rc<Device>, pool: &Rc<RefCell<dyn MemoryPool>>, usage_
     // Allocate the memory in the pool
     let (memory, pointer): (vk::DeviceMemory, GpuPtr) = {
         // Get a lock on the pool first
-        let mut lock: RefMut<dyn MemoryPool> = pool.borrow_mut();
+        let mut lock: RwLockWriteGuard<dyn MemoryPool> = pool.write().expect("Could not get write lock on MemoryPool");
 
         // Reserve the area
         lock.allocate(&requirements, mem_props)?
@@ -114,7 +114,7 @@ pub struct StagingBuffer {
     /// The Device where the Buffer lives.
     device : Rc<Device>,
     /// The MemoryPool where the Buffer lives.
-    pool   : Rc<RefCell<dyn MemoryPool>>,
+    pool   : Arc<RwLock<dyn MemoryPool>>,
 
     /// The VkBuffer object we wrap.
     buffer  : vk::Buffer,
@@ -149,7 +149,7 @@ impl StagingBuffer {
     /// 
     /// # Errors
     /// This function may error if the buffer creation in the Vulkan backend failed.
-    pub fn new(device: Rc<Device>, pool: Rc<RefCell<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
+    pub fn new(device: Rc<Device>, pool: Arc<RwLock<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
         // Create a buffer in the helper function
         let (buffer, memory, ptr, mem_req): (vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements) = create_buffer(
             &device, &pool,
@@ -182,7 +182,7 @@ impl Buffer for StagingBuffer {
     
     /// Returns the MemoryPool where the Buffer's memory is allocated.
     #[inline]
-    fn pool(&self) -> &Rc<RefCell<dyn MemoryPool>> { &self.pool }
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>> { &self.pool }
 
 
 
@@ -233,7 +233,7 @@ impl Drop for StagingBuffer {
         // Destroy the buffer
         unsafe { self.device.destroy_buffer(self.buffer, None); }
         // Lock the pool to free the memory
-        self.pool.borrow_mut().free(self.ptr);
+        self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
     }
 }
 
@@ -244,7 +244,7 @@ pub struct VertexBuffer {
     /// The Device where the Buffer lives.
     device : Rc<Device>,
     /// The MemoryPool where the Buffer lives.
-    pool   : Rc<RefCell<dyn MemoryPool>>,
+    pool   : Arc<RwLock<dyn MemoryPool>>,
 
     /// The VkBuffer object we wrap.
     buffer  : vk::Buffer,
@@ -279,7 +279,7 @@ impl VertexBuffer {
     /// 
     /// # Errors
     /// This function may error if the buffer creation in the Vulkan backend failed.
-    pub fn new(device: Rc<Device>, pool: Rc<RefCell<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
+    pub fn new(device: Rc<Device>, pool: Arc<RwLock<dyn MemoryPool>>, capacity: usize, sharing_mode: SharingMode) -> Result<Rc<Self>, Error> {
         // Create a buffer in the helper function
         let (buffer, memory, ptr, mem_req): (vk::Buffer, vk::DeviceMemory, GpuPtr, MemoryRequirements) = create_buffer(
             &device, &pool,
@@ -312,7 +312,7 @@ impl Buffer for VertexBuffer {
     
     /// Returns the MemoryPool where the Buffer's memory is allocated.
     #[inline]
-    fn pool(&self) -> &Rc<RefCell<dyn MemoryPool>> { &self.pool }
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>> { &self.pool }
 
 
 
@@ -363,6 +363,6 @@ impl Drop for VertexBuffer {
         // Destroy the buffer
         unsafe { self.device.destroy_buffer(self.buffer, None); }
         // Lock the pool to free the memory
-        self.pool.borrow_mut().free(self.ptr);
+        self.pool.write().expect("Could not lock the MemoryPool").free(self.ptr);
     }
 }

@@ -1,23 +1,23 @@
-//  MOD.rs
-//    by Lut99
-// 
-//  Created:
-//    31 Jul 2022, 12:15:11
-//  Last edited:
-//    31 Jul 2022, 12:21:36
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Defines various types of pipelines, each of them as a submodule.
-// 
+/* MOD.rs
+ *   by Lut99
+ *
+ * Created:
+ *   20 Apr 2022, 17:11:26
+ * Last edited:
+ *   30 Apr 2022, 17:45:16
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Entrypoint to the module that contains the different pipelines that we
+ *   define.
+**/
 
+/// Collects the errors for all pipelines
+pub mod errors;
+/// The simple triangle pipeline
 pub mod triangle;
 
 
-
-/***** FUNCTIONS *****/
-/// Registers the components of all the submodules.
-pub fn register(ecs: &std::rc::Rc<std::cell::RefCell<game_ecs::Ecs>>) {
-    // game_ecs::Ecs::register::<triangle::components::>(ecs);
-}
+// Bring some stuff into the module scope
+pub use triangle::Pipeline as TrianglePipeline;

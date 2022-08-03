@@ -4,7 +4,7 @@
  * Created:
  *   03 Apr 2022, 15:33:26
  * Last edited:
- *   27 Jul 2022, 13:19:35
+ *   11 Jul 2022, 18:33:47
  * Auto updated?
  *   Yes
  *
@@ -15,6 +15,7 @@
 use std::ops::Deref;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use ash::extensions::khr;
@@ -285,7 +286,7 @@ impl Swapchain {
     /// 
     /// # Returns
     /// A new Swapchain instance on success, or else an Error explaining what went wrong.
-    pub fn new(device: Rc<Device>, surface: Rc<Surface>, width: u32, height: u32, image_count: u32) -> Result<Rc<Self>, Error> {
+    pub fn new(device: Rc<Device>, surface: Rc<Surface>, width: u32, height: u32, image_count: u32) -> Result<Arc<RwLock<Self>>, Error> {
         // Prepare the swapchain info
         let (swapchain_info, format, extent, _mem) = match choose_swapchain_props(
             &device,
@@ -330,7 +331,7 @@ impl Swapchain {
         }
 
         // Store everything in a new Swapchain instance and return
-        Ok(Rc::new(Self {
+        Ok(Arc::new(RwLock::new(Self {
             device,
             surface,
 
@@ -340,7 +341,7 @@ impl Swapchain {
             
             format : format.into(),
             extent : extent.into(),
-        }))
+        })))
     }
 
 

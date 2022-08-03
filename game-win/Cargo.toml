@@ -5,11 +5,9 @@ edition = "2021"
 authors = [ "Lut99" ]
 
 [dependencies]
-log = "0.4.14"
+log = "0.4.16"
 winit = "0.26"
 
 game-cfg = { path = "../game-cfg" }
 game-ecs = { path = "../game-ecs" }
-game-evt = { path = "../game-evt" }
-game-spc = { path = "../game-spc" }
-game-vk  = { path = "../game-vk" }
+game-vk = { path = "../game-vk" }

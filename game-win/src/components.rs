@@ -2,40 +2,48 @@
  *   by Lut99
  *
  * Created:
- *   29 Jul 2022, 12:44:21
+ *   24 Jul 2022, 15:53:54
  * Last edited:
- *   29 Jul 2022, 12:45:40
+ *   25 Jul 2022, 23:29:20
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Contains the ECS component specifications for this crate.
+ *   Contains definitions of components in the ECS.
 **/
 
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 use winit::window::Window as WinitWindow;
 
-use game_ecs::Component;
+use game_ecs::spec::Component;
+use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
+use game_vk::image;
 
 
 /***** LIBRARY *****/
-/// Defines a Window, which contains Window-only specific functions and stuff, like Swapchains.
+/// Defines a single Window component.
 pub struct Window {
-    /// The Device that will render to this Window.
-    pub device    : Rc<Device>,
-    /// The actual winit Window we wrap.
+    /// The device that we used to build this Window in.
+    pub device : Rc<Device>,
+
+    /// The WinitWindow that we wrap.
     pub window    : WinitWindow,
-    /// The Surface where we will render to.
+    /// The Vulkan Surface that we create from this Window.
     pub surface   : Rc<Surface>,
-    /// The Swapchain which generates images and presents to the Window.
-    pub swapchain : Rc<Swapchain>,
+    /// The Vulkan swapchain that we create from this Window.
+    pub swapchain : Arc<RwLock<Swapchain>>,
+    /// The list of Vulkan swapchain images that we create from this Window.
+    pub views     : Vec<Rc<image::View>>,
 
     /// The title of this Window.
-    pub title : String,
+    pub title  : String,
+    /// The size of the window (as an extent)
+    pub extent : Extent2D<u32>,
 }
 
 impl Component for Window {}

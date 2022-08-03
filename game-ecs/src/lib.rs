@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:31:02
  * Last edited:
- *   28 Jul 2022, 17:01:37
+ *   26 Mar 2022, 10:52:28
  * Auto updated?
  *   Yes
  *
@@ -20,8 +20,8 @@ pub mod list;
 /// The module for the base system itself.
 pub mod system;
 
-// Bring some components into the general package namespace (possibly by aliasing them)
-pub use spec::{Component, Entity};
+// Bring some components into the general package namespace
+pub use spec::Entity;
 pub use list::ComponentList;
 pub use system::Ecs;
 
@@ -32,8 +32,8 @@ pub use system::Ecs;
 macro_rules! to_component_list {
     ($list:expr,$ctype:tt) => {
         {
-            let name = $list.type_name();
-            $list.as_any().downcast_ref::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{}> to ComponentList<{}>", name, ComponentList::<$ctype>::type_name()))
+            let id = $list.id();
+            $list.as_any().downcast_ref::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{:?}> to ComponentList<{:?}>", id, ComponentList::<$ctype>::id()))
         }
     };
 }
@@ -43,8 +43,8 @@ macro_rules! to_component_list {
 macro_rules! to_component_list_mut {
     ($list:expr,$ctype:tt) => {
         {
-            let name = $list.type_name();
-            $list.as_any_mut().downcast_mut::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{}> to ComponentList<{}>", name, ComponentList::<$ctype>::type_name()))
+            let id = $list.id();
+            $list.as_any_mut().downcast_mut::<ComponentList<$ctype>>().expect(&format!("Could not downcast ComponentList<{:?}> to ComponentList<{:?}>", id, ComponentList::<$ctype>::id()))
         }
     };
 }

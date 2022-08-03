@@ -1,108 +1,71 @@
-//  COMPONENTS.rs
-//    by Lut99
-// 
-//  Created:
-//    18 Jul 2022, 18:25:39
-//  Last edited:
-//    31 Jul 2022, 15:57:54
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Defines the components in the ECS for the event system. This thus
-// 
+/* COMPONENTS.rs
+ *   by Lut99
+ *
+ * Created:
+ *   18 Jul 2022, 18:25:39
+ * Last edited:
+ *   18 Jul 2022, 19:08:24
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Defines the components in the ECS for the event system. This thus
+ *   mostly encompasses (general) events.
+**/
 
-use std::cell::Ref;
 use std::error::Error;
 
 use winit::window::WindowId;
 
-use game_ecs::{Component, Ecs, Entity};
-use game_spc::spec::Event;
+use game_ecs::spec::Component;
 
 
 /***** LIBRARY *****/
-/// Defines a WindowDraw callback, which is called whenever a window needs redrawing.
-pub struct WindowDrawCallback {
-    /// The Entity ID of this callback.
-    pub this      : Entity,
-    /// The Window ID that this callback represents. If None, then it's not a Window.
-    pub window_id : WindowId,
-
-    /// The callback to call when a target needs to be redrawn.
+/// Defines a Draw callback, which is called whenever the window needs redrawing.
+pub struct DrawCallback {
+    /// The callback to call.
     /// 
     /// # Arguments
-    /// - `event`: The Event type that was called (is always `Event::WindowDraw` for this callback).
-    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
-    /// - `this`: The ID of the entity for which the callback was called.
+    /// - ``: 
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub draw_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
+    pub draw_callback: Box<dyn FnMut(WindowId) -> Result<(), Box<dyn Error>>>,
 }
 
-impl Component for WindowDrawCallback {}
+impl Component for DrawCallback {}
 
 
 
 /// Defines a Tick callback, which means that the given closure will be fired when a game tick happens.
 pub struct TickCallback {
-    /// The Entity ID of this callback.
-    pub this : Entity,
-
-    /// The callback to call when a game tick has occurred.
+    /// The callback to call.
     /// 
     /// # Arguments
-    /// - `event`: The Event type that was called (is always `Event::Tick` for this callback).
-    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
-    /// - `this`: The ID of the entity for which the callback was called.
+    /// - ``: 
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub tick_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
+    pub tick_callback : Box<dyn FnMut() -> Result<(), Box<dyn Error>>>,
 }
 
 impl Component for TickCallback {}
-
-/// Defines a GameLoopComplete callback, which is called when the main events in the loop have been cleared. It basically signals the end of a game loop iteration.
-pub struct GameLoopCompleteCallback {
-    /// The Entity ID of this callback.
-    pub this : Entity,
-
-    /// The callback to call when a game loop has been completed.
-    /// 
-    /// # Arguments
-    /// - `event`: The Event type that was called (is always `Event::GameLoopComplete` for this callback).
-    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
-    /// - `this`: The ID of the entity for which the callback was called.
-    /// 
-    /// # Errors
-    /// The callback may actually error what and whenever it likes.
-    pub loop_complete_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<(), Box<dyn Error>>>,
-}
-
-impl Component for GameLoopCompleteCallback {}
 
 
 
 /// The ExitCallback component is used to mark entities that need to handle stuff on program exit.
 pub struct ExitCallback {
-    /// The Entity ID of this callback.
-    pub this : Entity,
-
-    /// The callback to call when the game is closing down.
+    /// The callback to call.
     /// 
     /// # Arguments
-    /// - `event`: The Event type that was called (is always `Event::Exit` for this callback).
-    /// - `ecs`: The Entity Component System that (probably) stores the `this` Entity.
-    /// - `this`: The ID of the entity for which the callback was called.
+    /// - ``: 
     /// 
     /// # Returns
     /// Whether or not the exiting should continue (true) or not (false).
     /// 
     /// # Errors
     /// The callback may actually error what and whenever it likes.
-    pub exit_callback: Box<dyn FnMut(Event, &Ref<Ecs>, Entity) -> Result<bool, Box<dyn Error>>>,
+    pub exit_callback : Box<dyn FnMut() -> Result<bool, Box<dyn Error>>>,
 }
 
 impl Component for ExitCallback {}

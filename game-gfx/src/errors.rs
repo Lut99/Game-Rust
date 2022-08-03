@@ -1,146 +1,149 @@
-//  ERRORS.rs
-//    by Lut99
-// 
-//  Created:
-//    30 Jul 2022, 18:08:27
-//  Last edited:
-//    31 Jul 2022, 15:44:57
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Defines the possible errors that may arise within the `game-gfx`
-// 
+/* ERRORS.rs
+ *   by Lut99
+ *
+ * Created:
+ *   26 Mar 2022, 13:01:25
+ * Last edited:
+ *   12 Jul 2022, 18:50:16
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Collects all errors for the crate.
+**/
 
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};
 
+use crate::spec::{RenderPipelineId, RenderTargetId};
 
-/***** LIBRARY *****/
-/// Defines errors that originate in the main code of the RenderSystem.
+
+/***** ERRORS *****/
+/// Defines the errors that happen at the base system itself.
 #[derive(Debug)]
-pub enum RenderError {
-    /// Failed to create a new Vulkan Instance
-    InstanceCreateError{ err: game_vk::instance::Error },
-    /// Failed to create a new Device
-    DeviceCreateError{ err: game_vk::device::Error },
-    /// Failed to create a new CommandPool
-    CommandPoolCreateError{ err: game_vk::pools::command::Error },
-    /// Failed to create a new Window
-    WindowCreateError{ title: String, err: WindowError },
-    /// Failed to create a new Pipeline
-    PipelineCreateError{ name: &'static str, err: PipelineError },
+pub enum RenderSystemError {
+    /// Could not instantiate the Vulkan instance
+    InstanceCreateError{ err: game_vk::errors::InstanceError },
+    /// Could not instantiate the Gpu
+    DeviceCreateError{ err: game_vk::errors::DeviceError },
+    /// Could not create the CommandPool
+    CommandPoolCreateError{ err: game_vk::pools::errors::CommandPoolError },
+    /// Could not initialize a new render system.
+    RenderTargetCreateError{ name: &'static str, err: Box<dyn Error> },
+    /// Could not initialize a new render pipeline.
+    RenderPipelineCreateError{ name: &'static str, err: Box<dyn Error> },
+    /// Failed to create a Semaphore
+    SemaphoreCreateError{ err: game_vk::sync::Error },
+    /// Failed to create a Fence
+    FenceCreateError{ err: game_vk::sync::Error },
+
+    /// Could not poll if a fence is ready
+    FencePollError{ err: game_vk::sync::Error },
+    /// Could not get the next index of the image to render to.
+    TargetGetIndexError{ err: Box<dyn Error> },
+    /// Could not rebuild RenderTarget
+    TargetRebuildError{ id: RenderTargetId, err: Box<dyn Error> },
+    /// Could not rebuild RenderPipeline
+    PipelineRebuildError{ id: RenderPipelineId, err: Box<dyn Error> },
+    /// Could not render one of the Pipelines
+    RenderError{ err: Box<dyn Error> },
+    /// COuld not present to one of the render targets
+    PresentError{ err: Box<dyn Error> },
+
+    /// Could not wait for the Device to become idle
+    IdleError{ err: game_vk::device::Error },
+
+    /// Could not auto-select a GPU
+    DeviceAutoSelectError{ err: game_vk::errors::DeviceError },
+    /// Could not list the GPUs
+    DeviceListError{ err: game_vk::errors::DeviceError },
 }
 
-impl Display for RenderError {
-    #[inline]
+impl Display for RenderSystemError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use RenderError::*;
+        use RenderSystemError::*;
         match self {
-            InstanceCreateError{ err }       => write!(f, "Could not create a new Instance: {}", err),
-            DeviceCreateError{ err }         => write!(f, "Could not create a new Device: {}", err),
-            CommandPoolCreateError{ err }    => write!(f, "Could not create a new CommandPool: {}", err),
-            WindowCreateError{ title, err }  => write!(f, "Could not create Window '{}': {}", title, err),
-            PipelineCreateError{ name, err } => write!(f, "Could not create Pipeline '{}': {}", name, err),
+            InstanceCreateError{ err }             => write!(f, "Could not initialize graphics Instance: {}", err),
+            DeviceCreateError{ err }               => write!(f, "Could not initialize Device: {}", err),
+            CommandPoolCreateError{ err }          => write!(f, "Could not initialize CommandPool: {}", err),
+            RenderTargetCreateError{ name, err }   => write!(f, "Could not initialize render target '{}': {}", name, err),
+            RenderPipelineCreateError{ name, err } => write!(f, "Could not initialize render pipeline '{}': {}", name, err),
+            SemaphoreCreateError{ err }            => write!(f, "Failed to create Semaphore: {}", err),
+            FenceCreateError{ err }                => write!(f, "Failed to create Fence: {}", err),
+
+            FencePollError{ err }           => write!(f, "Could not poll Fence: {}", err),
+            TargetGetIndexError{ err }      => write!(f, "Could not get next image index: {}", err),
+            TargetRebuildError{ id, err }   => write!(f, "Could not rebuild Target {}: {}", id, err),
+            PipelineRebuildError{ id, err } => write!(f, "Could not rebuild Pipeline {}: {}", id, err),
+            RenderError{ err }              => write!(f, "Could not render to RenderTarget: {}", err),
+            PresentError{ err }             => write!(f, "Could not present to RenderTarget: {}", err),
+
+            IdleError{ err } => write!(f, "{}", err),
+
+            DeviceAutoSelectError{ err } => write!(f, "Could not auto-select a GPU: {}", err),
+            DeviceListError{ err }       => write!(f, "Could not list GPUs: {}", err),
         }
     }
 }
 
-impl Error for RenderError {}
+impl Error for RenderSystemError {}
 
 
 
-/// Defines errors that relate to winit windows and the Window component.
+/// Defines errors that occur when setting up a Window.
 #[derive(Debug)]
 pub enum WindowError {
-    /// The given monitor was unknown to us.
+    /// Could not resolve the given monitor index.
     UnknownMonitor{ got: usize, expected: usize },
-    /// No monitors at all were found.
+    /// No monitors at all found
     NoMonitors,
-    /// The given video mode is not supported by the given monitor.
-    UnsupportedVideoMode{ monitor: usize, resolution: (u32, u32), refresh_rate: u16, bit_depth: u16 },
-    /// Could not create the winit window.
-    WinitCreateError{ title: String, err: winit::error::OsError },
-    /// Could not create the surface for the new window.
-    SurfaceCreateError{ title: String, err: game_vk::surface::Error },
-    /// Could not create the swapchain for the new window.
-    SwapchainCreateError{ title: String, err: game_vk::swapchain::Error },
-    /// Could not create the ImageViews from the Swapchain.
-    ViewsCreateError{ title: String, err: game_vk::image::ViewError },
+    /// The video mode with the given properties was not supported on the given monitor
+    UnknownVideoMode{ monitor: usize, resolution: (u32, u32), refresh_rate: u16, bit_depth: u16 },
+    /// Could not build a winit window.
+    WinitCreateError{ err: winit::error::OsError },
+    /// Could not build a surface around the new winit window.
+    SurfaceCreateError{ err: game_vk::surface::Error },
+    /// Could not build a swapchain around the new surface
+    SwapchainCreateError{ err: game_vk::swapchain::Error },
+    /// Could not collect the swapchain's images
+    ImagesCreateError{ err: game_vk::image::ViewError },
+    /// Could not build the child pipeline
+    PipelineCreateError{ type_name: &'static str, err: Box<dyn Error> },
+
+    /// Could not get the new swapchain image
+    SwapchainNextImageError{ err: game_vk::swapchain::Error },
+    /// Could not present the given swapchain image
+    SwapchainPresentError{ err: game_vk::swapchain::Error },
+
+    /// Could not wait for the Device to become idle
+    IdleError{ err: game_vk::device::Error },
+    /// Could not rebuild the swapchain
+    SwapchainRebuildError{ err: game_vk::swapchain::Error },
+    /// Could not rebuild some swapchain ImageView
+    ViewRebuildError{ err: game_vk::image::view::Error },
 }
 
 impl Display for WindowError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use WindowError::*;
         match self {
-            UnknownMonitor{ got, expected }                                      => write!(f, "Given monitor with index {} is unknown to a system with {} monitors ({} >= {})", got, expected, got, expected),
-            NoMonitors                                                           => write!(f, "No monitors to place a window found"),
-            UnsupportedVideoMode{ monitor, resolution, refresh_rate, bit_depth } => write!(f, "Monitor {} does not support a video mode of {}x{}@{} ({} bpp)", monitor, resolution.0, resolution.1, refresh_rate, bit_depth),
-            WinitCreateError{ title, err }                                       => write!(f, "Could not create new window '{}': {}", title, err),
-            SurfaceCreateError{ title, err }                                     => write!(f, "Could not create new surface '{}': {}", title, err),
-            SwapchainCreateError{ title, err }                                   => write!(f, "Could not create new swapchain '{}': {}", title, err),
-            ViewsCreateError{ title, err }                                       => write!(f, "Could not create the image views for the swapchain images of window '{}': {}", title, err),
+            UnknownMonitor{ got, expected }                                  => write!(f, "Unknown monitor index '{}' (found {} monitors)", got, expected),
+            NoMonitors                                                       => write!(f, "No monitors found"),
+            UnknownVideoMode{ monitor, resolution, refresh_rate, bit_depth } => write!(f, "Monitor {} does not support {}x{}@{} ({} bpp)", monitor, resolution.0, resolution.1, refresh_rate, bit_depth),
+            WinitCreateError{ err }                                          => write!(f, "Could not build a new winit window: {}", err),
+            SurfaceCreateError{ err }                                        => write!(f, "Could not build Surface: {}", err),
+            SwapchainCreateError{ err }                                      => write!(f, "Could not build Swapchain: {}", err),
+            ImagesCreateError{ err }                                         => write!(f, "Could not build Views around Swapchain images: {}", err),
+            PipelineCreateError{ type_name, err }                            => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
+
+            SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
+            SwapchainPresentError{ err }   => write!(f, "Could not present Swapchain image: {}", err),
+
+            IdleError{ err }             => write!(f, "{}", err),
+            SwapchainRebuildError{ err } => write!(f, "Could not rebuild Swapchain: {}", err),
+            ViewRebuildError{ err }      => write!(f, "Could not rebuild ImageView: {}", err),
         }
     }
 }
 
 impl Error for WindowError {}
-
-
-
-/// Defines errors that may occur in any type of pipeline.
-#[derive(Debug)]
-pub enum PipelineError {
-    /// Failed to create a new RenderPass.
-    RenderPassCreateError{ name: &'static str, err: game_vk::render_pass::Error },
-
-    /// Failed to create a new Vulkan-backend Pipeline.
-    VkPipelineCreateError{ name: &'static str, err: game_vk::pipeline::Error },
-
-    /// Failed to create a new framebuffer.
-    FramebufferCreateError{ name: &'static str, err: game_vk::framebuffer::Error },
-
-    /// Failed to create a new Buffer object.
-    BufferCreateError{ name: &'static str, what: &'static str, err: game_vk::pools::memory::Error },
-    /// Failed to map a Buffer to host memory.
-    BufferMapError{ name: &'static str, what: &'static str, err: game_vk::pools::memory::Error },
-    /// Failed to flush a mapped memory range.
-    BufferFlushError{ name: &'static str, what: &'static str, err: game_vk::pools::memory::Error },
-    /// Failed to copy one buffer to another.
-    BufferCopyError{ name: &'static str, src: &'static str, dst: &'static str, err: game_vk::pools::memory::Error },
-
-    /// Failed to allocate a new CommandBuffer.
-    CommandBufferAllocateError{ name: &'static str, err: game_vk::pools::command::Error },
-    /// Failed to record a new CommandBuffer.
-    CommandBufferRecordError{ name: &'static str, err: game_vk::pools::command::Error },
-
-    /// Failed to create a new PipelineLayout
-    PipelineLayoutCreateError{ name: &'static str, err: game_vk::layout::Error },
-}
-
-impl Display for PipelineError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
-        use PipelineError::*;
-        match self {
-            RenderPassCreateError{ name, err }     => write!(f, "Could not create a new RenderPass for the {} pipeline: {}", name, err),
-
-            VkPipelineCreateError{ name, err }     => write!(f, "Could not create a new Vulkan Pipeline for the {} pipeline: {}", name, err),
-
-            FramebufferCreateError{ name, err }    => write!(f, "Could not create a new Framebuffer for the {} pipeline: {}", name, err),
-
-            BufferCreateError{ name, what, err }   => write!(f, "Could not create a new {} buffer for the {} pipeline: {}", what, name, err),
-            BufferMapError{ name, what, err }      => write!(f, "Could not map a {} buffer to host memory for the {} pipeline: {}", what, name, err),
-            BufferFlushError{ name, what, err }    => write!(f, "Could not flush mapped memory range of a {} buffer for the {} pipeline: {}", what, name, err),
-            BufferCopyError{ name, src, dst, err } => write!(f, "Could not copy a {} buffer to a {} buffer for the {} pipeline: {}", src, dst, name, err),
-
-            CommandBufferAllocateError{ name, err } => write!(f, "Could not create a new CommandBuffer for the {} pipeline: {}", name, err),
-            CommandBufferRecordError{ name, err }   => write!(f, "Could not record a CommandBuffer for the {} pipeline: {}", name, err),
-
-            PipelineLayoutCreateError{ name, err } => write!(f, "Could not create a new PipelineLayout for the {} pipeline: {}", name, err),
-        }
-    }
-}
-
-impl Error for PipelineError {}

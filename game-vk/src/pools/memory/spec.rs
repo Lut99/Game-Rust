@@ -1,24 +1,24 @@
-//  SPEC.rs
-//    by Lut99
-// 
-//  Created:
-//    28 May 2022, 17:10:55
-//  Last edited:
-//    31 Jul 2022, 12:51:53
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Contains the interfaces and definitions for the MemoryPools.
-// 
+/* SPEC.rs
+ *   by Lut99
+ *
+ * Created:
+ *   28 May 2022, 17:10:55
+ * Last edited:
+ *   16 Jul 2022, 22:42:40
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Contains the interfaces and definitions for the MemoryPools.
+**/
 
-use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fmt::{Debug, Formatter, Result as FResult};
 use std::ops::{Add, AddAssign};
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
+use std::sync::{Arc, RwLock};
 
 use ash::vk;
 use log::warn;
@@ -665,7 +665,7 @@ pub trait Buffer {
     fn device(&self) -> &Rc<Device>;
     
     /// Returns the MemoryPool where the Buffer's memory is allocated.
-    fn pool(&self) -> &Rc<RefCell<dyn MemoryPool>>;
+    fn pool(&self) -> &Arc<RwLock<dyn MemoryPool>>;
 
 
 
@@ -744,7 +744,7 @@ pub trait TransferBuffer: Buffer {
     /// 
     /// # Panics
     /// This function panics if the given Buffer is not large enough.
-    fn copyto_range(&self, pool: &Rc<RefCell<CommandPool>>, target: &Rc<dyn TransferBuffer>, src_offset: usize, dst_offset: usize, size: usize) -> Result<(), Error> {
+    fn copyto_range(&self, pool: &Arc<RwLock<CommandPool>>, target: &Rc<dyn TransferBuffer>, src_offset: usize, dst_offset: usize, size: usize) -> Result<(), Error> {
         // Allocate a new command buffer
         let cmd: Rc<CommandBuffer> = match CommandBuffer::new(self.device().clone(), pool.clone(), self.device().families().memory, CommandBufferFlags::TRANSIENT) {
             Ok(cmd)  => cmd,
@@ -803,7 +803,7 @@ pub trait TransferBuffer: Buffer {
     /// # Panics
     /// This function panics if the given Buffer is not large enough.
     #[inline]
-    fn copyto(&self, pool: &Rc<RefCell<CommandPool>>, target: &Rc<dyn TransferBuffer>) -> Result<(), Error> {
+    fn copyto(&self, pool: &Arc<RwLock<CommandPool>>, target: &Rc<dyn TransferBuffer>) -> Result<(), Error> {
         // Call the `copyto_range()` with the entire range
         self.copyto_range(pool, target, 0, 0, self.capacity())
     }

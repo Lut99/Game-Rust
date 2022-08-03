@@ -4,7 +4,7 @@
  * Created:
  *   30 Apr 2022, 17:35:56
  * Last edited:
- *   27 Jul 2022, 13:32:49
+ *   10 Jul 2022, 14:43:44
  * Auto updated?
  *   Yes
  *
@@ -41,11 +41,6 @@ pub enum TriangleError {
     /// Could not end a command buffer (because something else went wrong).
     CommandBufferRecordError{ err: game_vk::pools::command::Error },
 
-    /// The swapchain of the pipeline's target needs to be rebuilt.
-    SwapchainRebuildNeeded,
-    /// Could not get the next swapchain image.
-    SwapchainNextImageError{ err: game_vk::swapchain::Error },
-
     /// COuld not submit the command buffer for rendering
     SubmitError{ err: game_vk::queue::Error },
 }
@@ -65,10 +60,7 @@ impl Display for TriangleError {
             CommandBufferAllocateError{ err } => write!(f, "Could not allocate a new CommandBuffer for the Triangle pipeline: {}", err),
             CommandBufferRecordError{ err }   => write!(f, "Could not record a new CommandBuffer for the Triangle pipeline: {}", err),
             
-            SwapchainRebuildNeeded         => write!(f, "The pipeline's target's swapchain needs to be rebuilt"),
-            SwapchainNextImageError{ err } => write!(f, "Could not get next swapchain image of pipeline's target: {}", err),
-
-            SubmitError{ err } => write!(f, "Could not submit command buffer: {}", err),
+            SubmitError{ err }     => write!(f, "Could not submit command buffer: {}", err),
         }
     }
 }

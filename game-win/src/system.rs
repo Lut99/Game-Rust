@@ -2,20 +2,20 @@
  *   by Lut99
  *
  * Created:
- *   29 Jul 2022, 12:48:57
+ *   24 Jul 2022, 15:51:36
  * Last edited:
- *   29 Jul 2022, 13:21:39
+ *   25 Jul 2022, 23:41:15
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Contains the implementation of the WindowSystem itself.
+ *   The WindowSystem itself, which does most of the heavy lifting.
 **/
 
-use std::cell::{Ref, RefCell};
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
-use log::{debug, info};
+use log::debug;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event_loop::EventLoop;
 use winit::monitor::{MonitorHandle, VideoMode};
@@ -23,15 +23,12 @@ use winit::window::{Fullscreen, WindowBuilder};
 
 use game_cfg::spec::WindowMode;
 use game_ecs::{Ecs, Entity};
-use game_evt::Event;
-use game_spc::components::Target;
 use game_vk::auxillary::enums::{ImageAspect, ImageViewKind};
 use game_vk::auxillary::structs::Extent2D;
 use game_vk::device::Device;
+use game_vk::image;
 use game_vk::surface::Surface;
 use game_vk::swapchain::Swapchain;
-use game_vk::image;
-use game_vk::sync::Semaphore;
 
 pub use crate::errors::WindowError as Error;
 use crate::components::Window;
@@ -46,9 +43,9 @@ use crate::components::Window;
 /// 
 /// # Errors
 /// This function errors if we could not create the new views.
-fn create_views(device: &Rc<Device>, swapchain: &mut Rc<Swapchain>) -> Result<Vec<Rc<image::View>>, Error> {
-    // Get a muteable reference to the Swapchain
-    let sc: &mut Swapchain = Rc::get_mut(swapchain).expect("Could not get muteable Swapchain");
+fn create_views(device: &Rc<Device>, swapchain: &Arc<RwLock<Swapchain>>) -> Result<Vec<Rc<image::View>>, Error> {
+    // Get a read lock for the rest
+    let sc = swapchain.read().expect("Could not get read lock on Swapchain");
 
     // Rebuild all of the image views
     debug!("Generating image views...");
@@ -81,57 +78,55 @@ fn create_views(device: &Rc<Device>, swapchain: &mut Rc<Swapchain>) -> Result<Ve
 
 
 /***** LIBRARY *****/
-/// The WindowSystem manages windows that live in the ECS.
+/// The WindowSystem manages windows, which are stored in the ECS.
 pub struct WindowSystem {
-    /// The ECS to which we answer.
-    ecs : Rc<RefCell<Ecs>>,
+    /// The Entity Component System where the WindowSystem creates new Windows.
+    ecs : Rc<Ecs>,
 }
 
 impl WindowSystem {
-    /// Constructor for the WindowSystem.
+    /// Creates a new WindowSystem.
     /// 
     /// # Arguments
-    /// - `ecs`: The Entity Component Systems where all of the system's windows will live.
+    /// - `ecs`: The ECS to register components to.
     /// 
     /// # Returns
-    /// A new WindowSystem, wrapped in an Rc.
-    pub fn new(ecs: Rc<RefCell<Ecs>>) -> Rc<Self> {
-        // Register the new components
-        Ecs::register::<Window>(&ecs);
+    /// A new WindowSystem.
+    pub fn new(ecs: Rc<Ecs>) -> Self {
+        // Register new components
+        Rc::get_mut(&mut ecs).expect("Could not get muteable ECS for registering new components").register::<Window>();
 
-        // Store the ECS in Self and return
-        info!("Initialize WindowSystem v{}", env!("CARGO_PKG_VERSION"));
-        Rc::new(Self {
+        // Return ourselves
+        Self {
             ecs,
-        })
+        }
     }
 
 
 
-    /// Creates a new entity and generates a Window and Target component for it.
+    /// Creates a new Window in the given ECS with the given properties.
     /// 
     /// # Generic types
-    /// - `S`: The String-like type for the title.
+    /// - `S`: The String-like type of the title.
     /// 
     /// # Arguments
-    /// - `ecs`: The Entity Component System which will store the new entity.
-    /// - `device`: The Device which will render to the new Window (i.e., will be used to create Vulkan resources).
-    /// - `event_loop`: The Winit EventLoop which will receive the Window's events.
-    /// - `title`: The title of the new Window.
-    /// - `window_mode`: The WindowMode that is used to determine the location, mode and size of the Window.
+    /// - `ecs`: The Entity Component System where the Window will live.
+    /// - `event_loop`: The EventLoop where the events of the new Window will be processed on.
+    /// - `device`: The Device that will render to the given Window.
+    /// - `title`: The title of the Window (as a String-like).
     /// 
     /// # Returns
-    /// The created entity's ID.
+    /// The Entity ID of the new Window.
     /// 
     /// # Errors
-    /// This function may error if we failed to create a new Window, or associated Vulkan resources (such as swapchains etc).
-    pub fn create<S: Into<String>>(&self, device: Rc<Device>, event_loop: &EventLoop<Event>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
-        // Convert String-like into String
-        let title: String = title.into();
+    /// This function typically errors if we failed to create a new Window.
+    pub fn create<S: AsRef<str>>(&self, ecs: &mut Ecs, event_loop: &EventLoop<()>, device: Rc<Device>, title: S, window_mode: WindowMode) -> Result<Entity, Error> {
+        // Convert str-like to str
+        let title: &str = title.as_ref();
 
         // Start building the new window
         let mut wwindow = WindowBuilder::new()
-            .with_title(title.clone());
+            .with_title(title);
 
         // Resolve the WindowMode and set the appropriate properties in the window.
         match window_mode {
@@ -197,102 +192,45 @@ impl WindowSystem {
 
         // Build the swapchain around the GPU and surface
         let extent = wwindow.inner_size();
-        let mut swapchain = match Swapchain::new(device.clone(), surface.clone(), extent.width, extent.height, 3) {
+        let swapchain = match Swapchain::new(device.clone(), surface.clone(), extent.width, extent.height, 3) {
             Ok(swapchain) => swapchain,
             Err(err)      => { return Err(Error::SwapchainCreateError{ err }); }
         };
-        let format = swapchain.format();
 
         // Generate the views
-        let views: Vec<Rc<image::View>> = create_views(&device, &mut swapchain)?;
+        let views: Vec<Rc<image::View>> = create_views(&device, &swapchain)?;
 
-        // Wrap it in a Window and associated Target component and store it in the ECS
-        let ecs: Ref<Ecs> = self.ecs.borrow();
+        // Done! Return the window
+        debug!("Initialized new window '{}'", title);
         let window = ecs.add_entity();
         ecs.add_component(window, Window {
             device,
+
             window : wwindow,
             surface,
             swapchain,
-
-            title,
-        });
-        ecs.add_component(window, Target {
             views,
-            format,
+
+            title  : title.into(),
             extent : Extent2D::new(extent.width, extent.height),
         });
-
-        // Done, return the entity ID
         Ok(window)
     }
 
-
-
-    /// Get the next swapchain image index in the Window.
+    /// Returns the next swapchain image for the given Window entity.
     /// 
     /// # Arguments
-    /// - `window`: The Window component which contains the swapchain to get the next image from.
-    /// - `done_semaphore`: An optional Semaphore to call when acquiring the next image is done. It is not safe to use the returned index until then.
+    /// - `window`: The Entity in the (internal) ECS that represents the Window.
     /// 
     /// # Returns
-    /// The new swapchain index as a number. However, if the swapchain is outdated or invalid, then 'None' is returned, indicating a rebuild is necessary.
+    /// The ImageView of the next Swapchain image, wrapped in an Rc.
     /// 
     /// # Errors
-    /// This function may error if we could not get the next image in the swapchain.
-    #[inline]
-    pub fn next_image(window: &Window, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Error> {
-        // Try to get an image from the swapchain
-        match window.swapchain.next_image(done_semaphore, None, None) {
-            Ok(index) => Ok(index),
-            Err(err)  => Err(Error::SwapchainNextImageError{ err }),
-        }
-    }
-
-    /// Presents the current swapchain image to the window.
+    /// This function may error if we failed to get the next swapchain image.
     /// 
-    /// # Arguments
-    /// - `window`: The Window component which contains the swapchain to get the next image from.
-    /// - `index`: The index of the image to present.
-    /// - `wait_semaphores`: The semaphores to wait for before presenting.
-    /// 
-    /// # Returns
-    /// Upon success, returns whether the swapchain still needs to be recreated or not.
-    /// 
-    /// # Errors
-    /// This function may error if presentation failed.
-    #[inline]
-    pub fn present(window: &Window, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Error> {
-        // Call with the swapchain's function
-        match window.swapchain.present(index as u32, wait_semaphores) {
-            Ok(redo) => Ok(redo),
-            Err(err) => Err(Error::SwapchainPresentError{ err }),
-        }
-    }
-
-    /// Rebuilds the Window's resources to its new size.
-    /// 
-    /// # Arguments
-    /// - `window`: The Window component which contains the swapchain to get the next image from.
-    /// 
-    /// # Errors
-    /// This function may error if we failed to rebuild any of the resources.
-    pub fn rebuild(target: &mut Target, window: &mut Window) -> Result<(), Error> {
-        // Get the new size
-        let new_size = window.window.inner_size();
-    
-        // Rebuild the swapchain
-        if let Err(err) = Rc::get_mut(&mut window.swapchain).expect("Could not get muteable Swapchain for rebuild").rebuild(new_size.width, new_size.height) {
-            return Err(Error::SwapchainRebuildError{ err });
-        }
-    
-        // Generate new views again
-        target.views = create_views(&window.device, &mut window.swapchain)?;
-    
-        // Update the extent in the target
-        target.extent = Extent2D::new(new_size.width, new_size.height);
-    
-        // Done
-        Ok(())
+    /// # Panics
+    /// This function panics if the given entity does not have a Window component.
+    pub fn next_view(&self, window: Entity) -> Result<Rc<image::View>, Error> {
+        
     }
 }

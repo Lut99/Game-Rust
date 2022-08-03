@@ -1,17 +1,17 @@
-//  LIB.rs
-//    by Lut99
-// 
-//  Created:
-//    18 Jul 2022, 18:29:26
-//  Last edited:
-//    31 Jul 2022, 12:07:15
-//  Auto updated?
-//    Yes
-// 
-//  Description:
-//!   Entrypoint to the EventSystem library, which manages the events
-//!   within
-// 
+/* LIB.rs
+ *   by Lut99
+ *
+ * Created:
+ *   18 Jul 2022, 18:29:26
+ * Last edited:
+ *   18 Jul 2022, 18:42:57
+ * Auto updated?
+ *   Yes
+ *
+ * Description:
+ *   Entrypoint to the EventSystem library, which manages the events within
+ *   the Game.
+**/
 
 /// Contains the errors of this crate.
 pub mod errors;
@@ -21,9 +21,3 @@ pub mod spec;
 pub mod components;
 /// Contains the system itself.
 pub mod system;
-
-
-// Bring some stuff into the crate namespace
-pub use game_spc::spec::Event;
-pub use components::*;
-pub use system::{Error, EventSystem};

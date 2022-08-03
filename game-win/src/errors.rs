@@ -2,14 +2,14 @@
  *   by Lut99
  *
  * Created:
- *   29 Jul 2022, 12:41:30
+ *   24 Jul 2022, 16:09:07
  * Last edited:
- *   29 Jul 2022, 12:43:17
+ *   24 Jul 2022, 16:11:04
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Defines the errors that may occur in the WindowSystem.
+ *   Contains the errors for this crate.
 **/
 
 use std::error::Error;
@@ -17,7 +17,7 @@ use std::fmt::{Display, Formatter, Result as FResult};
 
 
 /***** LIBRARY *****/
-/// Defines errors that occur when setting up a Window.
+/// Lists the errors for the WindowSystem.
 #[derive(Debug)]
 pub enum WindowError {
     /// Could not resolve the given monitor index.
@@ -34,6 +34,8 @@ pub enum WindowError {
     SwapchainCreateError{ err: game_vk::swapchain::Error },
     /// Could not collect the swapchain's images
     ImagesCreateError{ err: game_vk::image::ViewError },
+    /// Could not build the child pipeline
+    PipelineCreateError{ type_name: &'static str, err: Box<dyn Error> },
 
     /// Could not get the new swapchain image
     SwapchainNextImageError{ err: game_vk::swapchain::Error },
@@ -49,6 +51,7 @@ pub enum WindowError {
 }
 
 impl Display for WindowError {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
         use WindowError::*;
         match self {
@@ -59,6 +62,7 @@ impl Display for WindowError {
             SurfaceCreateError{ err }                                        => write!(f, "Could not build Surface: {}", err),
             SwapchainCreateError{ err }                                      => write!(f, "Could not build Swapchain: {}", err),
             ImagesCreateError{ err }                                         => write!(f, "Could not build Views around Swapchain images: {}", err),
+            PipelineCreateError{ type_name, err }                            => write!(f, "Could not initialize RenderPipeline of type '{}': {}", type_name, err),
 
             SwapchainNextImageError{ err } => write!(f, "Could not get next Window frame: {}", err),
             SwapchainPresentError{ err }   => write!(f, "Could not present Swapchain image: {}", err),

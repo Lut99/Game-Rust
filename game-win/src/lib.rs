@@ -2,26 +2,20 @@
  *   by Lut99
  *
  * Created:
- *   29 Jul 2022, 12:40:10
+ *   24 Jul 2022, 15:50:57
  * Last edited:
- *   29 Jul 2022, 12:51:32
+ *   24 Jul 2022, 16:10:33
  * Auto updated?
  *   Yes
  *
  * Description:
- *   Entrypoint to the library that contains the Window system, which
- *   manages Windows.
+ *   Entrypoint to the WindowSystem library, which creates and manages
+ *   system windows.
 **/
 
-
-/// Contains errors that relate to the WindowSystem.
+/// Contains the errors of this system.
 pub mod errors;
-/// Contains ECS component definitions for this crate.
+/// Contains the ECS components defined for this system.
 pub mod components;
-/// Contains the system implementation itself.
+/// Contains the system itself.
 pub mod system;
-
-
-// Bring some stuff into the crate namespace
-pub use components::Window;
-pub use system::{WindowSystem, Error};
