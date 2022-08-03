@@ -1,16 +1,16 @@
-/* ERRORS.rs
- *   by Lut99
- *
- * Created:
- *   18 Jul 2022, 18:30:11
- * Last edited:
- *   18 Jul 2022, 19:00:17
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Defines the errors for the EventSystem.
-**/
+//  ERRORS.rs
+//    by Lut99
+// 
+//  Created:
+//    18 Jul 2022, 18:30:11
+//  Last edited:
+//    03 Aug 2022, 18:16:51
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Defines the errors for the EventSystem.
+// 
 
 use std::error::Error;
 use std::fmt::{Display, Formatter, Result as FResult};

@@ -4,7 +4,7 @@
  * Created:
  *   26 Mar 2022, 10:32:36
  * Last edited:
- *   25 Jul 2022, 23:59:14
+ *   27 Jul 2022, 14:36:15
  * Auto updated?
  *   Yes
  *
@@ -65,7 +65,7 @@ pub trait ComponentListBase {
     /// 
     /// **Arguments**
     ///  * `entity`: The Entity to remove the data of.
-    fn delete(&self, entity: Entity);
+    fn delete(&mut self, entity: Entity);
 }
 
 
@@ -114,7 +114,7 @@ impl<T: Component> ComponentList<T> {
 
     /// Returns the name of the ComponentList's type.
     #[inline]
-    fn type_name() -> &'static str
+    pub(crate) fn type_name() -> &'static str
     where
         T: 'static
     {
@@ -157,7 +157,7 @@ impl<T: Component> ComponentList<T> {
     /// 
     /// **Returns**  
     /// An immuteable reference to the component if it exists, or None otherwise.
-    pub fn get(&self, entity: Entity) -> Option<&T> {
+    pub fn get<'a>(&'a self, entity: Entity) -> Option<&'a T> {
         match self.e_to_i.get(&entity) {
             Some(index) => Some(&self.data[*index]),
             None => None,
@@ -171,7 +171,7 @@ impl<T: Component> ComponentList<T> {
     /// 
     /// **Returns**  
     /// A muteable reference to the component if it exists, or None otherwise.
-    pub fn get_mut(&mut self, entity: Entity) -> Option<&mut T> {
+    pub fn get_mut<'a>(&'a mut self, entity: Entity) -> Option<&'a mut T> {
         match self.e_to_i.get(&entity) {
             Some(index) => Some(&mut self.data[*index]),
             None => None,
@@ -210,6 +210,22 @@ impl<T: Component> ComponentList<T> {
             None => None,
         }
     }
+
+
+
+    /// Returns an iterator for the ComponentList.
+    /// 
+    /// # Returns
+    /// A new iterator for the internal Vector.
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<T> { self.data.iter() }
+
+    /// Returns a (muteable) iterator for the ComponentList.
+    /// 
+    /// # Returns
+    /// A new iterator for the internal Vector.
+    #[inline]
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> { self.data.iter_mut() }
 }
 
 impl<T> ComponentListBase for ComponentList<T>
@@ -277,7 +293,7 @@ where
     /// **Arguments**
     ///  * `entity`: The Entity to remove the data of.
     #[inline]
-    fn delete(&self, entity: Entity) {
+    fn delete(&mut self, entity: Entity) {
         self.remove(entity);
     }
 }
