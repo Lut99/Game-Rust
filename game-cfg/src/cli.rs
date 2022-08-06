@@ -1,22 +1,23 @@
-/* CLI.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 10:55:40
- * Last edited:
- *   15 Jul 2022, 18:14:35
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Contains the part of the config that parses the command-line
- *   interface.
-**/
+//  CLI.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 10:55:40
+//  Last edited:
+//    06 Aug 2022, 17:47:10
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Contains the part of the config that parses the command-line
+// 
 
 use clap::Parser;
 use log::LevelFilter;
 
-use crate::spec::{Resolution, WindowMode};
+use rust_win::spec::WindowMode;
+
+use crate::spec::Resolution;
 
 
 /***** ARGUMENT STRUCTS *****/

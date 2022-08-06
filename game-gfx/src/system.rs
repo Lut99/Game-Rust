@@ -1,41 +1,41 @@
-/* SYSTEM.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 18:07:31
- * Last edited:
- *   25 Jul 2022, 23:36:34
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Implements the base RenderSystem.
-**/
+//  SYSTEM.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 18:07:31
+//  Last edited:
+//    06 Aug 2022, 20:38:49
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Implements the base RenderSystem.
+// 
 
 use std::any::type_name;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
 
 use log::debug;
+use rust_ecs::Ecs;
+use rust_vk::auxillary::enums::DeviceExtension;
+use rust_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
+use rust_vk::instance::Instance;
+use rust_vk::device::Device;
+use rust_vk::pools::command::Pool as CommandPool;
+use rust_vk::pools::memory::MetaPool;
+use rust_vk::sync::{Fence, Semaphore};
+use rust_win::Window;
+use rust_win::spec::{WindowInfo, WindowMode};
 use semver::Version;
 use winit::event_loop::EventLoop;
+use winit::window::WindowId as WinitWindowId;
 
-use game_cfg::spec::WindowMode;
-use game_ecs::{Ecs, Entity};
-use game_vk::auxillary::enums::DeviceExtension;
-use game_vk::auxillary::structs::{DeviceFeatures, DeviceInfo, MonitorInfo};
-use game_vk::instance::Instance;
-use game_vk::device::Device;
-use game_vk::pools::command::Pool as CommandPool;
-use game_vk::pools::memory::MetaPool;
-use game_vk::sync::{Fence, Semaphore};
-use game_win::system::WindowSystem;
+use game_tgt::RenderTarget;
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::spec::{RenderPipeline, RenderPipelineId, RenderTarget, RenderTargetId};
-use crate::components;
-use crate::targets;
+use crate::spec::{RenderPipeline, RenderPipelineId, WindowId};
 use crate::pipelines;
 
 
@@ -65,18 +65,21 @@ lazy_static!{
 /***** LIBRARY *****/
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
+    /// The Entity Component System where the RenderSystem reads objects to render from.
+    ecs : Rc<RefCell<Ecs>>,
+
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
     /// The Device we'll use for rendering.
     device       : Rc<Device>,
-    // /// The MemoryPool we use to allocate CPU-accessible buffers.
-    // /// The MemoryPool we use to allocate GPU-local buffers.
-    // /// The DescriptorPool from which we allocate descriptors.
     /// The CommandPool from which we allocate commands.
-    _command_pool : Arc<RwLock<CommandPool>>,
+    _command_pool : Rc<RefCell<CommandPool>>,
+    // /// The MemoryPool we use to allocate persistent buffers.
+    _memory_pool  : Rc<RefCell<MetaPool>>,
+    // /// The DescriptorPool from which we allocate descriptors.
 
-    /// The map of render targets to which we render.
-    targets   : HashMap<RenderTargetId, Box<dyn RenderTarget>>,
+    /// A list of all Windows. These are also referenced in the targets map.
+    windows   : HashMap<WindowId, Rc<RefCell<Window>>>,
     /// The map of render pipelines which we use to render to.
     pipelines : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
 
@@ -119,7 +122,7 @@ impl RenderSystem {
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
     pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
-        ecs: &mut Ecs,
+        ecs: Rc<RefCell<Ecs>>,
         name: S1, version: Version,
         engine: S2, engine_version: Version,
         event_loop: &EventLoop<()>,
@@ -128,8 +131,7 @@ impl RenderSystem {
         debug: bool
     ) -> Result<Self, Error> {
         // Register components
-        ecs.register::<components::Window>();
-        ecs.register::<components::Target>();
+        /* TBD */
 
 
 
@@ -152,38 +154,32 @@ impl RenderSystem {
             Err(err)   => { return Err(Error::DeviceCreateError{ err }); }  
         };
 
-        // Allocate the memory pools on the GPU
-        let memory_pool = MetaPool::new(device.clone(), 4096);
-
         // Allocate the pools on the GPU
         let command_pool = match CommandPool::new(device.clone()) {
             Ok(pool) => pool,
             Err(err) => { return Err(Error::CommandPoolCreateError{ err }); }
         };
 
+        // Allocate the memory pools on the GPU
+        let memory_pool = MetaPool::new(device.clone(), 4096);
 
 
-        // Initiate a Window (via the WindowSystem)
-        let window_system  = WindowSystem::new(ecs);
-        let window: Entity = match window_system.create(ecs, event_loop, device.clone(), "Game-Rust ALPHA", window_mode) {
-            Ok(target) => target,
-            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
+
+        // Build the main window
+        let main_window: Rc<RefCell<Window>> = match Window::new(device.clone(), event_loop, WindowInfo{ title: format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")), window_mode }, 3) {
+            Ok(window) => Rc::new(RefCell::new(window)),
+            Err(err)   => { return Err(Error::WindowCreateError{ err }); }
         };
 
-        // Initiate the render targets
-        let mut targets: HashMap<RenderTargetId, Box<dyn RenderTarget>> = HashMap::with_capacity(1);
-        targets.insert(RenderTargetId::TriangleWindow, match targets::Window::new(device.clone(), event_loop, "Game-Rust - Triangle", window_mode, 3) {
-            Ok(target) => Box::new(target),
-            Err(err)   => { return Err(Error::RenderTargetCreateError{ name: "Window", err: Box::new(err) }); } 
-        });
-
-
+        // Initiate the map of windows
+        let windows: HashMap<WindowId, Rc<RefCell<Window>>> = HashMap::with_capacity(1);
+        windows.insert(WindowId::Main(main_window.borrow().id()), main_window);
 
         // Initiate the render pipelines
         let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
-        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), targets.get(&RenderTargetId::TriangleWindow).unwrap().as_ref(), memory_pool.clone(), command_pool.clone()) {
+        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone()) {
             Ok(pipeline) => Box::new(pipeline),
-            Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err: Box::new(err) }); }
+            Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err }); }
         });
 
 
@@ -213,11 +209,14 @@ impl RenderSystem {
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
+            ecs,
+
             _instance     : instance,
             device,
             _command_pool : command_pool,
+            _memory_pool  : memory_pool,
 
-            targets,
+            windows,
             pipelines,
 
             image_ready,
@@ -229,131 +228,84 @@ impl RenderSystem {
 
 
 
-    // /// Registers a new render target.
-    // /// 
-    // /// Each RenderTarget is responsible for producing some image that may be rendered to. Then, in the present() step, it is also responsible for somehow getting the result back to the user.
+    // /// Performs a single render pass using the given pipeline, rendering to the given target.
     // /// 
     // /// # Arguments
-    // /// - `create_info`: The RenderTarget-specific CreateInfo to pass arguments to its constructor.
+    // /// - `pipeline`: The UID of the pipeline to render to.
+    // /// - `target`: The UID of the target to render to.
     // /// 
     // /// # Returns
-    // /// An identifier to reference the newly added target later on.
+    // /// Nothing on success, except that the RenderTarget should have new pixels drawn to it.
     // /// 
     // /// # Errors
-    // /// This function errors if the given target could not be initialized properly.
-    // pub fn register_target<'a, R, C>(&mut self, create_info: C) -> Result<RenderTargetId, Error> 
-    // where
-    //     R: RenderTargetBuilder<'a, CreateInfo=C>,
-    //     C: Sized,
-    // {
-    //     // Generate a new ID for this RenderTarget
-    //     let id = self.last_target_id.increment();
-        
-    //     // Call the constructor
-    //     let target = match R::new(self.device.clone(), create_info) {
-    //         Ok(target) => target,
-    //         Err(err)   => { return Err(Error::RenderTargetCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+    // /// This function errors if the given Pipeline errors.
+    // pub fn render(&mut self, pipeline_id: RenderPipelineId) -> Result<(), Error> {
+    //     // If the next fence is not yet available, early quit
+    //     match self.in_flight[self.current_frame].poll() {
+    //         Ok(res)  => if !res { return Ok(()); },
+    //         Err(err) => { return Err(Error::FencePollError{ err }) }
     //     };
 
-    //     // Add it in the map
-    //     self.targets.insert(id, Box::new(target));
+    //     // Fetch the target RenderTarget
 
-    //     // Return the ID
-    //     debug!("Registered new render target of type {} as ID {}", std::any::type_name::<R>(), id);
-    //     Ok(id)
-    // }
+    //     // Fetch the RenderTarget and the RenderPipeline for this render call
+    //     let target: &mut dyn RenderTarget     = self.targets.get_mut(&target_id).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target_id)).as_mut();
+    //     let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline_id).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline_id)).as_mut();
 
-    // /// Registers a new render pipeline.
-    // /// 
-    // /// Each RenderPipeline is responsible for taking vertices and junk and outputting that to a RenderTarget.
-    // /// 
-    // /// # Arguments
-    // /// - `target`: The ID of the render target where this pipeline will render to.
-    // /// - `create_info`: The RenderPipeline-specific CreateInfo to pass arguments to its constructor.
-    // /// 
-    // /// # Returns
-    // /// An identifier to reference the newly added target later on.
-    // /// 
-    // /// # Errors
-    // /// This function errors if the given target could not be initialized properly.
-    // pub fn register_pipeline<'a, R, C>(&mut self, target: RenderTargetId, create_info: C) -> Result<RenderPipelineId, Error> 
-    // where
-    //     R: RenderPipelineBuilder<'a, CreateInfo=C>,
-    //     C: Sized,
-    // {
-    //     // Try to get the referenced render target
-    //     let target: &dyn RenderTarget = self.targets.get(&target).unwrap_or_else(|| panic!("Given RenderTargetId '{}' is not registered", target)).as_ref();
+    //     // Get the next image index from the render target
+    //     let frame_index: usize = match target.get_index(Some(&self.image_ready[self.current_frame])) {
+    //         Ok(Some(index)) => index,
+    //         Ok(None)        => {
+    //             // Get the new size from the target
+    //             let new_size = target.real_extent();
+    //             // If it's zero, then skip and wait until the window has a valid size again
+    //             if new_size.w == 0 && new_size.h == 0 { return Ok(()); }
 
-    //     // Generate a new ID for this RenderTarget
-    //     let id = self.last_pipeline_id.increment();
+    //             // Rebuild the target and then the window
+    //             debug!("Resizing {} and {} to: {}", target_id, pipeline_id, new_size);
+    //             if let Err(err) = target.rebuild(&new_size) { return Err(Error::TargetRebuildError{ id: target_id, err }); }
+    //             if let Err(err) = pipeline.rebuild(target) { return Err(Error::PipelineRebuildError{ id: pipeline_id, err }); }
 
-    //     // Call the constructor
-    //     let pipeline = match R::new(self.device.clone(), target, self.command_pool.clone(), create_info) {
-    //         Ok(pipeline) => pipeline,
-    //         Err(err)     => { return Err(Error::RenderPipelineCreateError{ type_name: std::any::type_name::<R>(), err: format!("{}", err) }); }
+    //             // Simply go through it again to do the proper render call
+    //             return self.render(pipeline_id, target_id);
+    //         },
+    //         Err(err) => { return Err(Error::TargetGetIndexError{ err }); },
     //     };
 
-    //     // Add it in the map
-    //     self.pipelines.insert(id, Box::new(pipeline));
+    //     // Tell the pipeline to render
+    //     if let Err(err) = pipeline.render(frame_index, &[&self.image_ready[self.current_frame]], &[&self.render_ready[self.current_frame]], &self.in_flight[self.current_frame]) {
+    //         return Err(Error::RenderError{ err });
+    //     }
 
-    //     // Return the ID
-    //     debug!("Registered new render pipeline of type {} as ID {}", std::any::type_name::<R>(), id);
-    //     Ok(id)
+    //     // Even though the frame is not being rendered and such, schedule its presentation
+    //     match target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
+    //         Ok(_)    => Ok(()),
+    //         Err(err) => Err(Error::PresentError{ err }),
+    //     }
     // }
 
-
-
-    /// Performs a single render pass using the given pipeline, rendering to the given target.
+    /// Renders the given Window.
+    /// 
+    /// Based on the specific Window ID, renders multiple pipelines (or at least, schedules them).
     /// 
     /// # Arguments
-    /// - `pipeline`: The UID of the pipeline to render to.
-    /// - `target`: The UID of the target to render to.
-    /// 
-    /// # Returns
-    /// Nothing on success, except that the RenderTarget should have new pixels drawn to it.
+    /// - `window_id`: The WindowID of the Window to render to.
     /// 
     /// # Errors
-    /// This function errors if the given Pipeline errors.
-    pub fn render(&mut self, pipeline_id: RenderPipelineId, target_id: RenderTargetId) -> Result<(), Error> {
+    /// This function may error if any of the to-be-rendered Windows failed _or_ if an interaction with Window's the swapchain failed.
+    /// 
+    /// # Panics
+    /// This function panics if the given `window_id` does not exist.
+    pub fn render_window(&self, window_id: WinitWindowId) -> Result<(), Error> {
         // If the next fence is not yet available, early quit
         match self.in_flight[self.current_frame].poll() {
             Ok(res)  => if !res { return Ok(()); },
             Err(err) => { return Err(Error::FencePollError{ err }) }
         };
 
-        // Fetch the RenderTarget and the RenderPipeline for this render call
-        let target: &mut dyn RenderTarget     = self.targets.get_mut(&target_id).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target_id)).as_mut();
-        let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline_id).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline_id)).as_mut();
-
-        // Get the next image index from the render target
-        let frame_index: usize = match target.get_index(Some(&self.image_ready[self.current_frame])) {
-            Ok(Some(index)) => index,
-            Ok(None)        => {
-                // Get the new size from the target
-                let new_size = target.real_extent();
-                // If it's zero, then skip and wait until the window has a valid size again
-                if new_size.w == 0 && new_size.h == 0 { return Ok(()); }
-
-                // Rebuild the target and then the window
-                debug!("Resizing {} and {} to: {}", target_id, pipeline_id, new_size);
-                if let Err(err) = target.rebuild(&new_size) { return Err(Error::TargetRebuildError{ id: target_id, err }); }
-                if let Err(err) = pipeline.rebuild(target) { return Err(Error::PipelineRebuildError{ id: pipeline_id, err }); }
-
-                // Simply go through it again to do the proper render call
-                return self.render(pipeline_id, target_id);
-            },
-            Err(err) => { return Err(Error::TargetGetIndexError{ err }); },
-        };
-
-        // Tell the pipeline to render
-        if let Err(err) = pipeline.render(frame_index, &[&self.image_ready[self.current_frame]], &[&self.render_ready[self.current_frame]], &self.in_flight[self.current_frame]) {
-            return Err(Error::RenderError{ err });
-        }
-
-        // Even though the frame is not being rendered and such, schedule its presentation
-        match target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
-            Ok(_)    => Ok(()),
-            Err(err) => Err(Error::PresentError{ err }),
+        // Match the window ID so we know how to render
+        match WindowId::from(window_id) {
+            
         }
     }
 
@@ -454,73 +406,6 @@ impl RenderSystem {
             }
         }).collect())
     }
-
-
-
-    // /// Handles events from winit's EventLoop.
-    // /// 
-    // /// This function will ignore any events that are non-relevant for the RenderSystem.
-    // /// 
-    // /// # Arguments
-    // /// - `event`: The Event that was just fired.
-    // /// - `control_flow`: The previous ControlFlow. Might be overridden if the user chose to close the Window(s) we render to.
-    // /// 
-    // /// # Returns
-    // /// The next ControlFlow. Will likely be the one passed, unless overriden somehow.
-    // /// 
-    // /// # Errors
-    // /// Because this function also performs render calls, it may error due to many different reasons.
-    // pub fn handle_events(&mut self, event: &Event<()>, control_flow: &ControlFlow) -> Result<ControlFlow, Error> {
-    //     // Switch on the event type
-    //     match event {
-    //         | Event::WindowEvent{ window_id: _window_id, event } => {
-    //             // Match the event again
-    //             match event {
-    //                 | WindowEvent::CloseRequested => {
-    //                     // For now, we close on _any_ window close, but this should obviously be marginally more clever
-    //                     Ok(ControlFlow::Exit)
-    //                 },
-
-    //                 // Ignore the others
-    //                 _ => {
-    //                     Ok(*control_flow)
-    //                 }
-    //             }
-    //         },
-
-    //         | Event::MainEventsCleared => {
-    //             // Request a redraw of all internal windows
-    //             for target in self.targets.values() {
-    //                 // Request the redraw; if it's not a Window target, then this function will take care of it
-    //                 target.window_request_redraw();
-    //             }
-
-    //             // Done with this event
-    //             Ok(*control_flow)
-    //         },
-
-    //         | Event::RedrawRequested(window_id) => {
-    //             // Request a redraw of all internal windows
-    //             for target in self.targets.values_mut() {
-    //                 // Call render only if the ID matches
-    //                 if &target.window_id().expect("Iterating over Windows, but found non-Window; this should never happen!") == window_id {
-    //                     if let Err(err) = target.render() {
-    //                         return Err(Error::RenderError{ err });
-    //                     };
-    //                     return Ok(*control_flow);
-    //                 }
-    //             }
-
-    //             // Done with this event
-    //             Ok(*control_flow)
-    //         },
-
-    //         // We do nothing for all other events
-    //         _ => {
-    //             Ok(*control_flow)
-    //         }
-    //     }
-    // }
 
 
 

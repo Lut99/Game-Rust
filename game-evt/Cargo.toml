@@ -6,7 +6,7 @@ authors = [ "Lut99" ]
 
 [dependencies]
 log = "0.4.14"
+rust-ecs = { git = "https://github.com/Lut99/rust-ecs", tag = "v1.0.0", features = ["log"] }
 winit = "0.26"
 
-game-ecs = { path = "../game-ecs" }
 game-gfx = { path = "../game-gfx" }

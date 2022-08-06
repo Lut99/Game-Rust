@@ -1,17 +1,17 @@
-/* LIB.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 13:00:33
- * Last edited:
- *   25 Jul 2022, 23:23:06
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Entrypoint to the GFX library, which implements the render system and
- *   window management.
-**/
+//  LIB.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 13:00:33
+//  Last edited:
+//    06 Aug 2022, 17:53:50
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Entrypoint to the GFX library, which implements the render system
+//!   and
+// 
 
 // Get some external crate macros
 #[macro_use] extern crate lazy_static;
@@ -31,4 +31,3 @@ pub mod pipelines;
 
 // Bring some components into the general package namespace
 pub use system::{Error, RenderSystem};
-pub use targets::window::{Error as WindowError, Window};

@@ -1,17 +1,16 @@
-/* SPEC.rs
- *   by Lut99
- *
- * Created:
- *   11 Jul 2022, 18:52:17
- * Last edited:
- *   15 Jul 2022, 18:14:59
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Contains enums and structs that are given a value in the config but
- *   used in other parts of the crate.
-**/
+//  SPEC.rs
+//    by Lut99
+// 
+//  Created:
+//    11 Jul 2022, 18:52:17
+//  Last edited:
+//    06 Aug 2022, 17:46:18
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Contains enums and structs that are given a value in the config but
+// 
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -171,36 +170,5 @@ impl FromStr for Resolution {
 
         // Done
         Ok(Self(width, height))
-    }
-}
-
-
-
-
-
-/// The WindowMode to draw the window in.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case", tag = "mode")]
-pub enum WindowMode {
-    /// Draws the window as a, well, window.
-    Windowed{ resolution: (u32, u32) },
-    /// Draws the window in windowed fullscreen mode.
-    WindowedFullscreen{ monitor: usize },
-    /// Draws the window in fullscreen mode.
-    Fullscreen{ monitor: usize, resolution: (u32, u32), refresh_rate: u16 },
-}
-
-impl FromStr for WindowMode {
-    type Err = SettingsError;
-
-
-    #[inline]
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "windowed"            => Ok(WindowMode::Windowed{ resolution: (0, 0) }),
-            "windowed_fullscreen" => Ok(WindowMode::WindowedFullscreen{ monitor: 0 }),
-            "fullscreen"          => Ok(WindowMode::Fullscreen{ monitor: 0, resolution: (0, 0), refresh_rate: 0 }),
-            value                 => Err(SettingsError::UnknownWindowMode{ raw: value.into() }),
-        }
     }
 }

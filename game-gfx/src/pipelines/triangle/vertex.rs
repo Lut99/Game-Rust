@@ -1,21 +1,21 @@
-/* VERTEX.rs
- *   by Lut99
- *
- * Created:
- *   03 Jul 2022, 11:21:05
- * Last edited:
- *   10 Jul 2022, 15:12:21
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Implements the Vertex definition for the TrianglePipeline.
-**/
+//  VERTEX.rs
+//    by Lut99
+// 
+//  Created:
+//    03 Jul 2022, 11:21:05
+//  Last edited:
+//    06 Aug 2022, 14:12:01
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Implements the Vertex definition for the TrianglePipeline.
+// 
 
 use memoffset::offset_of;
 
-use game_vk::auxillary::enums::AttributeLayout;
-use game_vk::auxillary::structs::VertexAttribute;
+use rust_vk::auxillary::enums::AttributeLayout;
+use rust_vk::auxillary::structs::VertexAttribute;
 
 
 /***** LIBRARY *****/

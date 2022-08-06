@@ -1,42 +1,43 @@
-/* PIPELINE.rs
- *   by Lut99
- *
- * Created:
- *   30 Apr 2022, 16:56:20
- * Last edited:
- *   10 Jul 2022, 15:33:23
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Implements a very simple pipeline that only renders a triangle to the
- *   screen.
-**/
+//  PIPELINE.rs
+//    by Lut99
+// 
+//  Created:
+//    30 Apr 2022, 16:56:20
+//  Last edited:
+//    06 Aug 2022, 20:36:58
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Implements a very simple pipeline that only renders a triangle to
+//!   the
+// 
 
+use std::cell::{Ref, RefCell};
 use std::error;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
 
 use log::debug;
+use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
+use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
+use rust_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
+use rust_vk::device::Device;
+use rust_vk::shader::Shader;
+use rust_vk::layout::PipelineLayout;
+use rust_vk::render_pass::{RenderPass, RenderPassBuilder};
+use rust_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
+use rust_vk::pools::memory::prelude::*;
+use rust_vk::pools::memory::{MappedMemory, StagingBuffer, VertexBuffer};
+use rust_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
+use rust_vk::image;
+use rust_vk::framebuffer::Framebuffer;
+use rust_vk::sync::{Fence, Semaphore};
 
-use game_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
-use game_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
-use game_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
-use game_vk::device::Device;
-use game_vk::shader::Shader;
-use game_vk::layout::PipelineLayout;
-use game_vk::render_pass::{RenderPass, RenderPassBuilder};
-use game_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
-use game_vk::pools::memory::prelude::*;
-use game_vk::pools::memory::{MappedMemory, StagingBuffer, VertexBuffer};
-use game_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
-use game_vk::image;
-use game_vk::framebuffer::Framebuffer;
-use game_vk::sync::{Fence, Semaphore};
+use game_tgt::RenderTarget;
 
-pub use crate::pipelines::errors::TriangleError as Error;
+pub use crate::errors::PipelineError as Error;
 use crate::pipelines::triangle::{Shaders, Vertex};
-use crate::spec::{RenderPipeline, RenderTarget};
+use crate::spec::RenderPipeline;
 
 
 /***** CONSTANTS *****/
@@ -178,7 +179,7 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
 /// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
 /// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
-fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Arc<RwLock<dyn MemoryPool>>, command_pool: &Arc<RwLock<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
+fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
     let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
         device.clone(),
@@ -228,7 +229,7 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Arc<RwLock<dyn Memory
 /// - `pipeline`: The Pipeline that we want to run in this buffer.
 /// - `framebuffers`: The Framebuffers for which to record CommandBuffers.
 /// - `extent`: The portion of the Framebuffer to render to.
-fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], vertex_buffer: &Rc<VertexBuffer>, extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
+fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], vertex_buffer: &Rc<VertexBuffer>, extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
     // Record one command buffer per framebuffer
     let mut command_buffers: Vec<Rc<CommandBuffer>> = Vec::with_capacity(framebuffers.len());
     for framebuffer in framebuffers {
@@ -272,13 +273,15 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Arc<RwLock<CommandPool>>, 
 pub struct Pipeline {
     /// The Device where the pipeline runs.
     device       : Rc<Device>,
-    /// The PipelineLayout that defines the resource layout of the pipeline.
-    layout       : Rc<PipelineLayout>,
     /// The MemoryPool from which we may draw memory.
-    memory_pool  : Arc<RwLock<dyn MemoryPool>>,
+    memory_pool  : Rc<RefCell<dyn MemoryPool>>,
     /// The CommandPool from which we may allocate buffers.
-    command_pool : Arc<RwLock<CommandPool>>,
+    command_pool : Rc<RefCell<CommandPool>>,
+    /// The target to which we render.
+    target       : Rc<RefCell<dyn RenderTarget>>,
 
+    /// The PipelineLayout that defines the resource layout of the pipeline.
+    layout          : Rc<PipelineLayout>,
     /// The VkPipeline we wrap.
     pipeline        : Rc<VkPipeline>,
     /// The framebuffers for this pipeline.
@@ -304,36 +307,47 @@ impl Pipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(device: Rc<Device>, target: &dyn RenderTarget, memory_pool: Arc<RwLock<dyn MemoryPool>>, command_pool: Arc<RwLock<CommandPool>>) -> Result<Self, Error> {
+    pub fn new(device: Rc<Device>, memory_pool: Rc<RefCell<dyn MemoryPool>>, command_pool: Rc<RefCell<CommandPool>>, target: Rc<RefCell<dyn RenderTarget>>) -> Result<Self, Error> {
         // Build the pipeline layout
         let layout = match PipelineLayout::new(device.clone(), &[]) {
             Ok(layout) => layout,
             Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
         };
 
-        // Build the render pass
-        let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
+        // Build everything that depends on the Window
+        let pipeline: Rc<VkPipeline>;
+        let framebuffers: Vec<Rc<Framebuffer>>;
+        let vertex_buffer: Rc<VertexBuffer>;
+        let command_buffers: Vec<Rc<CommandBuffer>>;
+        {
+            // Get a borrow on the target
+            let target: Ref<dyn RenderTarget> = target.borrow();
 
-        // Build the pipeline
-        let extent = target.extent();
-        let pipeline: Rc<VkPipeline> = create_pipeline(&device, &layout, &render_pass, &extent)?;
+            // Build the render pass (which we only need for now)
+            let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
 
-        // Create the framebuffers for this target
-        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
+            // Build the pipeline
+            let extent = target.extent();
+            let pipeline: Rc<VkPipeline> = create_pipeline(&device, &layout, &render_pass, &extent)?;
 
-        // Prepare the triangle buffer
-        let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+            // Create the framebuffers for this target
+            let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
-        // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+            // Prepare the triangle buffer
+            let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+
+            // Record one command buffer per framebuffer
+            let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+        }
 
         // Done, store the pipeline
         Ok(Self {
             device,
-            layout,
             memory_pool,
             command_pool,
+            target,
 
+            layout,
             pipeline,
             framebuffers,
             vertex_buffer,
@@ -374,21 +388,27 @@ impl RenderPipeline for Pipeline {
     /// 
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn error::Error>> {
+    fn rebuild(&mut self) -> Result<(), Box<dyn error::Error>> {
         debug!("Rebuiling TrianglePipeline...");
 
-        // Build the render pass
-        let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format())?;
+        // Build the things
+        let pipeline: Rc<VkPipeline>;
+        let framebuffers: Vec<Rc<Framebuffer>>;
+        let command_buffers: Vec<Rc<CommandBuffer>>;
+        {
+            let target: Ref<dyn RenderTarget> = self.target.borrow();
+            let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format())?;
 
-        // Build the pipeline
-        let extent = target.extent();
-        let pipeline: Rc<VkPipeline> = create_pipeline(&self.device, &self.layout, &render_pass, &extent)?;
+            // Build the pipeline
+            let extent = target.extent();
+            let pipeline = create_pipeline(&self.device, &self.layout, &render_pass, &extent)?;
 
-        // Create the framebuffers for this target
-        let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
+            // Create the framebuffers for this target
+            let framebuffers = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
 
-        // Record one command buffer per framebuffer
-        let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+            // Record one command buffer per framebuffer
+            let command_buffers = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+        }
 
         // Overwrite some internal shit
         self.pipeline        = pipeline;

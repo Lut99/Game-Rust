@@ -1,29 +1,47 @@
-/* SPEC.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 13:01:17
- * Last edited:
- *   10 Jul 2022, 14:29:59
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Contains interfaces and other structs for the GFX crate.
-**/
+//  SPEC.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 13:01:17
+//  Last edited:
+//    06 Aug 2022, 18:32:09
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Contains interfaces and other structs for the GFX crate.
+// 
 
 use std::error::Error;
 use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::rc::Rc;
 
+use rust_vk::sync::{Fence, Semaphore};
+use winit::window::WindowId as WinitWindowId;
+
 use game_utl::traits::AsAny;
-use game_vk::auxillary::enums::ImageFormat;
-use game_vk::auxillary::structs::Extent2D;
-use game_vk::image;
-use game_vk::sync::{Fence, Semaphore};
 
 
 /***** AUXILLARY NEWTYPES *****/
+/// Defines an ID to reference specific windows.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum WindowId {
+    /// The main Window to which the RenderSystem renders.
+    Main(WinitWindowId),
+}
+
+impl Display for WindowId {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> FResult {
+        use WindowId::*;
+        match self {
+            Main(_) => write!(f, "WindowId"),
+        }
+    }
+}
+
+
+
 /// Defines an ID to reference specific render targets with.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum RenderTargetId {
@@ -64,66 +82,6 @@ impl Display for RenderPipelineId {
 
 
 
-/***** RENDER TARGET TRAIT *****/
-/// Defines a target that the RenderSystem may render to (like a Window or an Image).
-pub trait RenderTarget: 'static + AsAny {
-    /// Returns the index of a renderable target, i.e., an image::View to render to.
-    /// 
-    /// For non-Swapchain targets, this function will be very simple.
-    /// 
-    /// # Arguments
-    /// - `done_semaphore`: Optional Semaphore that should be signalled when the image is available.
-    /// 
-    /// # Returns
-    /// A new ImageView on success. It could be that stuff like Swapchains are outdated or invalid, in which case 'None' is returned.
-    /// 
-    /// # Errors
-    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn get_index(&self, done_semaphore: Option<&Rc<Semaphore>>) -> Result<Option<usize>, Box<dyn Error>>;
-
-    /// Presents this RenderTarget in the way it likes.
-    /// 
-    /// # Arguments
-    /// - `index`: The index of the internal image to present.
-    /// - `wait_semaphores`: Zero or more Semaphores that we should wait for before we can present the image.
-    /// 
-    /// # Returns
-    /// Whether or not the Target needs to be rebuild.
-    /// 
-    /// # Errors
-    /// This function may error whenever the backend implementation likes. However, if it does, it should return a valid Error.
-    fn present(&self, index: usize, wait_semaphores: &[&Rc<Semaphore>]) -> Result<bool, Box<dyn Error>>;
-
-
-
-    /// Resize the RenderTarget to the new size.
-    /// 
-    /// # Arguments
-    /// - `new_size`: The new Extent2D of the RenderTarget.
-    /// 
-    /// # Errors
-    /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Box<dyn Error>>;
-
-
-
-    /// Returns a list of all image views in the RenderTarget.
-    fn views(&self) -> &Vec<Rc<image::View>>;
-
-    /// Returns the ImageFormat of this RenderTarget.
-    fn format(&self) -> ImageFormat;
-
-    /// Returns the extent of this RenderTarget (cached but cheap).
-    fn extent(&self) -> &Extent2D<u32>;
-
-    /// Returns the _actual_ extent of this RenderTarget (more expensive but accurate).
-    fn real_extent(&self) -> Extent2D<u32>;
-}
-
-
-
-
-
 /***** RENDER PIPELINE TRAIT *****/
 /// Defines a Render-capable pipeline.
 pub trait RenderPipeline: 'static + AsAny {
@@ -152,5 +110,5 @@ pub trait RenderPipeline: 'static + AsAny {
     /// 
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, target: &dyn RenderTarget) -> Result<(), Box<dyn Error>>;
+    fn rebuild(&mut self) -> Result<(), Box<dyn Error>>;
 }

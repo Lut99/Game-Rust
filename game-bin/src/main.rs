@@ -1,16 +1,16 @@
-/* MAIN.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 12:11:47
- * Last edited:
- *   12 Jul 2022, 18:30:56
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Entrypoint to the game executable.
-**/
+//  MAIN.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 12:11:47
+//  Last edited:
+//    06 Aug 2022, 16:29:35
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Entrypoint to the game executable.
+// 
 
 use std::fs::File;
 use std::str::FromStr;
@@ -22,7 +22,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use game_cfg::Config;
-use game_ecs::Ecs;
+use rust_ecs::Ecs;
 use game_gfx::RenderSystem;
 use game_gfx::spec::{RenderPipelineId, RenderTargetId};
 
@@ -52,11 +52,11 @@ fn main() {
     let event_loop = EventLoop::new();
 
     // Initialize the entity component system
-    let mut ecs = Ecs::default();
+    let mut ecs = Ecs::new(2048);
 
     // Initialize the render system
     let mut render_system = match RenderSystem::new(
-        &mut ecs,
+        ecs.clone(),
         "Game-Rust", Version::from_str(env!("CARGO_PKG_VERSION")).unwrap_or_else(|err| panic!("Could not parse environment variable CARGO_PKG_VERSION ('{}') as Version: {}", env!("CARGO_PKG_VERSION"), err)),
         "Game-Rust-Engine", Version::new(0, 1, 0),
         &event_loop,

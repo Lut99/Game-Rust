@@ -1,23 +1,24 @@
-/* CONFIG.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 11:48:52
- * Last edited:
- *   15 Jul 2022, 18:13:50
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Contains the code that merges the settings file input with the
- *   CLI-overrides.
-**/
+//  CONFIG.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 11:48:52
+//  Last edited:
+//    06 Aug 2022, 17:46:32
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Contains the code that merges the settings file input with the
+// 
 
 use clap::Parser;
 use log::LevelFilter;
 
+use rust_win::spec::WindowMode;
+
 use crate::errors::ConfigError as Error;
-use crate::spec::{DirConfig, FileConfig, WindowMode};
+use crate::spec::{DirConfig, FileConfig};
 use crate::cli::Arguments;
 use crate::file::Settings;
 

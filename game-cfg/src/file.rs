@@ -1,25 +1,25 @@
-/* FILE.rs
- *   by Lut99
- *
- * Created:
- *   26 Mar 2022, 11:04:45
- * Last edited:
- *   12 Jul 2022, 18:45:02
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Implements the file-side of loading the game's configuration.
-**/
+//  FILE.rs
+//    by Lut99
+// 
+//  Created:
+//    26 Mar 2022, 11:04:45
+//  Last edited:
+//    06 Aug 2022, 17:48:05
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Implements the file-side of loading the game's configuration.
+// 
 
 use std::fs::File;
 use std::path::Path;
 
 use log::LevelFilter;
+use rust_win::spec::WindowMode;
 use serde::{Deserialize, Serialize};
 
 pub use crate::errors::SettingsError as Error;
-use crate::spec::WindowMode;
 
 
 /***** SETTINGS STRUCT *****/

@@ -2,11 +2,9 @@
 members = [
     "game-utl",
     "game-cfg",
-    "game-vk",
-    "game-ecs",
-    "game-evt",
-    "game-win",
+    "game-tgt",
     "game-gfx",
+    "game-evt",
 
     "game-ins",
     "game-lst",

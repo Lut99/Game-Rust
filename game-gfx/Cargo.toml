@@ -9,12 +9,13 @@ ash = "0.37.0"
 lazy_static = "1.4.0"
 log = "0.4.16"
 memoffset = "0.6.5"
+rust-ecs = { git = "https://github.com/Lut99/rust-ecs", tag = "v1.0.0", features = ["log"] }
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
+rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v2.0.0", features = ["log", "winit"] }
+rust-win = { git = "https://github.com/Lut99/rust-win", tag = "v1.0.0", features = ["log", "serde"] }
 semver = "1.0.6"
 winit = "0.26"
 
 game-cfg = { path = "../game-cfg" }
-game-ecs = { path = "../game-ecs" }
+game-tgt = { path = "../game-tgt" }
 game-utl = { path = "../game-utl" }
-game-vk  = { path = "../game-vk" }
-game-win = { path = "../game-win" }

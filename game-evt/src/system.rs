@@ -4,7 +4,7 @@
 //  Created:
 //    18 Jul 2022, 18:27:38
 //  Last edited:
-//    03 Aug 2022, 18:37:26
+//    06 Aug 2022, 16:36:03
 //  Auto updated?
 //    Yes
 // 
@@ -16,12 +16,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use log::error;
+use log::{debug, info, error};
 use winit::event::{Event as WinitEvent, WindowEvent as WinitWindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowId;
 
-use game_ecs::Ecs;
+use rust_ecs::Ecs;
 use game_gfx::RenderSystem;
 
 pub use crate::errors::EventError as Error;
@@ -32,7 +32,7 @@ use crate::spec::Event;
 /// Implements the EventSystem.
 pub struct EventSystem {
     /// The ECS that the EventSystem may use for Events.
-    ecs : Rc<Ecs>,
+    ecs : Rc<RefCell<Ecs>>,
 
     /// The EventLoop around which this EventSystem wraps.
     event_loop    : EventLoop<Event>,
@@ -52,12 +52,12 @@ impl EventSystem {
     #[inline]
     pub fn new(ecs: Rc<RefCell<Ecs>>, render_system: RenderSystem) -> Self {
         // Return a new instance with that ECS, done
-        Ok(Self {
+        Self {
             ecs,
 
-            event_loop : EventLoop::with_user_defined(),
+            event_loop : EventLoop::with_user_event(),
             render_system,
-        })
+        }
     }
 
 
@@ -74,10 +74,13 @@ impl EventSystem {
     /// This function errors whenever any of its callbacks error.
     #[inline]
     pub fn handle(&self, event: Event) -> Result<(), Error> {
-        // Match on the given Event
-        match event {
+        // // Match on the given Event
+        // match event {
             
-        }
+        // }
+
+        // Done
+        Ok(())
     }
 
 
@@ -95,8 +98,9 @@ impl EventSystem {
     /// 
     /// # Panics
     /// This function panics if the window ID is not known to the RenderSystem.
-    pub fn handle_window_draw(window_id: WindowId) -> Result<(), Error> {
-        
+    pub fn handle_window_draw(render_system: &RenderSystem, window_id: WindowId) -> Result<(), Error> {
+        // Done
+        Ok(())
     }
 
 
@@ -108,9 +112,12 @@ impl EventSystem {
     /// 
     /// # Errors
     /// This function errors whenever any of the callbacks error.
-    pub fn handle_game_loop_complete(&self) -> Result<(), Error> {
+    pub fn handle_game_loop_complete(render_system: &RenderSystem) -> Result<(), Error> {
         // Trigger the RenderSystem to trigger redraws in all of its Windows.
         
+
+        // Done
+        Ok(())
     }
 
     /// Function that handles the Exit-event.
@@ -123,7 +130,7 @@ impl EventSystem {
     /// 
     /// # Errors
     /// This function does not explicitly return errors. Instead, it logs them (using `error!()`), and fires the remaining close events as if the exit was called with an Error (overwriting any Error already set).
-    pub fn handle_exit(&self, error: Option<Error>) {
+    pub fn handle_exit(error: Option<Error>) {
         info!("Triggered Exit event");
         if let Some(err) = error.as_ref() { debug!("Exit was triggered due to an error: {}", err); }
 
@@ -142,7 +149,10 @@ impl EventSystem {
     /// 
     /// # Errors
     /// Any error that occurs is printed to stderr using `log`'s `error!()` macro.
-    pub fn game_loop(self, render_system: RenderSystem) -> ! {
+    pub fn game_loop(self) -> ! {
+        // Split self
+        let Self{ ecs, event_loop, render_system } = self;
+
         // Start the EventLoop
         event_loop.run(move |wevent, _, control_flow| {
             // Switch on the Event that happened
@@ -155,7 +165,7 @@ impl EventSystem {
                             *control_flow = ControlFlow::Exit;
 
                             // Fire close events (it acts as a sink for errors)
-                            self.handle_exit(None);
+                            Self::handle_exit(None);
 
                             // Done
                         },
@@ -167,20 +177,20 @@ impl EventSystem {
 
                 WinitEvent::MainEventsCleared => {
                     // Trigger the associated events
-                    if let Err(err) = self.handle_game_loop_complete() {
+                    if let Err(err) = Self::handle_game_loop_complete(&render_system) {
                         // Print it, then quit the game
                         error!("{}", &err);
-                        self.handle_exit(Some(err));
+                        Self::handle_exit(Some(err));
                         *control_flow = ControlFlow::Exit;
                     }
                 },
 
                 WinitEvent::RedrawRequested(window_id) => {
                     // Trigger the associated events
-                    if let Err(err) = self.handle_window_draw(window_id) {
+                    if let Err(err) = Self::handle_window_draw(&render_system, window_id) {
                         // Print it, then quit the game
                         error!("{}", &err);
-                        self.handle_exit(Some(err));
+                        Self::handle_exit(Some(err));
                         *control_flow = ControlFlow::Exit;
                     }
                 }
