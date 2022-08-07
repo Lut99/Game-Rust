@@ -4,7 +4,7 @@
 //  Created:
 //    30 Apr 2022, 16:56:20
 //  Last edited:
-//    06 Aug 2022, 20:36:58
+//    07 Aug 2022, 18:38:58
 //  Auto updated?
 //    Yes
 // 
@@ -13,8 +13,7 @@
 //!   the
 // 
 
-use std::cell::{Ref, RefCell};
-use std::error;
+use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use log::debug;
@@ -35,6 +34,7 @@ use rust_vk::sync::{Fence, Semaphore};
 
 use game_tgt::RenderTarget;
 
+use crate::pipelines::triangle::NAME;
 pub use crate::errors::PipelineError as Error;
 use crate::pipelines::triangle::{Shaders, Vertex};
 use crate::spec::RenderPipeline;
@@ -62,6 +62,53 @@ const VERTICES: [Vertex; 3] = [
 
 
 /***** HELPER FUNCTIONS *****/
+/// Creates, allocates and populates the vertex buffer.
+/// 
+/// # Arguments
+/// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
+/// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
+/// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
+fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
+    // Create the Vertex buffer object
+    let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
+        device.clone(),
+        memory_pool.clone(),
+        std::mem::size_of_val(&VERTICES),
+        SharingMode::Exclusive,
+    ) {
+        Ok(vertices) => vertices,
+        Err(err)     => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex", err }); }
+    };
+
+    // Create the staging buffer
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new(
+        device.clone(),
+        memory_pool.clone(),
+        std::mem::size_of_val(&VERTICES),
+        SharingMode::Exclusive,
+    ) {
+        Ok(staging) => staging,
+        Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex staging", err }); }
+    };
+
+    // Populate the staging buffer
+    {
+        let mapped: MappedMemory = match staging.map() {
+            Ok(mapped) => mapped,
+            Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "vertex staging", err }); }
+        };
+        mapped.as_slice_mut::<Vertex>(3).clone_from_slice(&VERTICES);
+        if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "vertex staging", err }); }
+    }
+
+    // Copy the staging to the normal buffer
+    let tvertices: Rc<dyn TransferBuffer> = vertices.clone();
+    if let Err(err) = staging.copyto(command_pool, &tvertices) { return Err(Error::BufferCopyError{ name: NAME, src: "vertex staging", dst: "vertex", err }); }
+
+    // Done
+    Ok(vertices)
+}
+
 /// Creates a new RenderPass for the Pipeline.
 /// 
 /// # Arguments
@@ -97,7 +144,7 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
         .build(device.clone())
     {
         Ok(render_pass) => Ok(render_pass),
-        Err(err)        => Err(Error::RenderPassCreateError{ err }),
+        Err(err)        => Err(Error::RenderPassCreateError{ name: NAME, err }),
     }
 }
 
@@ -147,11 +194,13 @@ fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass
         .build(device.clone(), layout.clone(), render_pass.clone())
     {
         Ok(pipeline) => Ok(pipeline),
-        Err(err)     => Err(Error::VkPipelineCreateError{ err }),
+        Err(err)     => Err(Error::VkPipelineCreateError{ name: NAME, err }),
     }
 }
 
 /// Creates new Framebuffers for the TrianglePipeline.
+/// 
+/// There will be one framebuffer per given image view.
 /// 
 /// # Arguments
 /// - `device`: The Device where the Framebuffers will live.
@@ -165,7 +214,7 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
         // Add the newly created buffer (if successful)
         framebuffers.push(match Framebuffer::new(device.clone(), render_pass.clone(), vec![ view.clone() ], extent.clone()) {
             Ok(framebuffer) => framebuffer,
-            Err(err)        => { return Err(Error::FramebufferCreateError{ err }); }
+            Err(err)        => { return Err(Error::FramebufferCreateError{ name: NAME, err }); }
         });
     }
 
@@ -173,54 +222,9 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
     Ok(framebuffers)
 }
 
-/// Creates, allocates and populates the vertex buffer.
-/// 
-/// # Arguments
-/// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
-/// - `memory_pool`: The MemoryPool where to allocate the memory for the vertex buffer (and a temporary staging buffer).
-/// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
-fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
-    // Create the Vertex buffer object
-    let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
-        device.clone(),
-        memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
-    ) {
-        Ok(vertices) => vertices,
-        Err(err)     => { return Err(Error::BufferCreateError{ what: "vertex", err }); }
-    };
-
-    // Create the staging buffer
-    let staging: Rc<StagingBuffer> = match StagingBuffer::new(
-        device.clone(),
-        memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
-    ) {
-        Ok(staging) => staging,
-        Err(err)    => { return Err(Error::BufferCreateError{ what: "vertex staging", err }); }
-    };
-
-    // Populate the staging buffer
-    {
-        let mapped: MappedMemory = match staging.map() {
-            Ok(mapped) => mapped,
-            Err(err)   => { return Err(Error::BufferMapError{ what: "vertex staging", err }); }
-        };
-        mapped.as_slice_mut::<Vertex>(3).clone_from_slice(&VERTICES);
-        if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ what: "vertex staging", err }); }
-    }
-
-    // Copy the staging to the normal buffer
-    let tvertices: Rc<dyn TransferBuffer> = vertices.clone();
-    if let Err(err) = staging.copyto(command_pool, &tvertices) { return Err(Error::BufferCopyError{ src: "vertex staging", dst: "vertex", err }); }
-
-    // Done
-    Ok(vertices)
-}
-
 /// Records the commands buffers for the TrianglePipeline.
+/// 
+/// There will be one command buffer per given Framebuffer.
 /// 
 /// # Arguments
 /// - `device`: The Device where we will get queue families from.
@@ -236,12 +240,12 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
         // Allocate the command buffer
         let cmd: Rc<CommandBuffer> = match CommandBuffer::new(device.clone(), pool.clone(), device.families().graphics, CommandBufferFlags::empty()) {
             Ok(cmd)  => cmd,
-            Err(err) => { return Err(Error::CommandBufferAllocateError{ err }); }
+            Err(err) => { return Err(Error::CommandBufferAllocateError{ name: NAME, err }); }
         };
 
         // Start recording the command buffer
         if let Err(err) = cmd.begin(CommandBufferUsageFlags::SIMULTANEOUS_USE) {
-            return Err(Error::CommandBufferRecordError{ err });
+            return Err(Error::CommandBufferRecordError{ name: NAME, err });
         };
 
         // Record the render pass with a single draw
@@ -253,7 +257,7 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
 
         // Finish recording
         if let Err(err) = cmd.end() {
-            return Err(Error::CommandBufferRecordError{ err });
+            return Err(Error::CommandBufferRecordError{ name: NAME, err });
         }
 
         // Add the buffer
@@ -270,26 +274,40 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
 
 /***** LIBRARY *****/
 /// The Triangle Pipeline, which implements a simple pipeline that only renders a hardcoded triangle to the screen.
+/// 
+/// # Generic constants
+/// - `F`: The number of frames that may maximally be in flight (i.e., the number of times relevant resources will be duplicated.)
 pub struct Pipeline {
     /// The Device where the pipeline runs.
     device       : Rc<Device>,
     /// The MemoryPool from which we may draw memory.
-    memory_pool  : Rc<RefCell<dyn MemoryPool>>,
+    _memory_pool : Rc<RefCell<dyn MemoryPool>>,
     /// The CommandPool from which we may allocate buffers.
     command_pool : Rc<RefCell<CommandPool>>,
     /// The target to which we render.
     target       : Rc<RefCell<dyn RenderTarget>>,
 
+    /// The vertex buffer for this pipeline.
+    vertex_buffer   : Rc<VertexBuffer>,
     /// The PipelineLayout that defines the resource layout of the pipeline.
     layout          : Rc<PipelineLayout>,
     /// The VkPipeline we wrap.
     pipeline        : Rc<VkPipeline>,
     /// The framebuffers for this pipeline.
     framebuffers    : Vec<Rc<Framebuffer>>,
-    /// The vertex buffer for this pipeline.
-    vertex_buffer   : Rc<VertexBuffer>,
     /// The command buffers for this pipeline.
     command_buffers : Vec<Rc<CommandBuffer>>,
+
+    /// The current frame out of the ones in flight.
+    current_frame      : usize,
+    /// The fences that we use to check whether a frame is still in flight.
+    frame_in_flight    : Vec<Rc<Fence>>,
+    /// The semaphores that we use to check whether a new image for the next frame-in-flight is ready.
+    new_image_ready    : Vec<Rc<Semaphore>>,
+    /// The semaphores that we use to check whether an image has been rendered to.
+    render_ready       : Vec<Rc<Semaphore>>,
+    /// The maximum number of frames in flight at once.
+    n_frames_in_flight : usize,
 }
 
 impl Pipeline {
@@ -301,23 +319,24 @@ impl Pipeline {
     /// - `device`: The Device that may be used to initialize parts of the RenderPipeline.
     /// - `target`: The RenderTarget where this pipeline will render to.
     /// - `command_pool`: The RenderSystem's CommandPool struct that may be used to allocate command buffers (also later during rendering).
+    /// - `n_frames_in_flight`: The target number of frames that at most may be running on the GPU. A good default would be 2 or 3.
     /// 
     /// # Returns
     /// A new instance of the backend RenderPipeline.
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    pub fn new(device: Rc<Device>, memory_pool: Rc<RefCell<dyn MemoryPool>>, command_pool: Rc<RefCell<CommandPool>>, target: Rc<RefCell<dyn RenderTarget>>) -> Result<Self, Error> {
+    pub fn new(device: Rc<Device>, memory_pool: Rc<RefCell<dyn MemoryPool>>, command_pool: Rc<RefCell<CommandPool>>, target: Rc<RefCell<dyn RenderTarget>>, n_frames_in_flight: usize) -> Result<Self, Error> {
         // Build the pipeline layout
         let layout = match PipelineLayout::new(device.clone(), &[]) {
             Ok(layout) => layout,
-            Err(err)   => { return Err(Error::PipelineLayoutCreateError{ err }); }
+            Err(err)   => { return Err(Error::PipelineLayoutCreateError{ name: NAME, err }); }
         };
 
         // Build everything that depends on the Window
+        let vertex_buffer: Rc<VertexBuffer>;
         let pipeline: Rc<VkPipeline>;
         let framebuffers: Vec<Rc<Framebuffer>>;
-        let vertex_buffer: Rc<VertexBuffer>;
         let command_buffers: Vec<Rc<CommandBuffer>>;
         {
             // Get a borrow on the target
@@ -326,24 +345,48 @@ impl Pipeline {
             // Build the render pass (which we only need for now)
             let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
 
+            // Prepare the triangle buffer
+            vertex_buffer = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+
             // Build the pipeline
             let extent = target.extent();
-            let pipeline: Rc<VkPipeline> = create_pipeline(&device, &layout, &render_pass, &extent)?;
+            pipeline = create_pipeline(&device, &layout, &render_pass, &extent)?;
 
             // Create the framebuffers for this target
-            let framebuffers: Vec<Rc<Framebuffer>> = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
-
-            // Prepare the triangle buffer
-            let vertex_buffer: Rc<VertexBuffer> = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+            framebuffers = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
             // Record one command buffer per framebuffer
-            let command_buffers: Vec<Rc<CommandBuffer>> = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+            command_buffers = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+        }
+
+        // Create the synchronization structures
+        let mut frame_in_flight : Vec<Rc<Fence>>     = Vec::with_capacity(n_frames_in_flight);
+        let mut new_image_ready : Vec<Rc<Semaphore>> = Vec::with_capacity(n_frames_in_flight);
+        let mut render_ready    : Vec<Rc<Semaphore>> = Vec::with_capacity(n_frames_in_flight);
+        for _ in 0..n_frames_in_flight {
+            // Create the Fence that we use to check if this frame is still in flight
+            frame_in_flight.push(match Fence::new(device.clone(), true) {
+                Ok(fence) => fence,
+                Err(err)  => { return Err(Error::FenceCreateError{ name: NAME, err }); }
+            });
+
+            // Create the Semaphore that we use to signal when the swapchain image is available for this frame
+            new_image_ready.push(match Semaphore::new(device.clone()) {
+                Ok(semaphore) => semaphore,
+                Err(err)      => { return Err(Error::SemaphoreCreateError{ name: NAME, err }); }
+            });
+
+            // Create the Semaphore that we use to signal when the rendering is done with the swapchain image
+            render_ready.push(match Semaphore::new(device.clone()) {
+                Ok(semaphore) => semaphore,
+                Err(err)      => { return Err(Error::SemaphoreCreateError{ name: NAME, err }); }
+            });
         }
 
         // Done, store the pipeline
         Ok(Self {
             device,
-            memory_pool,
+            _memory_pool : memory_pool,
             command_pool,
             target,
 
@@ -352,7 +395,58 @@ impl Pipeline {
             framebuffers,
             vertex_buffer,
             command_buffers,
+
+            current_frame : 0,
+            frame_in_flight,
+            new_image_ready,
+            render_ready,
+            n_frames_in_flight,
         })
+    }
+
+
+
+    /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
+    /// 
+    /// # Arguments
+    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
+    /// 
+    /// # Errors
+    /// This function may error if we could not recreate / resize the required resources
+    fn rebuild(&mut self) -> Result<(), Error> {
+        debug!("Rebuiling TrianglePipeline...");
+
+        // Wait until the device is idle
+        if let Err(err) = self.device.drain(None) {
+            return Err(Error::IdleError{ name: NAME, err });
+        }
+
+        // Build the things
+        let pipeline: Rc<VkPipeline>;
+        let framebuffers: Vec<Rc<Framebuffer>>;
+        let command_buffers: Vec<Rc<CommandBuffer>>;
+        {
+            let target: Ref<dyn RenderTarget> = self.target.borrow();
+            let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format())?;
+
+            // Build the pipeline
+            let extent = target.extent();
+            pipeline = create_pipeline(&self.device, &self.layout, &render_pass, &extent)?;
+
+            // Create the framebuffers for this target
+            framebuffers = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
+
+            // Record one command buffer per framebuffer
+            command_buffers = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+        }
+
+        // Overwrite some internal shit
+        self.pipeline        = pipeline;
+        self.framebuffers    = framebuffers;
+        self.command_buffers = command_buffers;
+
+        // Done
+        Ok(())
     }
 }
 
@@ -371,51 +465,65 @@ impl RenderPipeline for Pipeline {
     /// 
     /// # Errors
     /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self, index: usize, wait_semaphores: &[&Rc<Semaphore>], done_semaphores: &[&Rc<Semaphore>], done_fence: &Rc<Fence>) -> Result<(), Box<dyn error::Error>> {
-        // We only need to submit our already-recorded command buffer
-        match self.device.queues().present.submit(&self.command_buffers[index], wait_semaphores, done_semaphores, Some(done_fence)) {
-            Ok(_)    => Ok(()),
-            Err(err) => Err(Box::new(Error::SubmitError{ err })),
-        }
-    }
+    fn render(&mut self) -> Result<(), Error> {
+        // We have already recorded the commandbuffer, so we only need to submit
 
+        // Check if the internal fence tells us we're busy.
+        match self.frame_in_flight[self.current_frame].poll() {
+            Ok(res)  => if !res { return Ok(()); },
+            Err(err) => { return Err(Error::FencePollError{ name: NAME, err }) }
+        };
 
-
-    /// Rebuild the RenderPipeline's resources to a new/rebuilt RenderTarget.
-    /// 
-    /// # Arguments
-    /// - `target`: The new RenderTarget who's size and format etc we will rebuild around.
-    /// 
-    /// # Errors
-    /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self) -> Result<(), Box<dyn error::Error>> {
-        debug!("Rebuiling TrianglePipeline...");
-
-        // Build the things
-        let pipeline: Rc<VkPipeline>;
-        let framebuffers: Vec<Rc<Framebuffer>>;
-        let command_buffers: Vec<Rc<CommandBuffer>>;
-        {
+        // Get the next index in the target image list
+        let image_index: Option<usize> = {
             let target: Ref<dyn RenderTarget> = self.target.borrow();
-            let render_pass: Rc<RenderPass> = create_render_pass(&self.device, target.format())?;
+            match target.get_index(Some(&self.new_image_ready[self.current_frame])) {
+                Ok(index) => index,
+                Err(err)  => { return Err(Error::NextImageError{ name: NAME, err }); }
+            }
+        };
 
-            // Build the pipeline
-            let extent = target.extent();
-            let pipeline = create_pipeline(&self.device, &self.layout, &render_pass, &extent)?;
+        // If the index was not given (`None`), the swapchain was outdated; rebuild the structs and try again
+        let image_index: usize = match image_index {
+            Some(index) => index,
+            None        => {
+                debug!("Resizing target for pipeline {}", NAME);
 
-            // Create the framebuffers for this target
-            let framebuffers = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
+                // Call the resize on the target first
+                {
+                    let mut target: RefMut<dyn RenderTarget> = self.target.borrow_mut();
+                    if let Err(err) = target.rebuild() {
+                        return Err(Error::TargetRebuildError{ name: NAME, err });
+                    }
+                }
+                // Now resize ourselves
+                self.rebuild()?;
 
-            // Record one command buffer per framebuffer
-            let command_buffers = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+                // Finally, re-attempt the render
+                return self.render();
+            }
+        };
+
+        // With the image index known, we can submit the appropriate command buffer
+        if let Err(err) = self.device.queues().present.submit(&self.command_buffers[image_index], &[&self.new_image_ready[self.current_frame]], &[&self.render_ready[self.current_frame]], Some(&self.frame_in_flight[self.current_frame])) {
+            return Err(Error::SubmitError{ name: NAME, err });
         }
 
-        // Overwrite some internal shit
-        self.pipeline        = pipeline;
-        self.framebuffers    = framebuffers;
-        self.command_buffers = command_buffers;
+        // Once the queue has been complete, schedule the target for presentation
+        let target: Ref<dyn RenderTarget> = self.target.borrow();
+        if let Err(err) = target.present(image_index, &[&self.render_ready[self.current_frame]]) {
+            return Err(Error::PresentError{ name: NAME, err });
+        }
 
-        // Done
+        // Now we're done, mark the current frame as next and continue
+        self.current_frame += 1;
+        if self.current_frame >= self.n_frames_in_flight { self.current_frame = 0; }
         Ok(())
     }
+
+
+
+    /// Returns the name of the pipeline.
+    #[inline]
+    fn name(&self) -> &'static str { NAME }
 }

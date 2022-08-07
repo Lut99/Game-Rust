@@ -1,21 +1,26 @@
-/* MOD.rs
- *   by Lut99
- *
- * Created:
- *   30 Apr 2022, 17:34:49
- * Last edited:
- *   03 Jul 2022, 14:41:19
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Entrypoint to the triangle module within the pipelines module.
-**/
+//  MOD.rs
+//    by Lut99
+// 
+//  Created:
+//    30 Apr 2022, 17:34:49
+//  Last edited:
+//    07 Aug 2022, 12:54:28
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Entrypoint to the triangle module within the pipelines module.
+// 
 
 /// Specifies the vertex definition for this pipeline
 pub mod vertex;
 /// Implements the pipeline
 pub mod pipeline;
+
+
+// Define constants
+/// The name of this specific pipeline
+pub const NAME: &'static str = "Triangle";
 
 
 // Load the shader files

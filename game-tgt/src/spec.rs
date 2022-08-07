@@ -4,7 +4,7 @@
 //  Created:
 //    06 Aug 2022, 18:04:05
 //  Last edited:
-//    06 Aug 2022, 18:19:13
+//    07 Aug 2022, 18:59:28
 //  Auto updated?
 //    Yes
 // 
@@ -58,12 +58,9 @@ pub trait RenderTarget: 'static + AsAny {
 
     /// Resize the RenderTarget to the new size.
     /// 
-    /// # Arguments
-    /// - `new_size`: The new Extent2D of the RenderTarget.
-    /// 
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
-    fn rebuild(&mut self, new_size: &Extent2D<u32>) -> Result<(), Error>;
+    fn rebuild(&mut self) -> Result<(), Error>;
 
 
 
@@ -72,6 +69,9 @@ pub trait RenderTarget: 'static + AsAny {
 
     /// Returns the ImageFormat of this RenderTarget.
     fn format(&self) -> ImageFormat;
+
+    /// Returns a cached extent of this RenderTarget. Faster than quering the window, but might be inaccurate after resizes.
+    fn cached_extent(&self) -> &Extent2D<u32>;
 
     /// Returns the extent of this RenderTarget.
     fn extent(&self) -> Extent2D<u32>;

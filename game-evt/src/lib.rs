@@ -4,7 +4,7 @@
 //  Created:
 //    18 Jul 2022, 18:29:26
 //  Last edited:
-//    03 Aug 2022, 18:16:27
+//    07 Aug 2022, 18:17:12
 //  Auto updated?
 //    Yes
 // 
@@ -17,3 +17,6 @@
 pub mod errors;
 pub mod spec;
 pub mod system;
+
+// Pull some things into the crate namespace
+pub use system::{Error, EventSystem};

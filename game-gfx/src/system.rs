@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 18:07:31
 //  Last edited:
-//    06 Aug 2022, 20:38:49
+//    07 Aug 2022, 18:56:00
 //  Auto updated?
 //    Yes
 // 
@@ -12,8 +12,7 @@
 //!   Implements the base RenderSystem.
 // 
 
-use std::any::type_name;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -25,17 +24,15 @@ use rust_vk::instance::Instance;
 use rust_vk::device::Device;
 use rust_vk::pools::command::Pool as CommandPool;
 use rust_vk::pools::memory::MetaPool;
-use rust_vk::sync::{Fence, Semaphore};
-use rust_win::Window;
-use rust_win::spec::{WindowInfo, WindowMode};
+use rust_win::spec::WindowInfo;
 use semver::Version;
 use winit::event_loop::EventLoop;
 use winit::window::WindowId as WinitWindowId;
 
-use game_tgt::RenderTarget;
+use game_tgt::window::WindowTarget;
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::spec::{RenderPipeline, RenderPipelineId, WindowId};
+use crate::spec::{AppInfo, RenderPipeline, VulkanInfo, WindowId};
 use crate::pipelines;
 
 
@@ -66,7 +63,7 @@ lazy_static!{
 /// The RenderSystem, which handles the (rasterized) rendering & windowing part of the game.
 pub struct RenderSystem {
     /// The Entity Component System where the RenderSystem reads objects to render from.
-    ecs : Rc<RefCell<Ecs>>,
+    _ecs : Rc<RefCell<Ecs>>,
 
     /// The Instance on which this RenderSystem is based.
     _instance     : Rc<Instance>,
@@ -79,18 +76,11 @@ pub struct RenderSystem {
     // /// The DescriptorPool from which we allocate descriptors.
 
     /// A list of all Windows. These are also referenced in the targets map.
-    windows   : HashMap<WindowId, Rc<RefCell<Window>>>,
+    windows    : HashMap<WindowId, Rc<RefCell<WindowTarget>>>,
+    /// Maps winit window IDs to our own semantic Window IDs.
+    window_ids : HashMap<WinitWindowId, WindowId>,
     /// The map of render pipelines which we use to render to.
-    pipelines : HashMap<RenderPipelineId, Box<dyn RenderPipeline>>,
-
-    /// The Semaphores that signal when an image is ready (one per image that is in-flight).
-    image_ready  : Vec<Rc<Semaphore>>,
-    /// The Semaphores that signal when a frame is done being rendered (one per image that is in-flight).
-    render_ready : Vec<Rc<Semaphore>>,
-    /// The number of images that are in-flight (one per image that is in-flight).
-    in_flight    : Vec<Rc<Fence>>,
-    /// The current frame we render from the in-flight frames.
-    current_frame : usize,
+    pipelines  : HashMap<WindowId, Box<dyn RenderPipeline>>,
 }
 
 impl RenderSystem {
@@ -101,19 +91,14 @@ impl RenderSystem {
     /// This is only part of initializing the full RenderSystem; also initialize the relevant subsystems (see register()).
     /// 
     /// # Generic arguments
-    /// - `S1`: The &str-like type of the application's name.
-    /// - `S2`: The &str-like type of the application's engine's name.
+    /// - `T`: The type of the custom event in the given `event_loop`.
     /// 
     /// # Arguments
     /// - `ecs`: The ECS to register new components with.
-    /// - `name`: The name of the application to register in the Vulkan driver.
-    /// - `version`: The version of the application to register in the Vulkan driver.
-    /// - `engine_name`: The name of the application's engine to register in the Vulkan driver.
-    /// - `engine_version`: The version of the application's engine to register in the Vulkan driver.
+    /// - `app_info`: The AppInfo struct that determines some application information.
     /// - `event_loop`: The EventLoop to use for triggering Window events and such.
     /// - `gpu`: The index of the GPU to use for rendering.
     /// - `window_mode`: The WindowMode of the Window.
-    /// - `targets_in_flight`: The maximum number of frames that are in-flight while rendering.
     /// - `debug`: If true, enables the validation layers in the Vulkan backend.
     /// 
     /// # Returns
@@ -121,14 +106,12 @@ impl RenderSystem {
     /// 
     /// # Errors
     /// This function throws errors whenever either the Instance or the Device failed to be created.
-    pub fn new<S1: AsRef<str>, S2: AsRef<str>>(
+    pub fn new<T>(
         ecs: Rc<RefCell<Ecs>>,
-        name: S1, version: Version,
-        engine: S2, engine_version: Version,
-        event_loop: &EventLoop<()>,
-        gpu: usize, window_mode: WindowMode,
-        targets_in_flight: usize,
-        debug: bool
+        event_loop: &EventLoop<T>,
+        app_info: AppInfo,
+        window_info: WindowInfo,
+        vulkan_info: VulkanInfo,
     ) -> Result<Self, Error> {
         // Register components
         /* TBD */
@@ -136,20 +119,20 @@ impl RenderSystem {
 
 
         // Create the instance
-        let layers = if debug {
+        let layers = if vulkan_info.debug {
             let mut layers = Vec::from(INSTANCE_LAYERS);
             layers.append(&mut vec!["VK_LAYER_KHRONOS_validation"]);
             layers
         } else {
             Vec::from(INSTANCE_LAYERS)
         };
-        let instance = match Instance::new(name, version, engine, engine_version, INSTANCE_EXTENSIONS, &layers) {
+        let instance = match Instance::new(app_info.name, app_info.version, app_info.engine_name, app_info.engine_version, INSTANCE_EXTENSIONS, &layers) {
             Ok(instance) => instance,
             Err(err)     => { return Err(Error::InstanceCreateError{ err }); }  
         };
 
         // Get the GPU
-        let device = match Device::new(instance.clone(), gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
+        let device = match Device::new(instance.clone(), vulkan_info.gpu, DEVICE_EXTENSIONS, DEVICE_LAYERS, &*DEVICE_FEATURES) {
             Ok(device) => device,
             Err(err)   => { return Err(Error::DeviceCreateError{ err }); }  
         };
@@ -166,50 +149,29 @@ impl RenderSystem {
 
 
         // Build the main window
-        let main_window: Rc<RefCell<Window>> = match Window::new(device.clone(), event_loop, WindowInfo{ title: format!("Game-Rust v{}", env!("CARGO_PKG_VERSION")), window_mode }, 3) {
+        let main_window: Rc<RefCell<WindowTarget>> = match WindowTarget::new(device.clone(), event_loop, window_info) {
             Ok(window) => Rc::new(RefCell::new(window)),
             Err(err)   => { return Err(Error::WindowCreateError{ err }); }
         };
+        let main_window_id = main_window.borrow().window().id();
 
         // Initiate the map of windows
-        let windows: HashMap<WindowId, Rc<RefCell<Window>>> = HashMap::with_capacity(1);
-        windows.insert(WindowId::Main(main_window.borrow().id()), main_window);
+        let windows    : HashMap<WindowId, Rc<RefCell<WindowTarget>>> = HashMap::from([ (WindowId::Main, main_window) ]);
+        let window_ids : HashMap<WinitWindowId, WindowId>             = HashMap::from([ (main_window_id, WindowId::Main) ]);
 
         // Initiate the render pipelines
-        let mut pipelines: HashMap<RenderPipelineId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
-        pipelines.insert(RenderPipelineId::Triangle, match pipelines::TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone()) {
+        let mut pipelines: HashMap<WindowId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
+        pipelines.insert(WindowId::Main, match pipelines::TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
             Ok(pipeline) => Box::new(pipeline),
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err }); }
         });
 
 
 
-        // Prepare the necessary synchronization primitives
-        let mut image_ready: Vec<Rc<Semaphore>>  = Vec::with_capacity(targets_in_flight);
-        let mut render_ready: Vec<Rc<Semaphore>> = Vec::with_capacity(targets_in_flight);
-        let mut in_flight: Vec<Rc<Fence>>        = Vec::with_capacity(targets_in_flight);
-        for _ in 0..targets_in_flight {
-            // Add each of the primitives
-            image_ready.push(match Semaphore::new(device.clone()) {
-                Ok(semaphore) => semaphore,
-                Err(err)      => { return Err(Error::SemaphoreCreateError{ err }); }
-            });
-            render_ready.push(match Semaphore::new(device.clone()) {
-                Ok(semaphore) => semaphore,
-                Err(err)      => { return Err(Error::SemaphoreCreateError{ err }); }
-            });
-            in_flight.push(match Fence::new(device.clone(), true) {
-                Ok(fence) => fence,
-                Err(err)  => { return Err(Error::FenceCreateError{ err }); }
-            });
-        }
-
-
-
         // Use that to create the system
         debug!("Initialized RenderSystem v{}", env!("CARGO_PKG_VERSION"));
         Ok(Self {
-            ecs,
+            _ecs : ecs,
 
             _instance     : instance,
             device,
@@ -217,72 +179,29 @@ impl RenderSystem {
             _memory_pool  : memory_pool,
 
             windows,
+            window_ids,
             pipelines,
-
-            image_ready,
-            render_ready,
-            in_flight,
-            current_frame : 0,
         })
     }
 
 
 
-    // /// Performs a single render pass using the given pipeline, rendering to the given target.
-    // /// 
-    // /// # Arguments
-    // /// - `pipeline`: The UID of the pipeline to render to.
-    // /// - `target`: The UID of the target to render to.
-    // /// 
-    // /// # Returns
-    // /// Nothing on success, except that the RenderTarget should have new pixels drawn to it.
-    // /// 
-    // /// # Errors
-    // /// This function errors if the given Pipeline errors.
-    // pub fn render(&mut self, pipeline_id: RenderPipelineId) -> Result<(), Error> {
-    //     // If the next fence is not yet available, early quit
-    //     match self.in_flight[self.current_frame].poll() {
-    //         Ok(res)  => if !res { return Ok(()); },
-    //         Err(err) => { return Err(Error::FencePollError{ err }) }
-    //     };
+    /// Initiates a new render callback for all Windows.
+    /// 
+    /// Specifically, calls `Window::request_redraw()` for all of the RenderSystem's windows.
+    /// 
+    /// # Returns
+    /// Nothing, but does launch new callbacks in the Event system.
+    pub fn game_loop_complete(&self) {
+        // Go through all of the windows
+        for window in self.windows.values() {
+            // Get a borrow on it
+            let window: Ref<WindowTarget> = window.borrow();
 
-    //     // Fetch the target RenderTarget
-
-    //     // Fetch the RenderTarget and the RenderPipeline for this render call
-    //     let target: &mut dyn RenderTarget     = self.targets.get_mut(&target_id).unwrap_or_else(|| panic!("RenderTarget '{}' is not registered in the RenderSystem", target_id)).as_mut();
-    //     let pipeline: &mut dyn RenderPipeline = self.pipelines.get_mut(&pipeline_id).unwrap_or_else(|| panic!("RenderPipeline '{}' is not registered in the RenderSystem", pipeline_id)).as_mut();
-
-    //     // Get the next image index from the render target
-    //     let frame_index: usize = match target.get_index(Some(&self.image_ready[self.current_frame])) {
-    //         Ok(Some(index)) => index,
-    //         Ok(None)        => {
-    //             // Get the new size from the target
-    //             let new_size = target.real_extent();
-    //             // If it's zero, then skip and wait until the window has a valid size again
-    //             if new_size.w == 0 && new_size.h == 0 { return Ok(()); }
-
-    //             // Rebuild the target and then the window
-    //             debug!("Resizing {} and {} to: {}", target_id, pipeline_id, new_size);
-    //             if let Err(err) = target.rebuild(&new_size) { return Err(Error::TargetRebuildError{ id: target_id, err }); }
-    //             if let Err(err) = pipeline.rebuild(target) { return Err(Error::PipelineRebuildError{ id: pipeline_id, err }); }
-
-    //             // Simply go through it again to do the proper render call
-    //             return self.render(pipeline_id, target_id);
-    //         },
-    //         Err(err) => { return Err(Error::TargetGetIndexError{ err }); },
-    //     };
-
-    //     // Tell the pipeline to render
-    //     if let Err(err) = pipeline.render(frame_index, &[&self.image_ready[self.current_frame]], &[&self.render_ready[self.current_frame]], &self.in_flight[self.current_frame]) {
-    //         return Err(Error::RenderError{ err });
-    //     }
-
-    //     // Even though the frame is not being rendered and such, schedule its presentation
-    //     match target.present(frame_index, &[&self.render_ready[self.current_frame]]) {
-    //         Ok(_)    => Ok(()),
-    //         Err(err) => Err(Error::PresentError{ err }),
-    //     }
-    // }
+            // Run the callback thingy
+            window.window().request_redraw();
+        }
+    }
 
     /// Renders the given Window.
     /// 
@@ -296,16 +215,23 @@ impl RenderSystem {
     /// 
     /// # Panics
     /// This function panics if the given `window_id` does not exist.
-    pub fn render_window(&self, window_id: WinitWindowId) -> Result<(), Error> {
-        // If the next fence is not yet available, early quit
-        match self.in_flight[self.current_frame].poll() {
-            Ok(res)  => if !res { return Ok(()); },
-            Err(err) => { return Err(Error::FencePollError{ err }) }
+    pub fn render_window(&mut self, window_id: WinitWindowId) -> Result<(), Error> {
+        // Resolve the winit window ID
+        let window_id = match self.window_ids.get(&window_id) {
+            Some(id) => id,
+            None     => { panic!("Unknown window ID '{:?}'", window_id); }
         };
 
-        // Match the window ID so we know how to render
-        match WindowId::from(window_id) {
-            
+        // Resolve the window ID to a pipeline
+        let pipeline = match self.pipelines.get_mut(&window_id) {
+            Some(pipeline) => pipeline,
+            None           => { panic!("Unknown window ID '{}'", window_id); }
+        };
+
+        // This is the pipeline that we want to render
+        match pipeline.render() {
+            Ok(_)    => Ok(()),
+            Err(err) => Err(Error::RenderError{ name: pipeline.name(), err }),
         }
     }
 
@@ -406,180 +332,11 @@ impl RenderSystem {
             }
         }).collect())
     }
+}
 
-
-
-    /// Returns a(n immuteable) reference to the RenderTarget with the given ID.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderTarget to return.
-    /// 
-    /// # Returns
-    /// The RenderTarget uncasted (so still as a RenderTarget trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown.
-    #[inline]
-    pub fn get_target(&self, id: RenderTargetId) -> &dyn RenderTarget {
-        match self.targets.get(&id) {
-            Some(target) => target.as_ref(),
-            None         => { panic!("Unknown RenderTarget {}", id); }
-        }
-    }
-
-    /// Returns a (muteable) reference to the RenderTarget with the given ID.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderTarget to return.
-    /// 
-    /// # Returns
-    /// The RenderTarget uncasted (so still as a RenderTarget trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown.
-    #[inline]
-    pub fn get_target_mut(&mut self, id: RenderTargetId) -> &mut dyn RenderTarget {
-        match self.targets.get_mut(&id) {
-            Some(target) => target.as_mut(),
-            None         => { panic!("Unknown RenderTarget {}", id); }
-        }
-    }
-
-    /// Returns a(n immuteable) reference to the RenderTarget with the given ID.
-    /// 
-    /// This function also casts the given RenderTarget to the given type.
-    /// 
-    /// # Generic types
-    /// - `Target`: The Type to cast to.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderTarget to return.
-    /// 
-    /// # Returns
-    /// The RenderTarget uncasted (so still as a RenderTarget trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
-    #[inline]
-    pub fn get_target_as<Target: RenderTarget>(&self, id: RenderTargetId) -> &Target {
-        match self.targets.get(&id) {
-            Some(target) => {
-                target.as_any().downcast_ref::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderTarget to {}", type_name::<Target>()))
-            },
-            None => { panic!("Unknown RenderTarget {}", id); }
-        }
-    }
-
-    /// Returns a (muteable) reference to the RenderTarget with the given ID.
-    /// 
-    /// This function also casts the given RenderTarget to the given type.
-    /// 
-    /// # Generic types
-    /// - `Target`: The Type to cast to.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderTarget to return.
-    /// 
-    /// # Returns
-    /// The RenderTarget uncasted (so still as a RenderTarget trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
-    #[inline]
-    pub fn get_target_as_mut<Target: RenderTarget>(&mut self, id: RenderTargetId) -> &mut Target {
-        match self.targets.get_mut(&id) {
-            Some(target) => {
-                target.as_any_mut().downcast_mut::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderTarget to {}", type_name::<Target>()))
-            },
-            None => { panic!("Unknown RenderTarget {}", id); }
-        }
-    }
-
-
-
-    /// Returns a(n immuteable) reference to the RenderPipeline with the given ID.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderPipeline to return.
-    /// 
-    /// # Returns
-    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown.
-    #[inline]
-    pub fn get_pipeline(&self, id: RenderPipelineId) -> &dyn RenderPipeline {
-        match self.pipelines.get(&id) {
-            Some(pipeline) => pipeline.as_ref(),
-            None           => { panic!("Unknown RenderPipeline {}", id); }
-        }
-    }
-
-    /// Returns a (muteable) reference to the RenderPipeline with the given ID.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderPipeline to return.
-    /// 
-    /// # Returns
-    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown.
-    #[inline]
-    pub fn get_pipeline_mut(&mut self, id: RenderPipelineId) -> &mut dyn RenderPipeline {
-        match self.pipelines.get_mut(&id) {
-            Some(pipeline) => pipeline.as_mut(),
-            None           => { panic!("Unknown RenderPipeline {}", id); }
-        }
-    }
-
-    /// Returns a(n immuteable) reference to the RenderPipeline with the given ID.
-    /// 
-    /// This function also casts the given RenderPipeline to the given type.
-    /// 
-    /// # Generic types
-    /// - `Target`: The Type to cast to.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderPipeline to return.
-    /// 
-    /// # Returns
-    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
-    #[inline]
-    pub fn get_pipeline_as<Target: RenderPipeline>(&self, id: RenderPipelineId) -> &Target {
-        match self.pipelines.get(&id) {
-            Some(pipeline) => {
-                pipeline.as_any().downcast_ref::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderPipeline to {}", type_name::<Target>()))
-            },
-            None => { panic!("Unknown RenderPipeline {}", id); }
-        }
-    }
-
-    /// Returns a (muteable) reference to the RenderPipeline with the given ID.
-    /// 
-    /// This function also casts the given RenderPipeline to the given type.
-    /// 
-    /// # Generic types
-    /// - `Target`: The Type to cast to.
-    /// 
-    /// # Arguments
-    /// - `id`: The ID of the RenderPipeline to return.
-    /// 
-    /// # Returns
-    /// The RenderPipeline uncasted (so still as a RenderPipeline trait).
-    /// 
-    /// # Errors
-    /// This function does not error explicitly, but does panic if the ID is unknown or the cast failed.
-    #[inline]
-    pub fn get_pipeline_as_mut<Target: RenderPipeline>(&mut self, id: RenderPipelineId) -> &mut Target {
-        match self.pipelines.get_mut(&id) {
-            Some(pipeline) => {
-                pipeline.as_any_mut().downcast_mut::<Target>().unwrap_or_else(|| panic!("Could not downcast RenderPipeline to {}", type_name::<Target>()))
-            },
-            None => { panic!("Unknown RenderPipeline {}", id); }
-        }
+impl Drop for RenderSystem {
+    fn drop(&mut self) {
+        // Wait for the device to become idle first
+        if let Err(err) = self.wait_for_idle() {}
     }
 }
