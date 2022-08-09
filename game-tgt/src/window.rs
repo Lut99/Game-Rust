@@ -4,7 +4,7 @@
 //  Created:
 //    06 Aug 2022, 18:04:36
 //  Last edited:
-//    07 Aug 2022, 18:59:45
+//    09 Aug 2022, 20:07:02
 //  Auto updated?
 //    Yes
 // 
@@ -183,7 +183,7 @@ impl RenderTarget for WindowTarget {
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
     #[inline]
-    fn rebuild(&mut self, new_extent: Extent2D<u32>) -> Result<(), RenderTargetError> {
+    fn rebuild(&mut self) -> Result<(), RenderTargetError> {
         // Simply recursively call the window
         if let Err(err) = self.window.rebuild() {
             return Err(RenderTargetError::Custom{ err: Box::new(Error::WindowRebuildError{ err }) });
