@@ -4,7 +4,7 @@
 //  Created:
 //    30 Apr 2022, 16:56:20
 //  Last edited:
-//    07 Aug 2022, 18:38:58
+//    11 Aug 2022, 15:21:17
 //  Auto updated?
 //    Yes
 // 
@@ -492,6 +492,9 @@ impl RenderPipeline for Pipeline {
                 // Call the resize on the target first
                 {
                     let mut target: RefMut<dyn RenderTarget> = self.target.borrow_mut();
+
+                    // If the target is actually (0, 0), it's minimized
+                    if target.extent() == Extent2D::new(0, 0) { return Ok(()); }
                     if let Err(err) = target.rebuild() {
                         return Err(Error::TargetRebuildError{ name: NAME, err });
                     }

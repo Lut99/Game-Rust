@@ -11,8 +11,8 @@ log = "0.4.16"
 memoffset = "0.6.5"
 rust-ecs = { git = "https://github.com/Lut99/rust-ecs", tag = "v1.0.0", features = ["log"] }
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
-rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v2.0.1", features = ["log", "winit"] }
-rust-win = { git = "https://github.com/Lut99/rust-win", tag = "v2.1.1", features = ["log", "serde"] }
+rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v2.0.2", features = ["log", "winit"] }
+rust-win = { git = "https://github.com/Lut99/rust-win", tag = "v2.1.2", features = ["log", "serde"] }
 semver = "1.0.6"
 winit = "0.26"
 
