@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 18:07:31
 //  Last edited:
-//    07 Aug 2022, 18:56:00
+//    11 Aug 2022, 15:52:27
 //  Auto updated?
 //    Yes
 // 
@@ -29,11 +29,12 @@ use semver::Version;
 use winit::event_loop::EventLoop;
 use winit::window::WindowId as WinitWindowId;
 
+use game_pip::TrianglePipeline;
+use game_pip::spec::RenderPipeline;
 use game_tgt::window::WindowTarget;
 
 pub use crate::errors::RenderSystemError as Error;
-use crate::spec::{AppInfo, RenderPipeline, VulkanInfo, WindowId};
-use crate::pipelines;
+use crate::spec::{AppInfo, VulkanInfo, WindowId};
 
 
 /***** CONSTANTS *****/
@@ -161,7 +162,7 @@ impl RenderSystem {
 
         // Initiate the render pipelines
         let mut pipelines: HashMap<WindowId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
-        pipelines.insert(WindowId::Main, match pipelines::TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
+        pipelines.insert(WindowId::Main, match TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
             Ok(pipeline) => Box::new(pipeline),
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err }); }
         });
@@ -337,6 +338,6 @@ impl RenderSystem {
 impl Drop for RenderSystem {
     fn drop(&mut self) {
         // Wait for the device to become idle first
-        if let Err(err) = self.wait_for_idle() {}
+        if let Err(_) = self.wait_for_idle() {}
     }
 }

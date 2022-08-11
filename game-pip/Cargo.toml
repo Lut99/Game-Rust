@@ -1,0 +1,14 @@
+[package]
+name = "game-pip"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Lut99" ]
+
+[dependencies]
+log = "0.4.16"
+memoffset = "0.6.5"
+rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
+rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v2.0.2", features = ["winit"] }
+
+game-tgt = { path = "../game-tgt" }
+game-utl = { path = "../game-utl" }

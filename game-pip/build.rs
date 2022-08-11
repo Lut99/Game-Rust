@@ -1,16 +1,16 @@
-/* BUILD.rs
- *   by Lut99
- *
- * Created:
- *   30 Apr 2022, 17:52:26
- * Last edited:
- *   05 May 2022, 10:41:18
- * Auto updated?
- *   Yes
- *
- * Description:
- *   Build script for the game-gfx crate.
-**/
+//  BUILD.rs
+//    by Lut99
+// 
+//  Created:
+//    30 Apr 2022, 17:52:26
+//  Last edited:
+//    11 Aug 2022, 15:49:27
+//  Auto updated?
+//    Yes
+// 
+//  Description:
+//!   Build script for the game-gfx crate.
+// 
 
 use std::io::ErrorKind;
 use std::fs;
@@ -86,13 +86,13 @@ macro_rules! glslc {
 
 /// Entrypoint to the build script
 fn main() {
-    create_dir("./src/pipelines/triangle/shaders/spir-v");
+    create_dir("./src/triangle/shaders/spir-v");
 
     // Check glslc is in the path
     check_glslc();
 
     // Otherwise, build the triangle shaders
     println!("Compiling Triangle pipeline shaders...");
-    glslc!("-o", "./src/pipelines/triangle/shaders/spir-v/vertex.spv", "./src/pipelines/triangle/shaders/shader.vert");
-    glslc!("-o", "./src/pipelines/triangle/shaders/spir-v/fragment.spv", "./src/pipelines/triangle/shaders/shader.frag");
+    glslc!("-o", "./src/triangle/shaders/spir-v/vertex.spv", "./src/triangle/shaders/shader.vert");
+    glslc!("-o", "./src/triangle/shaders/spir-v/fragment.spv", "./src/triangle/shaders/shader.frag");
 }

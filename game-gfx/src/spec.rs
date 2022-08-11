@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 13:01:17
 //  Last edited:
-//    07 Aug 2022, 18:30:47
+//    11 Aug 2022, 15:50:36
 //  Auto updated?
 //    Yes
 // 
@@ -16,10 +16,6 @@ use std::fmt::{Display, Debug, Formatter, Result as FResult};
 use std::str::FromStr;
 
 use semver::Version;
-
-use game_utl::traits::AsAny;
-
-use crate::errors::PipelineError;
 
 
 /***** AUXILLARY NEWTYPES *****/
@@ -38,27 +34,6 @@ impl Display for WindowId {
             Main => write!(f, "Main"),
         }
     }
-}
-
-
-
-
-
-/***** RENDER PIPELINE TRAIT *****/
-/// Defines a Render-capable pipeline.
-pub trait RenderPipeline: 'static + AsAny {
-    /// Renders a single frame to the given renderable target.
-    /// 
-    /// This function performs the actual rendering, and may be called by the RenderSystem to perform a render pass.
-    /// 
-    /// # Errors
-    /// This function may error whenever it likes. If it does, it should return something that implements Error, at which point the program's execution is halted.
-    fn render(&mut self) -> Result<(), PipelineError>;
-
-
-
-    /// Returns the name of the pipeline.
-    fn name(&self) -> &'static str;
 }
 
 

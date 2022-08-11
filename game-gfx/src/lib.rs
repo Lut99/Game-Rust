@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 13:00:33
 //  Last edited:
-//    07 Aug 2022, 13:48:09
+//    11 Aug 2022, 15:51:56
 //  Auto updated?
 //    Yes
 // 
@@ -21,7 +21,6 @@ pub mod errors;
 pub mod spec;
 pub mod components;
 pub mod system;
-pub mod pipelines;
 
 // Bring some components into the general package namespace
 pub use system::{Error, RenderSystem};

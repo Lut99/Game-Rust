@@ -4,7 +4,7 @@
 //  Created:
 //    30 Apr 2022, 16:56:20
 //  Last edited:
-//    11 Aug 2022, 15:21:17
+//    11 Aug 2022, 15:48:27
 //  Auto updated?
 //    Yes
 // 
@@ -34,9 +34,9 @@ use rust_vk::sync::{Fence, Semaphore};
 
 use game_tgt::RenderTarget;
 
-use crate::pipelines::triangle::NAME;
-pub use crate::errors::PipelineError as Error;
-use crate::pipelines::triangle::{Shaders, Vertex};
+use super::{NAME, Shaders, Vertex};
+
+pub use crate::errors::RenderPipelineError as Error;
 use crate::spec::RenderPipeline;
 
 
@@ -277,7 +277,7 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
 /// 
 /// # Generic constants
 /// - `F`: The number of frames that may maximally be in flight (i.e., the number of times relevant resources will be duplicated.)
-pub struct Pipeline {
+pub struct TrianglePipeline {
     /// The Device where the pipeline runs.
     device       : Rc<Device>,
     /// The MemoryPool from which we may draw memory.
@@ -310,7 +310,7 @@ pub struct Pipeline {
     n_frames_in_flight : usize,
 }
 
-impl Pipeline {
+impl TrianglePipeline {
     /// Constructor for the RenderPipeline.
     /// 
     /// This initializes a new RenderPipeline. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
@@ -450,7 +450,7 @@ impl Pipeline {
     }
 }
 
-impl RenderPipeline for Pipeline {
+impl RenderPipeline for TrianglePipeline {
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.
