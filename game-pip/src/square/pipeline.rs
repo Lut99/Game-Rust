@@ -2,15 +2,14 @@
 //    by Lut99
 // 
 //  Created:
-//    30 Apr 2022, 16:56:20
+//    11 Aug 2022, 15:58:03
 //  Last edited:
-//    11 Aug 2022, 15:58:57
+//    11 Aug 2022, 16:28:58
 //  Auto updated?
 //    Yes
 // 
 //  Description:
-//!   Implements a very simple pipeline that only renders a triangle to
-//!   the
+//!   Implements the SquarePipeline.
 // 
 
 use std::cell::{Ref, RefCell, RefMut};
@@ -26,7 +25,7 @@ use rust_vk::layout::PipelineLayout;
 use rust_vk::render_pass::{RenderPass, RenderPassBuilder};
 use rust_vk::pipeline::{Pipeline as VkPipeline, PipelineBuilder as VkPipelineBuilder};
 use rust_vk::pools::memory::prelude::*;
-use rust_vk::pools::memory::{MappedMemory, StagingBuffer, VertexBuffer};
+use rust_vk::pools::memory::{IndexBuffer, MappedMemory, StagingBuffer, VertexBuffer};
 use rust_vk::pools::command::{Buffer as CommandBuffer, Pool as CommandPool};
 use rust_vk::image;
 use rust_vk::framebuffer::Framebuffer;
@@ -42,20 +41,27 @@ use crate::spec::RenderPipeline;
 
 /***** CONSTANTS *****/
 /// The raw vertex data we'd like to send to the GPU.
-const VERTICES: [Vertex; 3] = [
+const VERTICES: [Vertex; 4] = [
     Vertex {
-        pos    : [0.0, -0.5],
+        pos    : [-0.5, -0.5],
         colour : [1.0, 0.0, 0.0],
     },
     Vertex {
-        pos    : [0.5, 0.5],
+        pos    : [0.5, -0.5],
         colour : [0.0, 1.0, 0.0],
     },
     Vertex {
-        pos    : [-0.5, 0.5],
+        pos    : [0.5, 0.5],
         colour : [0.0, 0.0, 1.0],
     },
+    Vertex {
+        pos    : [-0.5, 0.5],
+        colour : [1.0, 1.0, 1.0],
+    },
 ];
+
+/// The raw index data we'd like to send to the GPU.
+const INDICES: [u32; 6] = [0, 1, 2, 2, 3, 0];
 
 
 
@@ -70,23 +76,17 @@ const VERTICES: [Vertex; 3] = [
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
 fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
-    let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
+    let vertices: Rc<VertexBuffer> = match VertexBuffer::new::<Vertex>(
         device.clone(),
         memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
+        VERTICES.len(),
     ) {
         Ok(vertices) => vertices,
         Err(err)     => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex", err }); }
     };
 
     // Create the staging buffer
-    let staging: Rc<StagingBuffer> = match StagingBuffer::new(
-        device.clone(),
-        memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
-    ) {
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&vertices) {
         Ok(staging) => staging,
         Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex staging", err }); }
     };
@@ -97,7 +97,7 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
             Ok(mapped) => mapped,
             Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "vertex staging", err }); }
         };
-        mapped.as_slice_mut::<Vertex>(3).clone_from_slice(&VERTICES);
+        mapped.as_slice_mut::<Vertex>(4).clone_from_slice(&VERTICES);
         if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "vertex staging", err }); }
     }
 
@@ -107,6 +107,47 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
 
     // Done
     Ok(vertices)
+}
+
+/// Creates, allocates and populates the index buffer.
+/// 
+/// # Arguments
+/// - `device`: The Device where the new Buffer will be allocated. Note that the Buffer's memory will be allocated on the device of the given `memory_pool`.
+/// - `memory_pool`: The MemoryPool where to allocate the memory for the index buffer (and a temporary staging buffer).
+/// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
+fn create_index_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<IndexBuffer>, Error> {
+    // Create the Index buffer object
+    let indices: Rc<IndexBuffer> = match IndexBuffer::new::<u32>(
+        device.clone(),
+        memory_pool.clone(),
+        INDICES.len(),
+    ) {
+        Ok(vertices) => vertices,
+        Err(err)     => { return Err(Error::BufferCreateError{ name: NAME, what: "index", err }); }
+    };
+
+    // Create the staging buffer
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&indices) {
+        Ok(staging) => staging,
+        Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "index staging", err }); }
+    };
+
+    // Populate the staging buffer
+    {
+        let mapped: MappedMemory = match staging.map() {
+            Ok(mapped) => mapped,
+            Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "index staging", err }); }
+        };
+        mapped.as_slice_mut::<u32>(6).clone_from_slice(&INDICES);
+        if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "index staging", err }); }
+    }
+
+    // Copy the staging to the normal buffer
+    let tindices: Rc<dyn TransferBuffer> = indices.clone();
+    if let Err(err) = staging.copyto(command_pool, &tindices) { return Err(Error::BufferCopyError{ name: NAME, src: "index staging", dst: "index", err }); }
+
+    // Done
+    Ok(indices)
 }
 
 /// Creates a new RenderPass for the Pipeline.
@@ -232,8 +273,10 @@ fn create_framebuffers(device: &Rc<Device>, render_pass: &Rc<RenderPass>, views:
 /// - `render_pass`: The RenderPass that we want to run in this buffer.
 /// - `pipeline`: The Pipeline that we want to run in this buffer.
 /// - `framebuffers`: The Framebuffers for which to record CommandBuffers.
+/// - `vertex_buffer`: The VertexBuffer to use for rendering.
+/// - `index_buffer`: The IndexBuffer to use for rendering.
 /// - `extent`: The portion of the Framebuffer to render to.
-fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], vertex_buffer: &Rc<VertexBuffer>, extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
+fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, render_pass: &Rc<RenderPass>, pipeline: &Rc<VkPipeline>, framebuffers: &[Rc<Framebuffer>], vertex_buffer: &Rc<VertexBuffer>, index_buffer: &Rc<IndexBuffer>, extent: &Extent2D<u32>) -> Result<Vec<Rc<CommandBuffer>>, Error> {
     // Record one command buffer per framebuffer
     let mut command_buffers: Vec<Rc<CommandBuffer>> = Vec::with_capacity(framebuffers.len());
     for framebuffer in framebuffers {
@@ -273,8 +316,8 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
 
 
 /***** LIBRARY *****/
-/// The Triangle Pipeline, which implements a simple pipeline that only renders a triangle to the screen.
-pub struct TrianglePipeline {
+/// The Square Pipeline, which implements a simple pipeline that only renders an indexed square to the screen.
+pub struct SquarePipeline {
     /// The Device where the pipeline runs.
     device       : Rc<Device>,
     /// The MemoryPool from which we may draw memory.
@@ -286,6 +329,8 @@ pub struct TrianglePipeline {
 
     /// The vertex buffer for this pipeline.
     vertex_buffer   : Rc<VertexBuffer>,
+    /// The index buffer for this pipeline.
+    index_buffer    : Rc<IndexBuffer>,
     /// The PipelineLayout that defines the resource layout of the pipeline.
     layout          : Rc<PipelineLayout>,
     /// The VkPipeline we wrap.
@@ -307,7 +352,7 @@ pub struct TrianglePipeline {
     n_frames_in_flight : usize,
 }
 
-impl TrianglePipeline {
+impl SquarePipeline {
     /// Constructor for the RenderPipeline.
     /// 
     /// This initializes a new RenderPipeline. Apart from the custom arguments per-target, there is also a large number of arguments given that are owned by the RenderSystem.
@@ -332,6 +377,7 @@ impl TrianglePipeline {
 
         // Build everything that depends on the Window
         let vertex_buffer: Rc<VertexBuffer>;
+        let index_buffer: Rc<VertexBuffer>;
         let pipeline: Rc<VkPipeline>;
         let framebuffers: Vec<Rc<Framebuffer>>;
         let command_buffers: Vec<Rc<CommandBuffer>>;
@@ -342,8 +388,9 @@ impl TrianglePipeline {
             // Build the render pass (which we only need for now)
             let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
 
-            // Prepare the triangle buffer
+            // Prepare the buffers
             vertex_buffer = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+            index_buffer  = create_index_buffer(&device, &memory_pool, &command_pool)?;
 
             // Build the pipeline
             let extent = target.extent();
@@ -353,7 +400,7 @@ impl TrianglePipeline {
             framebuffers = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
             // Record one command buffer per framebuffer
-            command_buffers = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &extent)?;
+            command_buffers = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &index_buffer, &extent)?;
         }
 
         // Create the synchronization structures
@@ -387,10 +434,11 @@ impl TrianglePipeline {
             command_pool,
             target,
 
+            vertex_buffer,
+            index_buffer,
             layout,
             pipeline,
             framebuffers,
-            vertex_buffer,
             command_buffers,
 
             current_frame : 0,
@@ -447,7 +495,7 @@ impl TrianglePipeline {
     }
 }
 
-impl RenderPipeline for TrianglePipeline {
+impl RenderPipeline for SquarePipeline {
     /// Renders a single frame to the given renderable target.
     /// 
     /// This function performs the actual rendering, and may be called by the RenderTarget to perform a render pass.

@@ -4,7 +4,7 @@
 //  Created:
 //    11 Aug 2022, 15:35:15
 //  Last edited:
-//    11 Aug 2022, 15:40:52
+//    11 Aug 2022, 15:56:42
 //  Auto updated?
 //    Yes
 // 
@@ -17,8 +17,10 @@
 pub mod errors;
 pub mod spec;
 pub mod triangle;
+pub mod square;
 
 // Pull some stuff into the general namespace
 pub use errors::RenderPipelineError as Error;
 pub use spec::RenderPipeline;
 pub use triangle::{Pipeline as TrianglePipeline};
+pub use square::{Pipeline as SquarePipeline};
