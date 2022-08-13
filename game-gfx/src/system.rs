@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 18:07:31
 //  Last edited:
-//    11 Aug 2022, 15:52:27
+//    13 Aug 2022, 13:01:41
 //  Auto updated?
 //    Yes
 // 
@@ -29,7 +29,7 @@ use semver::Version;
 use winit::event_loop::EventLoop;
 use winit::window::WindowId as WinitWindowId;
 
-use game_pip::TrianglePipeline;
+use game_pip::SquarePipeline;
 use game_pip::spec::RenderPipeline;
 use game_tgt::window::WindowTarget;
 
@@ -162,9 +162,9 @@ impl RenderSystem {
 
         // Initiate the render pipelines
         let mut pipelines: HashMap<WindowId, Box<dyn RenderPipeline>> = HashMap::with_capacity(1);
-        pipelines.insert(WindowId::Main, match TrianglePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
+        pipelines.insert(WindowId::Main, match SquarePipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
             Ok(pipeline) => Box::new(pipeline),
-            Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err }); }
+            Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "SquarePipeline", err }); }
         });
 
 

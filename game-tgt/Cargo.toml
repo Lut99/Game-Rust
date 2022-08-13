@@ -6,8 +6,8 @@ authors = [ "Lut99" ]
 
 [dependencies]
 log = "0.4.16"
-rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v2.0.2", features = ["log", "winit"] }
-rust-win = { git = "https://github.com/Lut99/rust-win", tag = "v2.1.2", features = ["log", "serde"] }
+rust-vk = { git = "https://github.com/Lut99/rust-vk", tag = "v4.0.1", features = ["log", "winit"] }
+rust-win = { git = "https://github.com/Lut99/rust-win", tag = "v2.1.6", features = ["log", "serde"] }
 winit = "0.26"
 
 game-utl = { path = "../game-utl" }

@@ -4,7 +4,7 @@
 //  Created:
 //    30 Apr 2022, 16:56:20
 //  Last edited:
-//    11 Aug 2022, 15:58:57
+//    13 Aug 2022, 12:59:47
 //  Auto updated?
 //    Yes
 // 
@@ -17,7 +17,7 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use log::debug;
-use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
+use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, VertexInputRate};
 use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
 use rust_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
 use rust_vk::device::Device;
@@ -34,7 +34,8 @@ use rust_vk::sync::{Fence, Semaphore};
 
 use game_tgt::RenderTarget;
 
-use super::{NAME, Shaders, Vertex};
+use super::{NAME, Shaders};
+use super::vertex::TriangleVertex;
 
 pub use crate::errors::RenderPipelineError as Error;
 use crate::spec::RenderPipeline;
@@ -42,16 +43,16 @@ use crate::spec::RenderPipeline;
 
 /***** CONSTANTS *****/
 /// The raw vertex data we'd like to send to the GPU.
-const VERTICES: [Vertex; 3] = [
-    Vertex {
+const VERTICES: [TriangleVertex; 3] = [
+    TriangleVertex {
         pos    : [0.0, -0.5],
         colour : [1.0, 0.0, 0.0],
     },
-    Vertex {
+    TriangleVertex {
         pos    : [0.5, 0.5],
         colour : [0.0, 1.0, 0.0],
     },
-    Vertex {
+    TriangleVertex {
         pos    : [-0.5, 0.5],
         colour : [0.0, 0.0, 1.0],
     },
@@ -70,23 +71,18 @@ const VERTICES: [Vertex; 3] = [
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
 fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
-    let vertices: Rc<VertexBuffer> = match VertexBuffer::new(
+    let vertices: Rc<VertexBuffer> = match VertexBuffer::new::<TriangleVertex>(
         device.clone(),
         memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
+        VERTICES.len(),
     ) {
         Ok(vertices) => vertices,
         Err(err)     => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex", err }); }
     };
 
     // Create the staging buffer
-    let staging: Rc<StagingBuffer> = match StagingBuffer::new(
-        device.clone(),
-        memory_pool.clone(),
-        std::mem::size_of_val(&VERTICES),
-        SharingMode::Exclusive,
-    ) {
+    let bvertices: Rc<dyn Buffer> = vertices.clone();
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&bvertices){
         Ok(staging) => staging,
         Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex staging", err }); }
     };
@@ -97,7 +93,7 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
             Ok(mapped) => mapped,
             Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "vertex staging", err }); }
         };
-        mapped.as_slice_mut::<Vertex>(3).clone_from_slice(&VERTICES);
+        mapped.as_slice_mut::<TriangleVertex>(3).clone_from_slice(&VERTICES);
         if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "vertex staging", err }); }
     }
 
@@ -161,11 +157,11 @@ fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass
         .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("vertex.spv")))
         .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("fragment.spv")))
         .vertex_input(VertexInputState {
-            attributes : Vertex::vk_attributes(),
+            attributes : TriangleVertex::vk_attributes(),
             bindings   : vec![
                 VertexBinding {
                     binding : 0,
-                    stride  : Vertex::vk_size(),
+                    stride  : TriangleVertex::vk_size(),
                     rate    : VertexInputRate::Vertex,
                 }
             ],

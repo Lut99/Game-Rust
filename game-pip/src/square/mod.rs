@@ -4,7 +4,7 @@
 //  Created:
 //    11 Aug 2022, 15:55:22
 //  Last edited:
-//    11 Aug 2022, 15:56:22
+//    13 Aug 2022, 12:59:58
 //  Auto updated?
 //    Yes
 // 
@@ -30,5 +30,5 @@ struct Shaders;
 
 
 // Bring some stuff into the module scope
-pub use vertex::Vertex;
+pub use vertex::SquareVertex as Vertex;
 pub use pipeline::SquarePipeline as Pipeline;

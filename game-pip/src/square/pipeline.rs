@@ -4,7 +4,7 @@
 //  Created:
 //    11 Aug 2022, 15:58:03
 //  Last edited:
-//    11 Aug 2022, 16:28:58
+//    13 Aug 2022, 15:26:09
 //  Auto updated?
 //    Yes
 // 
@@ -16,7 +16,7 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use log::debug;
-use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, SharingMode, VertexInputRate};
+use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, VertexInputRate};
 use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
 use rust_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
 use rust_vk::device::Device;
@@ -33,7 +33,8 @@ use rust_vk::sync::{Fence, Semaphore};
 
 use game_tgt::RenderTarget;
 
-use super::{NAME, Shaders, Vertex};
+use super::{NAME, Shaders};
+use super::vertex::SquareVertex;
 
 pub use crate::errors::RenderPipelineError as Error;
 use crate::spec::RenderPipeline;
@@ -41,20 +42,20 @@ use crate::spec::RenderPipeline;
 
 /***** CONSTANTS *****/
 /// The raw vertex data we'd like to send to the GPU.
-const VERTICES: [Vertex; 4] = [
-    Vertex {
+const VERTICES: [SquareVertex; 4] = [
+    SquareVertex {
         pos    : [-0.5, -0.5],
         colour : [1.0, 0.0, 0.0],
     },
-    Vertex {
+    SquareVertex {
         pos    : [0.5, -0.5],
         colour : [0.0, 1.0, 0.0],
     },
-    Vertex {
+    SquareVertex {
         pos    : [0.5, 0.5],
         colour : [0.0, 0.0, 1.0],
     },
-    Vertex {
+    SquareVertex {
         pos    : [-0.5, 0.5],
         colour : [1.0, 1.0, 1.0],
     },
@@ -76,7 +77,7 @@ const INDICES: [u32; 6] = [0, 1, 2, 2, 3, 0];
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
 fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<VertexBuffer>, Error> {
     // Create the Vertex buffer object
-    let vertices: Rc<VertexBuffer> = match VertexBuffer::new::<Vertex>(
+    let vertices: Rc<VertexBuffer> = match VertexBuffer::new::<SquareVertex>(
         device.clone(),
         memory_pool.clone(),
         VERTICES.len(),
@@ -86,7 +87,8 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
     };
 
     // Create the staging buffer
-    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&vertices) {
+    let bvertices: Rc<dyn Buffer> = vertices.clone();
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&bvertices) {
         Ok(staging) => staging,
         Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "vertex staging", err }); }
     };
@@ -97,7 +99,7 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
             Ok(mapped) => mapped,
             Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "vertex staging", err }); }
         };
-        mapped.as_slice_mut::<Vertex>(4).clone_from_slice(&VERTICES);
+        mapped.as_slice_mut::<SquareVertex>(VERTICES.len()).clone_from_slice(&VERTICES);
         if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "vertex staging", err }); }
     }
 
@@ -117,7 +119,7 @@ fn create_vertex_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn Memory
 /// - `command_pool`: The CommandPool where we will get a command buffer to do the copy on.
 fn create_index_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryPool>>, command_pool: &Rc<RefCell<CommandPool>>) -> Result<Rc<IndexBuffer>, Error> {
     // Create the Index buffer object
-    let indices: Rc<IndexBuffer> = match IndexBuffer::new::<u32>(
+    let indices: Rc<IndexBuffer> = match IndexBuffer::new_u32(
         device.clone(),
         memory_pool.clone(),
         INDICES.len(),
@@ -127,7 +129,8 @@ fn create_index_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryP
     };
 
     // Create the staging buffer
-    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&indices) {
+    let bindices: Rc<dyn Buffer> = indices.clone();
+    let staging: Rc<StagingBuffer> = match StagingBuffer::new_for(&bindices) {
         Ok(staging) => staging,
         Err(err)    => { return Err(Error::BufferCreateError{ name: NAME, what: "index staging", err }); }
     };
@@ -138,7 +141,7 @@ fn create_index_buffer(device: &Rc<Device>, memory_pool: &Rc<RefCell<dyn MemoryP
             Ok(mapped) => mapped,
             Err(err)   => { return Err(Error::BufferMapError{ name: NAME, what: "index staging", err }); }
         };
-        mapped.as_slice_mut::<u32>(6).clone_from_slice(&INDICES);
+        mapped.as_slice_mut::<u32>(INDICES.len()).clone_from_slice(&INDICES);
         if let Err(err) = mapped.flush() { return Err(Error::BufferFlushError{ name: NAME, what: "index staging", err }); }
     }
 
@@ -202,11 +205,11 @@ fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass
         .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("vertex.spv")))
         .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("fragment.spv")))
         .vertex_input(VertexInputState {
-            attributes : Vertex::vk_attributes(),
+            attributes : SquareVertex::vk_attributes(),
             bindings   : vec![
                 VertexBinding {
                     binding : 0,
-                    stride  : Vertex::vk_size(),
+                    stride  : SquareVertex::vk_size(),
                     rate    : VertexInputRate::Vertex,
                 }
             ],
@@ -295,7 +298,8 @@ fn record_command_buffers(device: &Rc<Device>, pool: &Rc<RefCell<CommandPool>>, 
         cmd.begin_render_pass(&render_pass, framebuffer, Rect2D::from_raw(Offset2D::new(0, 0), extent.clone()), &[[0.0, 0.0, 0.0, 1.0]]);
         cmd.bind_pipeline(BindPoint::Graphics, &pipeline);
         cmd.bind_vertex_buffer(0, vertex_buffer);
-        cmd.draw(3, 1, 0, 0);
+        cmd.bind_index_buffer(index_buffer);
+        cmd.draw_indexed(INDICES.len() as u32, 1, 0, 0, 0);
         cmd.end_render_pass();
 
         // Finish recording
@@ -377,7 +381,7 @@ impl SquarePipeline {
 
         // Build everything that depends on the Window
         let vertex_buffer: Rc<VertexBuffer>;
-        let index_buffer: Rc<VertexBuffer>;
+        let index_buffer: Rc<IndexBuffer>;
         let pipeline: Rc<VkPipeline>;
         let framebuffers: Vec<Rc<Framebuffer>>;
         let command_buffers: Vec<Rc<CommandBuffer>>;
@@ -386,20 +390,27 @@ impl SquarePipeline {
             let target: Ref<dyn RenderTarget> = target.borrow();
 
             // Build the render pass (which we only need for now)
+            debug!("[{}] Creating RenderPass...", NAME);
             let render_pass: Rc<RenderPass> = create_render_pass(&device, target.format())?;
 
             // Prepare the buffers
+            debug!("[{}] Creating Buffers...", NAME);
+            debug!("[{}] Allocating Vertex buffer...", NAME);
             vertex_buffer = create_vertex_buffer(&device, &memory_pool, &command_pool)?;
+            debug!("[{}] Allocating Index buffer...", NAME);
             index_buffer  = create_index_buffer(&device, &memory_pool, &command_pool)?;
 
             // Build the pipeline
             let extent = target.extent();
+            debug!("[{}] Creating Pipeline...", NAME);
             pipeline = create_pipeline(&device, &layout, &render_pass, &extent)?;
 
             // Create the framebuffers for this target
+            debug!("[{}] Creating Framebuffers...", NAME);
             framebuffers = create_framebuffers(&device, &render_pass, &target.views(), &extent)?;
 
             // Record one command buffer per framebuffer
+            debug!("[{}] Recording CommandBuffers...", NAME);
             command_buffers = record_command_buffers(&device, &command_pool, &render_pass, &pipeline, &framebuffers, &vertex_buffer, &index_buffer, &extent)?;
         }
 
@@ -482,7 +493,7 @@ impl SquarePipeline {
             framebuffers = create_framebuffers(&self.device, &render_pass, &target.views(), &extent)?;
 
             // Record one command buffer per framebuffer
-            command_buffers = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &extent)?;
+            command_buffers = record_command_buffers(&self.device, &self.command_pool, &render_pass, &pipeline, &framebuffers, &self.vertex_buffer, &self.index_buffer, &extent)?;
         }
 
         // Overwrite some internal shit
