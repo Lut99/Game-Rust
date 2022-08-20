@@ -6,7 +6,7 @@ authors = [ "Lut99" ]
 
 [dependencies]
 log = "0.4.14"
-rust-ecs = { git = "https://github.com/Lut99/rust-game", features = ["log"] }
+rust-ecs = { git = "https://github.com/Lut99/rust-game", tag = "v1.0.0", features = ["log"] }
 semver = "1.0.6"
 winit = "0.26"
 

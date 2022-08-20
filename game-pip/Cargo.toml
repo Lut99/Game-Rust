@@ -8,7 +8,7 @@ authors = [ "Lut99" ]
 log = "0.4.16"
 memoffset = "0.6.5"
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
-rust-vk = { git = "https://github.com/Lut99/rust-game", features = ["winit"] }
+rust-vk = { git = "https://github.com/Lut99/rust-game", tag = "v1.0.0", features = ["winit"] }
 
 game-tgt = { path = "../game-tgt" }
 game-utl = { path = "../game-utl" }
