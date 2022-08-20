@@ -4,7 +4,7 @@
 //  Created:
 //    26 Mar 2022, 18:07:31
 //  Last edited:
-//    13 Aug 2022, 13:01:41
+//    20 Aug 2022, 13:43:30
 //  Auto updated?
 //    Yes
 // 
@@ -166,6 +166,10 @@ impl RenderSystem {
             Ok(pipeline) => Box::new(pipeline),
             Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "SquarePipeline", err }); }
         });
+        // pipelines.insert(WindowId::Main, match game_pip::triangle::Pipeline::new(device.clone(), memory_pool.clone(), command_pool.clone(), windows[&WindowId::Main].clone(), 3) {
+        //     Ok(pipeline) => Box::new(pipeline),
+        //     Err(err)     => { return Err(Error::RenderPipelineCreateError{ name: "TrianglePipeline", err }); }
+        // });
 
 
 

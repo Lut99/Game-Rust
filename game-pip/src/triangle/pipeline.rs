@@ -4,7 +4,7 @@
 //  Created:
 //    30 Apr 2022, 16:56:20
 //  Last edited:
-//    13 Aug 2022, 12:59:47
+//    20 Aug 2022, 14:43:20
 //  Auto updated?
 //    Yes
 // 
@@ -17,8 +17,8 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use log::debug;
-use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, VertexInputRate};
-use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
+use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, VertexInputRate};
+use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, SampleCount, ShaderStage};
 use rust_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
 use rust_vk::device::Device;
 use rust_vk::shader::Shader;
@@ -116,7 +116,7 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
         // Define the colour attachment (no special depth stuff yet)
         .attachment(None, AttachmentDescription {
             format,
-            samples : SampleCount::One,
+            samples : SampleCount::ONE,
 
             on_load  : AttachmentLoadOp::Clear,
             on_store : AttachmentStoreOp::Store,
@@ -154,8 +154,8 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
 fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass: &Rc<RenderPass>, extent: &Extent2D<u32>) -> Result<Rc<VkPipeline>, Error> {
     // Now, prepare the static part of the Pipeline
     match VkPipelineBuilder::new()
-        .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("vertex.spv")))
-        .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("fragment.spv")))
+        .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("shader.vert.spv")))
+        .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("shader.frag.spv")))
         .vertex_input(VertexInputState {
             attributes : TriangleVertex::vk_attributes(),
             bindings   : vec![
@@ -480,8 +480,6 @@ impl RenderPipeline for TrianglePipeline {
         let image_index: usize = match image_index {
             Some(index) => index,
             None        => {
-                debug!("Resizing target for pipeline {}", NAME);
-
                 // Call the resize on the target first
                 {
                     let mut target: RefMut<dyn RenderTarget> = self.target.borrow_mut();

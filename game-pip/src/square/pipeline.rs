@@ -4,7 +4,7 @@
 //  Created:
 //    11 Aug 2022, 15:58:03
 //  Last edited:
-//    13 Aug 2022, 15:26:09
+//    20 Aug 2022, 14:43:17
 //  Auto updated?
 //    Yes
 // 
@@ -16,8 +16,8 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use log::debug;
-use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, SampleCount, VertexInputRate};
-use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, ShaderStage};
+use rust_vk::auxillary::enums::{AttachmentLoadOp, AttachmentStoreOp, BindPoint, CullMode, DrawMode, FrontFace, ImageFormat, ImageLayout, VertexInputRate};
+use rust_vk::auxillary::flags::{CommandBufferFlags, CommandBufferUsageFlags, SampleCount, ShaderStage};
 use rust_vk::auxillary::structs::{AttachmentDescription, AttachmentRef, Extent2D, Offset2D, RasterizerState, Rect2D, SubpassDescription, VertexBinding, VertexInputState, ViewportState};
 use rust_vk::device::Device;
 use rust_vk::shader::Shader;
@@ -164,7 +164,7 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
         // Define the colour attachment (no special depth stuff yet)
         .attachment(None, AttachmentDescription {
             format,
-            samples : SampleCount::One,
+            samples : SampleCount::ONE,
 
             on_load  : AttachmentLoadOp::Clear,
             on_store : AttachmentStoreOp::Store,
@@ -192,7 +192,7 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
     }
 }
 
-/// Creates a new VkPipeline for the TrianglePipeline.
+/// Creates a new VkPipeline for the SquarePipeline.
 /// 
 /// # Arguments
 /// - `device`: The Device where the new Pipeline will be created.
@@ -202,8 +202,8 @@ fn create_render_pass(device: &Rc<Device>, format: ImageFormat) -> Result<Rc<Ren
 fn create_pipeline(device: &Rc<Device>, layout: &Rc<PipelineLayout>, render_pass: &Rc<RenderPass>, extent: &Extent2D<u32>) -> Result<Rc<VkPipeline>, Error> {
     // Now, prepare the static part of the Pipeline
     match VkPipelineBuilder::new()
-        .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("vertex.spv")))
-        .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("fragment.spv")))
+        .try_shader(ShaderStage::VERTEX, Shader::try_embedded(device.clone(), Shaders::get("shader.vert.spv")))
+        .try_shader(ShaderStage::FRAGMENT, Shader::try_embedded(device.clone(), Shaders::get("shader.frag.spv")))
         .vertex_input(VertexInputState {
             attributes : SquareVertex::vk_attributes(),
             bindings   : vec![
@@ -470,7 +470,7 @@ impl SquarePipeline {
     /// # Errors
     /// This function may error if we could not recreate / resize the required resources
     fn rebuild(&mut self) -> Result<(), Error> {
-        debug!("Rebuiling TrianglePipeline...");
+        debug!("Rebuiling SquarePipeline...");
 
         // Wait until the device is idle
         if let Err(err) = self.device.drain(None) {
@@ -543,8 +543,6 @@ impl RenderPipeline for SquarePipeline {
         let image_index: usize = match image_index {
             Some(index) => index,
             None        => {
-                debug!("Resizing target for pipeline {}", NAME);
-
                 // Call the resize on the target first
                 {
                     let mut target: RefMut<dyn RenderTarget> = self.target.borrow_mut();
